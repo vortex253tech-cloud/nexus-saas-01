@@ -13,22 +13,27 @@ export async function POST(req: NextRequest) {
 
     const db = getSupabaseServerClient()
 
-    const [{ data: invoices }, { data: customers }, { data: payments }] = await Promise.all([
-      db.from('invoices').select('amount, status, due_date, customers(name)').eq('company_id', company_id).limit(100),
-      db.from('customers').select('name, email, phone').eq('company_id', company_id).limit(50),
+    const [invoicesRes, customersRes, paymentsRes] = await Promise.all([
+      db.from('invoices').select('amount, status, due_date, customer_id').eq('company_id', company_id).limit(100),
+      db.from('customers').select('id, name').eq('company_id', company_id).limit(50),
       db.from('payments').select('amount, paid_at').eq('company_id', company_id).limit(50),
     ])
 
-    const inv = invoices ?? []
+    const inv = (invoicesRes.data ?? []) as Array<{ amount: number; status: string; due_date: string; customer_id: string }>
+    const cust = (customersRes.data ?? []) as Array<{ id: string; name: string }>
+    const pay  = (paymentsRes.data ?? []) as Array<{ amount: number; paid_at: string }>
+
+    const custMap = Object.fromEntries(cust.map(c => [c.id, c.name]))
+
     const context = {
-      total_clientes: customers?.length ?? 0,
+      total_clientes: cust.length,
       total_a_receber: inv.filter(i => i.status === 'pending').reduce((s, i) => s + Number(i.amount), 0),
       total_vencido: inv.filter(i => i.status === 'overdue').reduce((s, i) => s + Number(i.amount), 0),
       total_pago: inv.filter(i => i.status === 'paid').reduce((s, i) => s + Number(i.amount), 0),
       faturas_pendentes: inv.filter(i => i.status === 'pending').length,
       faturas_vencidas: inv.filter(i => i.status === 'overdue').length,
-      clientes_inadimplentes: [...new Set(inv.filter(i => i.status === 'overdue').map(i => (i.customers as {name:string}|null)?.name))].filter(Boolean),
-      ultimos_pagamentos: (payments ?? []).slice(0, 5).map(p => ({ valor: p.amount, data: p.paid_at?.slice(0, 10) })),
+      clientes_inadimplentes: [...new Set(inv.filter(i => i.status === 'overdue').map(i => custMap[i.customer_id]).filter(Boolean))],
+      ultimos_pagamentos: pay.slice(0, 5).map(p => ({ valor: p.amount, data: p.paid_at?.slice(0, 10) })),
     }
 
     const response = await ai.messages.create({
