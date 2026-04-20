@@ -6,18 +6,21 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Database, Zap, Bell, History,
   CreditCard, Menu, X, Building2, ChevronRight,
+  DollarSign, MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
 // ─── Nav items ────────────────────────────────────────────────
 
 const NAV = [
-  { href: '/dashboard',         label: 'Dashboard',          icon: LayoutDashboard, exact: true },
-  { href: '/dashboard/dados',   label: 'Dados Financeiros',  icon: Database },
-  { href: '/dashboard/actions', label: 'Ações',              icon: Zap },
-  { href: '/dashboard/alerts',  label: 'Alertas',            icon: Bell },
-  { href: '/dashboard/history', label: 'Histórico',          icon: History },
-  { href: '/dashboard/billing', label: 'Plano',              icon: CreditCard },
+  { href: '/dashboard',               label: 'Dashboard',          icon: LayoutDashboard, exact: true },
+  { href: '/dashboard/financeiro',    label: 'Financeiro',         icon: DollarSign },
+  { href: '/dashboard/assistant',     label: 'Assistente IA',      icon: MessageSquare },
+  { href: '/dashboard/dados',         label: 'Dados',              icon: Database },
+  { href: '/dashboard/actions',       label: 'Ações',              icon: Zap },
+  { href: '/dashboard/alerts',        label: 'Alertas',            icon: Bell },
+  { href: '/dashboard/history',       label: 'Histórico',          icon: History },
+  { href: '/dashboard/billing',       label: 'Plano',              icon: CreditCard },
 ]
 
 // ─── Sidebar ──────────────────────────────────────────────────
