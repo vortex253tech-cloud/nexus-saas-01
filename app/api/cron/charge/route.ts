@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
   for (const invoice of overdueInvoices) {
     if (sentIds.has(invoice.id)) continue
 
-    const customer = invoice.customers as { id: string; name: string; email: string | null; phone: string | null } | null
+    const raw = invoice.customers as unknown
+    const customer = (Array.isArray(raw) ? raw[0] : raw) as { id: string; name: string; email: string | null; phone: string | null } | null
     if (!customer) continue
 
     const daysOverdue = Math.floor((Date.now() - new Date(invoice.due_date).getTime()) / 86400000)

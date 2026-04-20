@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
     // Top devedores
     const debtByCustomer: Record<string, { name: string; total: number; count: number }> = {}
     for (const i of inv.filter(i => i.status === 'overdue')) {
-      const c = i.customers as { name: string } | null
+      const raw = i.customers as unknown
+      const c = Array.isArray(raw) ? (raw as { name: string }[])[0] : (raw as { name: string } | null)
       const name = c?.name ?? 'Desconhecido'
       if (!debtByCustomer[i.customer_id]) debtByCustomer[i.customer_id] = { name, total: 0, count: 0 }
       debtByCustomer[i.customer_id].total += Number(i.amount)
