@@ -1,188 +1,141 @@
-// ─── WhatsApp Webhook — Meta Cloud API ──────────────────────────
-// GET  → verificação do endpoint pela Meta
-// POST → recebimento de eventos (mensagens, status, etc.)
+import { NextRequest, NextResponse } from "next/server"
+import { getSupabaseServerClient } from '@/lib/supabase'
+import { replyWhatsApp, buildHelpMessage, buildStatusMessage } from '@/lib/whatsapp'
 
-import { NextRequest, NextResponse } from 'next/server'
+export const dynamic = "force-dynamic"
 
-// ─── Types ─────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────
 
-interface WhatsAppMessage {
-  from: string          // phone number (E.164, sem +)
-  id: string            // message ID
-  timestamp: string
-  type: 'text' | 'image' | 'audio' | 'document' | 'interactive' | 'button'
+interface WAMessage {
+  from: string
+  id: string
+  type: string
   text?: { body: string }
 }
 
-interface WhatsAppStatus {
-  id: string            // message ID (do enviado)
-  status: 'sent' | 'delivered' | 'read' | 'failed'
-  timestamp: string
-  recipient_id: string
-  errors?: Array<{ code: number; title: string }>
-}
-
-interface WebhookEntry {
-  id: string            // WhatsApp Business Account ID
+interface WAEntry {
   changes: Array<{
+    field: string
     value: {
-      messaging_product: 'whatsapp'
-      metadata: { display_phone_number: string; phone_number_id: string }
-      contacts?: Array<{ profile: { name: string }; wa_id: string }>
-      messages?: WhatsAppMessage[]
-      statuses?: WhatsAppStatus[]
+      messaging_product: string
+      metadata: { phone_number_id: string }
+      messages?: WAMessage[]
     }
-    field: 'messages'
   }>
 }
 
-interface WebhookPayload {
-  object: 'whatsapp_business_account'
-  entry: WebhookEntry[]
-}
-
-// ─── GET — Meta verification challenge ─────────────────────────
+// ─── GET — Meta webhook verification ────────────────────────────
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
+  const mode      = searchParams.get("hub.mode")
+  const token     = searchParams.get("hub.verify_token")
+  const challenge = searchParams.get("hub.challenge")
 
-  const mode      = searchParams.get('hub.mode')
-  const token     = searchParams.get('hub.verify_token')
-  const challenge = searchParams.get('hub.challenge')
+  console.log("[Webhook GET]", { mode, token, challenge })
 
   const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN
-
   if (!verifyToken) {
-    console.error('[Webhook] WHATSAPP_VERIFY_TOKEN not set')
-    return new NextResponse('Server misconfigured', { status: 500 })
+    return new Response("Server error: verify token not configured", { status: 500 })
   }
 
-  if (mode === 'subscribe' && token === verifyToken) {
-    console.log('[Webhook] Meta verification passed ✓')
-    return new NextResponse(challenge, { status: 200 })
+  if (mode === "subscribe" && token === verifyToken && challenge) {
+    console.log("[Webhook] ✓ Verificação aprovada")
+    return new Response(challenge, { status: 200, headers: { "Content-Type": "text/plain" } })
   }
 
-  console.warn('[Webhook] Verification failed — token mismatch or wrong mode')
-  return new NextResponse('Forbidden', { status: 403 })
+  return new Response("Forbidden", { status: 403 })
 }
 
-// ─── POST — Incoming events ─────────────────────────────────────
+// ─── POST — Receive & process messages ──────────────────────────
 
 export async function POST(req: NextRequest) {
-  let body: WebhookPayload
-
   try {
-    body = await req.json() as WebhookPayload
-  } catch {
-    return new NextResponse('Bad Request', { status: 400 })
-  }
+    const body = await req.json() as { object?: string; entry?: WAEntry[] }
+    console.log("📩 WhatsApp Webhook Event:", JSON.stringify(body, null, 2))
 
-  // Meta expects 200 quickly — process async, respond first
-  processWebhookAsync(body).catch(err =>
-    console.error('[Webhook] Processing error:', err)
-  )
+    if (body.object !== 'whatsapp_business_account') {
+      return NextResponse.json({ status: "ok" })
+    }
 
-  return new NextResponse('OK', { status: 200 })
-}
-
-// ─── Async processor ───────────────────────────────────────────
-
-async function processWebhookAsync(payload: WebhookPayload) {
-  if (payload.object !== 'whatsapp_business_account') return
-
-  for (const entry of payload.entry) {
-    for (const change of entry.changes) {
-      if (change.field !== 'messages') continue
-
-      const { value } = change
-      const phoneNumberId = value.metadata.phone_number_id
-
-      // ── Incoming messages ──────────────────────────────────
-      if (value.messages) {
-        for (const msg of value.messages) {
-          await handleIncomingMessage(msg, phoneNumberId, value.contacts)
-        }
-      }
-
-      // ── Status updates (sent/delivered/read/failed) ────────
-      if (value.statuses) {
-        for (const status of value.statuses) {
-          handleStatusUpdate(status)
+    for (const entry of body.entry ?? []) {
+      for (const change of entry.changes) {
+        if (change.field !== 'messages') continue
+        const { phone_number_id } = change.value.metadata
+        for (const msg of change.value.messages ?? []) {
+          if (msg.type !== 'text' || !msg.text?.body) continue
+          await handleMessage({ phoneNumberId: phone_number_id, from: msg.from, text: msg.text.body.trim().toLowerCase() })
         }
       }
     }
+
+    return NextResponse.json({ status: "ok" })
+  } catch (err) {
+    console.error("[Webhook POST] Erro:", err)
+    return NextResponse.json({ status: "ok" })
   }
 }
 
-// ─── Message handler (extend here to reply) ────────────────────
+// ─── Message handler ─────────────────────────────────────────────
 
-async function handleIncomingMessage(
-  msg: WhatsAppMessage,
-  phoneNumberId: string,
-  contacts?: Array<{ profile: { name: string }; wa_id: string }>
-) {
-  const senderName = contacts?.find(c => c.wa_id === msg.from)?.profile.name ?? 'Desconhecido'
-  const text = msg.type === 'text' ? msg.text?.body ?? '' : `[${msg.type}]`
+async function handleMessage(params: { phoneNumberId: string; from: string; text: string }) {
+  const { phoneNumberId, from, text } = params
+  const db = getSupabaseServerClient()
 
-  console.log('[Webhook] Mensagem recebida:', {
-    de: msg.from,
-    nome: senderName,
-    tipo: msg.type,
-    texto: text,
-    id: msg.id,
-    phoneNumberId,
-  })
+  const normalized = from.startsWith('55') ? `+${from}` : `+55${from}`
+  const { data: company } = await db
+    .from('companies')
+    .select('id, name, phone')
+    .or(`phone.eq.${normalized},phone.eq.${from}`)
+    .maybeSingle()
 
-  // ── TODO: adicionar lógica de resposta aqui ────────────────
-  // Exemplo para responder:
-  //
-  // await sendWhatsAppReply({
-  //   phoneNumberId,
-  //   to: msg.from,
-  //   message: `Olá ${senderName}! Recebi sua mensagem: "${text}"`,
-  // })
-}
-
-// ─── Status update handler ─────────────────────────────────────
-
-function handleStatusUpdate(status: WhatsAppStatus) {
-  if (status.status === 'failed') {
-    console.error('[Webhook] Mensagem falhou:', {
-      id: status.id,
-      para: status.recipient_id,
-      erros: status.errors,
+  if (!company) {
+    await replyWhatsApp({
+      phoneNumberId, to: from,
+      message: `Olá! Não encontrei sua empresa no NEXUS.\nAcesse o dashboard: ${process.env.NEXT_PUBLIC_APP_URL ?? ''}`,
     })
     return
   }
 
-  console.log('[Webhook] Status atualizado:', {
-    id: status.id,
-    status: status.status,
-    para: status.recipient_id,
-  })
-}
+  if (text === 'status') {
+    const { data: actions } = await db
+      .from('actions')
+      .select('titulo, impacto_estimado, prioridade')
+      .eq('company_id', company.id)
+      .eq('status', 'pending')
+      .order('impacto_estimado', { ascending: false })
+      .limit(5)
+    await replyWhatsApp({ phoneNumberId, to: from, message: buildStatusMessage(actions ?? []) })
+    return
+  }
 
-// ─── Helper: send reply (descomente quando quiser usar) ────────
-//
-// async function sendWhatsAppReply(params: {
-//   phoneNumberId: string
-//   to: string
-//   message: string
-// }) {
-//   const token = process.env.WHATSAPP_TOKEN
-//   if (!token) return
-//
-//   await fetch(`https://graph.facebook.com/v19.0/${params.phoneNumberId}/messages`, {
-//     method: 'POST',
-//     headers: {
-//       Authorization: `Bearer ${token}`,
-//       'Content-Type': 'application/json',
-//     },
-//     body: JSON.stringify({
-//       messaging_product: 'whatsapp',
-//       to: params.to,
-//       type: 'text',
-//       text: { body: params.message },
-//     }),
-//   })
-// }
+  if (text === 'ok' || text === 'sim') {
+    const { data: action } = await db
+      .from('actions')
+      .select('id, titulo')
+      .eq('company_id', company.id)
+      .eq('status', 'pending')
+      .order('impacto_estimado', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!action) {
+      await replyWhatsApp({ phoneNumberId, to: from, message: `✅ Nenhuma ação pendente no momento.` })
+      return
+    }
+
+    await replyWhatsApp({ phoneNumberId, to: from, message: `⚙️ Executando: *${action.titulo}*...\nAcompanhe no dashboard.` })
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+    if (appUrl) {
+      fetch(`${appUrl}/api/actions/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionId: action.id }),
+      }).catch(() => null)
+    }
+    return
+  }
+
+  await replyWhatsApp({ phoneNumberId, to: from, message: buildHelpMessage() })
+}
