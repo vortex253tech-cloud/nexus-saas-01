@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { getBoolean, getString, readJsonObject } from '@/lib/unknown'
 
 export async function GET(req: NextRequest) {
   const company_id = req.nextUrl.searchParams.get('company_id')
@@ -22,8 +23,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const body = await req.json()
-  const { id, lido, dismissed } = body as { id: string; lido?: boolean; dismissed?: boolean }
+  const body = await readJsonObject(req)
+  const id = body ? getString(body, 'id') : undefined
+  const lido = body ? getBoolean(body, 'lido') : undefined
+  const dismissed = body ? getBoolean(body, 'dismissed') : undefined
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const db = getSupabaseServerClient()

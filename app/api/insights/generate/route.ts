@@ -6,26 +6,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { generateAIAnalysis } from '@/lib/ai'
 import type { DBFinancialData } from '@/lib/db'
+import { getNumber, getString, isRecord, readJsonObject } from '@/lib/unknown'
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
-  const {
-    company_id,
-    perfil,
-    setor,
-    metaMensal,
-    principalDesafio,
-    nomeEmpresa,
-    financialData,
-  } = body as {
-    company_id: string
-    perfil: string
-    setor: string
-    metaMensal: number
-    principalDesafio: string
-    nomeEmpresa: string
-    financialData: DBFinancialData[]
-  }
+  const body = await readJsonObject(req)
+  const company_id = body ? getString(body, 'company_id') : undefined
+  const perfil = body ? getString(body, 'perfil') : undefined
+  const setor = body ? getString(body, 'setor') : undefined
+  const metaMensal = body ? getNumber(body, 'metaMensal') : undefined
+  const principalDesafio = body ? getString(body, 'principalDesafio') : undefined
+  const nomeEmpresa = body ? getString(body, 'nomeEmpresa') : undefined
+  const financialData = body ? parseFinancialData(body.financialData) : []
 
   if (!company_id) {
     return NextResponse.json({ error: 'company_id required' }, { status: 400 })
@@ -135,4 +126,38 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+function parseFinancialData(value: unknown): DBFinancialData[] {
+  if (!Array.isArray(value)) return []
+
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return []
+
+    const id = getString(item, 'id')
+    const company_id = getString(item, 'company_id')
+    const revenue = getNumber(item, 'revenue')
+    const costs = getNumber(item, 'costs')
+    const profit = getNumber(item, 'profit')
+    const period_label = getString(item, 'period_label')
+    const period_date = getString(item, 'period_date')
+    const created_at = getString(item, 'created_at')
+    const rawNote = item.note
+
+    if (!id || !company_id || revenue === undefined || costs === undefined || profit === undefined || !period_label || !period_date || !created_at) {
+      return []
+    }
+
+    return [{
+      id,
+      company_id,
+      revenue,
+      costs,
+      profit,
+      period_label,
+      period_date,
+      note: typeof rawNote === 'string' ? rawNote : null,
+      created_at,
+    }]
+  })
 }

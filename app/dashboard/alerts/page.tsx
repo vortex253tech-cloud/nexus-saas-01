@@ -7,6 +7,7 @@ import {
   CheckCircle2, Loader2, RefreshCw, AlertCircle, X,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { getString, isRecord } from '@/lib/unknown'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -19,6 +20,21 @@ interface Alert {
   lido: boolean
   dismissed: boolean
   created_at: string
+}
+
+function isAlert(value: unknown): value is Alert {
+  if (!isRecord(value)) return false
+  const tipo = getString(value, 'tipo')
+  return (
+    typeof value.id === 'string' &&
+    (tipo === 'perigo' || tipo === 'atencao' || tipo === 'oportunidade' || tipo === 'info') &&
+    typeof value.titulo === 'string' &&
+    (typeof value.descricao === 'string' || value.descricao === null) &&
+    (typeof value.impacto === 'string' || value.impacto === null) &&
+    typeof value.lido === 'boolean' &&
+    typeof value.dismissed === 'boolean' &&
+    typeof value.created_at === 'string'
+  )
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -138,8 +154,8 @@ export default function AlertsPage() {
     try {
       const raw = localStorage.getItem('nexus_session')
       if (raw) {
-        const s = JSON.parse(raw) as { company_id?: string; companyId?: string }
-        setCompanyId(s.company_id ?? s.companyId ?? null)
+        const parsed: unknown = JSON.parse(raw)
+        if (isRecord(parsed)) setCompanyId(getString(parsed, 'company_id') ?? getString(parsed, 'companyId') ?? null)
       }
     } catch { /* ok */ }
   }, [])
@@ -149,8 +165,8 @@ export default function AlertsPage() {
     setLoading(true)
     try {
       const res = await fetch(`/api/alerts?company_id=${companyId}`)
-      const json = await res.json() as { data?: Alert[] }
-      if (json.data) setAlerts(json.data)
+      const json: unknown = await res.json()
+      if (isRecord(json) && Array.isArray(json.data)) setAlerts(json.data.filter(isAlert))
     } catch { /* ok */ } finally {
       setLoading(false)
     }

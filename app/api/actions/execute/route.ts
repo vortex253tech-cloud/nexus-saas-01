@@ -3,11 +3,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { executeActionById } from '@/lib/executor'
+import { getString, readJsonObject } from '@/lib/unknown'
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const { action_id } = body as { action_id: string }
+    const body = await readJsonObject(req)
+    const action_id = body ? getString(body, 'action_id') : undefined
 
     if (!action_id) {
       return NextResponse.json({ error: 'action_id required' }, { status: 400 })

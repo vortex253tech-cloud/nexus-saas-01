@@ -4,6 +4,8 @@
 
 // ─── Types ─────────────────────────────────────────────────────
 
+import { isRecord } from '@/lib/unknown'
+
 export interface SendWhatsAppParams {
   phone: string   // E.164: +5511999999999
   message: string
@@ -45,16 +47,29 @@ async function callMetaAPI(
     }
   )
 
-  const data = await res.json() as {
-    messages?: Array<{ id: string }>
-    error?: { message: string }
+  const data: unknown = await res.json()
+  const errorMessage = getMetaErrorMessage(data)
+  const messageId = getMetaMessageId(data)
+
+  if (!res.ok || errorMessage) {
+    return { success: false, error: errorMessage ?? `HTTP ${res.status}` }
   }
 
-  if (!res.ok || data.error) {
-    return { success: false, error: data.error?.message ?? `HTTP ${res.status}` }
-  }
+  return { success: true, messageId }
+}
 
-  return { success: true, messageId: data.messages?.[0]?.id }
+function getMetaErrorMessage(data: unknown): string | undefined {
+  if (!isRecord(data)) return undefined
+  const error = data.error
+  if (!isRecord(error)) return undefined
+  return typeof error.message === 'string' ? error.message : undefined
+}
+
+function getMetaMessageId(data: unknown): string | undefined {
+  if (!isRecord(data) || !Array.isArray(data.messages)) return undefined
+  const firstMessage = data.messages[0]
+  if (!isRecord(firstMessage)) return undefined
+  return typeof firstMessage.id === 'string' ? firstMessage.id : undefined
 }
 
 // ─── Send text message (outbound notification) ─────────────────

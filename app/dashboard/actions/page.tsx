@@ -8,6 +8,7 @@ import {
   DollarSign, Play, Filter,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { getBoolean, getString, isRecord } from '@/lib/unknown'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -26,6 +27,42 @@ interface Action {
   execution_log: string | null
   executed_at: string | null
   created_at: string
+}
+
+type ExecuteChannelResult = {
+  channel: string
+  delivered: boolean
+  simulated?: boolean
+}
+
+function isAction(value: unknown): value is Action {
+  if (!isRecord(value)) return false
+  return (
+    typeof value.id === 'string' &&
+    typeof value.titulo === 'string' &&
+    (typeof value.descricao === 'string' || value.descricao === null) &&
+    (typeof value.detalhe === 'string' || value.detalhe === null) &&
+    typeof value.impacto_estimado === 'number' &&
+    typeof value.ganho_realizado === 'number' &&
+    (typeof value.prazo === 'string' || value.prazo === null) &&
+    (value.prioridade === 'critica' || value.prioridade === 'alta' || value.prioridade === 'media') &&
+    (value.urgencia === 'alta' || value.urgencia === 'media' || value.urgencia === 'baixa') &&
+    (value.status === 'pending' || value.status === 'in_progress' || value.status === 'done') &&
+    typeof value.execution_type === 'string' &&
+    (typeof value.execution_log === 'string' || value.execution_log === null) &&
+    (typeof value.executed_at === 'string' || value.executed_at === null) &&
+    typeof value.created_at === 'string'
+  )
+}
+
+function getExecuteChannelResult(value: unknown): ExecuteChannelResult | undefined {
+  if (!isRecord(value) || !isRecord(value.data) || !isRecord(value.data.channel_result)) return undefined
+  const channelResult = value.data.channel_result
+  const channel = getString(channelResult, 'channel')
+  const delivered = getBoolean(channelResult, 'delivered')
+  if (!channel || delivered === undefined) return undefined
+
+  return { channel, delivered, simulated: getBoolean(channelResult, 'simulated') }
 }
 
 type Filter = 'all' | 'pending' | 'done'
@@ -210,8 +247,8 @@ export default function ActionsPage() {
     try {
       const raw = localStorage.getItem('nexus_session')
       if (raw) {
-        const s = JSON.parse(raw) as { company_id?: string; companyId?: string }
-        setCompanyId(s.company_id ?? s.companyId ?? null)
+        const parsed: unknown = JSON.parse(raw)
+        if (isRecord(parsed)) setCompanyId(getString(parsed, 'company_id') ?? getString(parsed, 'companyId') ?? null)
       }
     } catch { /* ok */ }
   }, [])
@@ -222,8 +259,8 @@ export default function ActionsPage() {
     if (!companyId) return
     try {
       const res = await fetch(`/api/actions?company_id=${companyId}`)
-      const json = await res.json() as { data?: Action[]; error?: string }
-      if (json.data) setActions(json.data)
+      const json: unknown = await res.json()
+      if (isRecord(json) && Array.isArray(json.data)) setActions(json.data.filter(isAction))
     } catch { /* ok */ } finally {
       setLoading(false)
     }
@@ -247,14 +284,15 @@ export default function ActionsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action_id: actionId }),
       })
-      const json = await res.json() as { data?: { channel_result?: { channel: string; delivered: boolean; simulated?: boolean } }; error?: string }
+      const json: unknown = await res.json()
+      const error = isRecord(json) ? getString(json, 'error') : undefined
 
-      if (!res.ok || json.error) {
-        showToast('error', json.error ?? 'Erro ao executar ação')
+      if (!res.ok || error) {
+        showToast('error', error ?? 'Erro ao executar acao')
         // Revert optimistic
         setActions(prev => prev.map(a => a.id === actionId ? { ...a, status: 'pending' } : a))
       } else {
-        const ch = json.data?.channel_result
+        const ch = getExecuteChannelResult(json)
         if (ch) {
           const channel = ch.channel === 'email' ? 'E-mail' : 'WhatsApp'
           const simMsg = ch.simulated ? ' (simulado — configure as credenciais)' : ''
@@ -413,3 +451,4 @@ export default function ActionsPage() {
     </div>
   )
 }
+

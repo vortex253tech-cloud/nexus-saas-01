@@ -3,7 +3,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
-import type { DBUser, DBCompany } from '@/lib/db'
+import type { DBCompany, DBUser } from '@/lib/db'
+import { getString, isRecord, readJsonObject } from '@/lib/unknown'
+
+type UserWithCompanies = DBUser & { companies?: DBCompany[] | null }
 
 export async function GET(req: NextRequest) {
   const email = req.nextUrl.searchParams.get('email')
@@ -24,21 +27,18 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
-  const { email, name, nomeEmpresa, perfil, setor, quizData } = body as {
-    email: string
-    name?: string
-    nomeEmpresa?: string
-    perfil?: string
-    setor?: string
-    quizData?: Record<string, unknown>
-  }
+  const body = await readJsonObject(req)
+  const email = body ? getString(body, 'email') : undefined
+  const name = body ? getString(body, 'name') : undefined
+  const nomeEmpresa = body ? getString(body, 'nomeEmpresa') : undefined
+  const perfil = body ? getString(body, 'perfil') : undefined
+  const setor = body ? getString(body, 'setor') : undefined
+  const quizData = body && isRecord(body.quizData) ? body.quizData : undefined
 
   if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 })
 
   const db = getSupabaseServerClient()
 
-  // Upsert user
   const { data: user, error: userErr } = await db
     .from('users')
     .upsert({ email, name: name ?? null }, { onConflict: 'email' })
@@ -47,17 +47,14 @@ export async function POST(req: NextRequest) {
 
   if (userErr) return NextResponse.json({ error: userErr.message }, { status: 500 })
 
-  // Find existing company or create
   const { data: existingCompany } = await db
     .from('companies')
     .select()
     .eq('user_id', user.id)
     .maybeSingle()
 
-  let company: DBCompany
-  if (existingCompany) {
-    company = existingCompany as DBCompany
-  } else {
+  let company = existingCompany
+  if (!company) {
     const { data: newCompany, error: compErr } = await db
       .from('companies')
       .insert({
@@ -70,9 +67,8 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (compErr) return NextResponse.json({ error: compErr.message }, { status: 500 })
-    company = newCompany as DBCompany
+    company = newCompany
 
-    // Store quiz response
     if (quizData) {
       await db.from('quiz_responses').insert({
         company_id: company.id,
@@ -85,7 +81,6 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Create trial subscription
     await db.from('subscriptions').insert({
       user_id: user.id,
       plan: 'free',

@@ -35,6 +35,28 @@ export interface ExecutionResult {
   }
 }
 
+type CompanyContactRow = {
+  name: string | null
+  email: string | null
+  phone: string | null
+  user_id: string | null
+}
+
+type UserEmailRow = {
+  email: string | null
+}
+
+type ActionRow = Omit<ActionToExecute, 'execution_type' | 'metadata' | 'passos'> & {
+  company_id: string
+  execution_type: string
+  metadata: Record<string, unknown> | null
+  passos: string[] | null
+}
+
+type CompanyGainRow = {
+  ganho_acumulado: number | null
+}
+
 // ─── Delays per execution type (ms) ────────────────────────────
 
 const EXECUTION_DELAYS: Record<ExecutionType, number> = {
@@ -43,6 +65,19 @@ const EXECUTION_DELAYS: Record<ExecutionType, number> = {
   ads: 3000,
   recommendation: 800,
   analytics: 1200,
+}
+
+function parseExecutionType(value: string | null | undefined): ExecutionType {
+  switch (value) {
+    case 'email':
+    case 'whatsapp':
+    case 'ads':
+    case 'analytics':
+    case 'recommendation':
+      return value
+    default:
+      return 'recommendation'
+  }
 }
 
 function sleep(ms: number) {
@@ -64,8 +99,9 @@ async function getCompanyContact(companyId: string): Promise<{
     .select('name, email, phone, user_id')
     .eq('id', companyId)
     .single()
+    .returns<CompanyContactRow>()
 
-  if (!company) return { email: null, phone: null, name: 'Empresa', userEmail: null as string | null }
+  if (!company) return { email: null, phone: null, name: 'Empresa', userEmail: null }
 
   // Also fetch user email as fallback
   let userEmail: string | null = null
@@ -75,13 +111,14 @@ async function getCompanyContact(companyId: string): Promise<{
       .select('email')
       .eq('id', company.user_id)
       .single()
+      .returns<UserEmailRow>()
     userEmail = user?.email ?? null
   }
 
   return {
-    email: (company.email as string | null) ?? userEmail,
-    phone: (company.phone as string | null) ?? null,
-    name: (company.name as string | null) ?? 'Empresa',
+    email: company.email ?? userEmail,
+    phone: company.phone ?? null,
+    name: company.name ?? 'Empresa',
     userEmail,
   }
 }
@@ -256,6 +293,7 @@ export async function executeActionById(actionId: string): Promise<ExecutionResu
     .select('id, titulo, descricao, detalhe, impacto_estimado, execution_type, metadata, company_id, passos, message_email, message_whatsapp')
     .eq('id', actionId)
     .single()
+    .returns<ActionRow>()
 
   if (error || !action) {
     return {
@@ -273,11 +311,11 @@ export async function executeActionById(actionId: string): Promise<ExecutionResu
       descricao: action.descricao,
       detalhe: action.detalhe,
       impacto_estimado: action.impacto_estimado ?? 0,
-      execution_type: (action.execution_type as ExecutionType) ?? 'recommendation',
-      metadata: action.metadata as Record<string, unknown>,
-      passos: Array.isArray(action.passos) ? (action.passos as string[]) : [],
-      message_email: action.message_email as string | null,
-      message_whatsapp: action.message_whatsapp as string | null,
+      execution_type: parseExecutionType(action.execution_type),
+      metadata: action.metadata ?? undefined,
+      passos: action.passos ?? [],
+      message_email: action.message_email,
+      message_whatsapp: action.message_whatsapp,
     },
     action.company_id
   )
@@ -294,8 +332,9 @@ export async function executeActionById(actionId: string): Promise<ExecutionResu
         .select('ganho_acumulado')
         .eq('id', action.company_id)
         .single()
+        .returns<CompanyGainRow>()
       await db.from('companies')
-        .update({ ganho_acumulado: ((data as { ganho_acumulado?: number } | null)?.ganho_acumulado ?? 0) + result.ganho_realizado })
+        .update({ ganho_acumulado: (data?.ganho_acumulado ?? 0) + result.ganho_realizado })
         .eq('id', action.company_id)
     }
   }

@@ -41,6 +41,12 @@ interface SessionData {
 
 type ActiveTab = 'insights' | 'alertas' | 'historico'
 type ExecutionType = 'email' | 'whatsapp' | 'ads' | 'recommendation' | 'analytics'
+type ExtendedDBAction = DBAction & {
+  auto_executable?: boolean
+  execution_type?: string | null
+  effort_level?: string | null
+  urgencia?: string | null
+}
 
 interface UnifiedInsight {
   id: string
@@ -60,6 +66,41 @@ interface UnifiedInsight {
   auto_executable: boolean
   execution_type: ExecutionType
   effort_level: 'low' | 'medium' | 'high'
+}
+
+function parseExecutionType(value: string | null | undefined): ExecutionType {
+  switch (value) {
+    case 'email':
+    case 'whatsapp':
+    case 'ads':
+    case 'analytics':
+    case 'recommendation':
+      return value
+    default:
+      return 'recommendation'
+  }
+}
+
+function parseEffortLevel(value: string | null | undefined): UnifiedInsight['effort_level'] {
+  switch (value) {
+    case 'low':
+    case 'medium':
+    case 'high':
+      return value
+    default:
+      return 'medium'
+  }
+}
+
+function parseUrgencia(value: string | null | undefined): UnifiedInsight['urgencia'] {
+  switch (value) {
+    case 'alta':
+    case 'media':
+    case 'baixa':
+      return value
+    default:
+      return 'media'
+  }
 }
 
 interface ExecutionHistoryItem {
@@ -1019,7 +1060,7 @@ export default function DashboardPage() {
     boot()
   }, []) // eslint-disable-line
 
-  function mapActions(data: DBAction[]): UnifiedInsight[] {
+  function mapActions(data: ExtendedDBAction[]): UnifiedInsight[] {
     return data
       .map((a) => ({
         id: a.id, titulo: a.titulo, descricao: a.descricao ?? '',
@@ -1027,11 +1068,11 @@ export default function DashboardPage() {
         ganho_realizado: a.ganho_realizado, prazo: a.prazo ?? '1 semana',
         prioridade: a.prioridade, categoria: a.categoria ?? 'operacional',
         icone: a.icone, passos: Array.isArray(a.passos) ? a.passos : [],
-        status: a.status as UnifiedInsight['status'], isReal: true,
-        auto_executable: (a as unknown as { auto_executable?: boolean }).auto_executable ?? false,
-        execution_type: ((a as unknown as { execution_type?: string }).execution_type ?? 'recommendation') as ExecutionType,
-        effort_level: ((a as unknown as { effort_level?: string }).effort_level ?? 'medium') as UnifiedInsight['effort_level'],
-        urgencia: ((a as unknown as { urgencia?: string }).urgencia ?? 'media') as UnifiedInsight['urgencia'],
+        status: a.status, isReal: true,
+        auto_executable: a.auto_executable ?? false,
+        execution_type: parseExecutionType(a.execution_type),
+        effort_level: parseEffortLevel(a.effort_level),
+        urgencia: parseUrgencia(a.urgencia),
       }))
       // Phase 4: sort by impact DESC
       .sort((a, b) => b.impacto_estimado - a.impacto_estimado)
@@ -1041,15 +1082,15 @@ export default function DashboardPage() {
     const mock = gerarInsights(diagInput)
     setInsights(
       mock
-        .map((i: InsightAcao) => ({
+        .map((i: InsightAcao): UnifiedInsight => ({
           id: i.id, titulo: i.titulo, descricao: i.descricao, detalhe: i.detalhe,
           impacto_estimado: i.impactoEstimado, ganho_realizado: i.ganhoRealizado,
           prazo: i.prazo, prioridade: i.prioridade, categoria: i.categoria,
           icone: i.icone, passos: i.passos,
-          status: i.status === 'concluido' ? 'done' : i.status === 'executando' ? 'in_progress' : 'pending' as UnifiedInsight['status'],
-          isReal: false, auto_executable: false, execution_type: 'recommendation' as ExecutionType,
-          effort_level: 'medium' as UnifiedInsight['effort_level'],
-          urgencia: 'media' as UnifiedInsight['urgencia'],
+          status: i.status === 'concluido' ? 'done' : i.status === 'executando' ? 'in_progress' : 'pending',
+          isReal: false, auto_executable: false, execution_type: 'recommendation',
+          effort_level: 'medium',
+          urgencia: 'media',
         }))
         .sort((a, b) => b.impacto_estimado - a.impacto_estimado)
     )

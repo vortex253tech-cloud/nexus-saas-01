@@ -7,6 +7,7 @@ import {
   LineChart, Loader2, TrendingUp, AlertCircle, RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { getString, isRecord } from '@/lib/unknown'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -17,6 +18,18 @@ interface HistoryItem {
   ganho_realizado: number
   execution_log: string | null
   executed_at: string
+}
+
+function isHistoryItem(value: unknown): value is HistoryItem {
+  if (!isRecord(value)) return false
+  return (
+    typeof value.id === 'string' &&
+    typeof value.titulo === 'string' &&
+    typeof value.execution_type === 'string' &&
+    typeof value.ganho_realizado === 'number' &&
+    (typeof value.execution_log === 'string' || value.execution_log === null) &&
+    typeof value.executed_at === 'string'
+  )
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -58,8 +71,8 @@ export default function HistoryPage() {
     try {
       const raw = localStorage.getItem('nexus_session')
       if (raw) {
-        const s = JSON.parse(raw) as { company_id?: string; companyId?: string }
-        setCompanyId(s.company_id ?? s.companyId ?? null)
+        const parsed: unknown = JSON.parse(raw)
+        if (isRecord(parsed)) setCompanyId(getString(parsed, 'company_id') ?? getString(parsed, 'companyId') ?? null)
       }
     } catch { /* ok */ }
   }, [])
@@ -69,8 +82,8 @@ export default function HistoryPage() {
     setLoading(true)
     try {
       const res = await fetch(`/api/execution-history?company_id=${companyId}`)
-      const json = await res.json() as { data?: HistoryItem[] }
-      if (json.data) setItems(json.data)
+      const json: unknown = await res.json()
+      if (isRecord(json) && Array.isArray(json.data)) setItems(json.data.filter(isHistoryItem))
     } catch { /* ok */ } finally {
       setLoading(false)
     }

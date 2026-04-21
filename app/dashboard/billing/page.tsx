@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import Link from 'next/link'
+import { getNumber, getString, isRecord } from '@/lib/unknown'
 
 // ─── Plans ────────────────────────────────────────────────────
 
@@ -82,9 +83,13 @@ export default function BillingPage() {
     try {
       const raw = localStorage.getItem('nexus_session')
       if (raw) {
-        const s = JSON.parse(raw) as { plan?: string; ganho_potencial?: number }
-        if (s.plan) setCurrentPlan(s.plan)
-        if (s.ganho_potencial) setGanho(s.ganho_potencial)
+        const parsed: unknown = JSON.parse(raw)
+        if (isRecord(parsed)) {
+          const plan = getString(parsed, 'plan')
+          const ganhoPotencial = getNumber(parsed, 'ganho_potencial')
+          if (plan) setCurrentPlan(plan)
+          if (ganhoPotencial) setGanho(ganhoPotencial)
+        }
       }
       const g = sessionStorage.getItem('nexus_ganho_potencial')
       if (g) setGanho(Number(g))

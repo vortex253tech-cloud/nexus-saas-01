@@ -9,6 +9,7 @@ import {
   DollarSign, MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { getString, isRecord } from '@/lib/unknown'
 
 // ─── Nav items ────────────────────────────────────────────────
 
@@ -33,8 +34,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     try {
       const raw = localStorage.getItem('nexus_session')
       if (raw) {
-        const s = JSON.parse(raw) as { nomeEmpresa?: string }
-        if (s.nomeEmpresa) setNomeEmpresa(s.nomeEmpresa)
+        const parsed: unknown = JSON.parse(raw)
+        if (isRecord(parsed)) {
+          const nomeEmpresa = getString(parsed, 'nomeEmpresa')
+          if (nomeEmpresa) setNomeEmpresa(nomeEmpresa)
+        }
       }
     } catch { /* ok */ }
   }, [])
