@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 const ai = new Anthropic()
 
-type CustomerJoin = CustomerRow | CustomerRow[] | null
+type CustomerJoin = CustomerRow[] | null
 
 type CustomerRow = {
   id: string
@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
 }
 
 function getJoinedCustomer(customer: CustomerJoin): CustomerRow | null {
-  return Array.isArray(customer) ? customer[0] ?? null : customer
+  return Array.isArray(customer) ? customer[0] ?? null : null
 }
 
 async function generateChargeMessage(params: {

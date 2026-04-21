@@ -30,7 +30,7 @@ type CustomerRow = {
   phone: string | null
 }
 
-type CustomerJoin = CustomerRow | CustomerRow[] | null
+type CustomerJoin = CustomerRow[] | null
 
 export async function POST(req: NextRequest) {
   try {
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
 }
 
 function getJoinedCustomer(customer: CustomerJoin): Pick<CustomerRow, 'name'> | null {
-  const value = Array.isArray(customer) ? customer[0] : customer
+  const value = Array.isArray(customer) ? customer[0] : null
   if (!isRecord(value)) return null
 
   const name = getString(value, 'name')

@@ -1,11 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { getNumber, getString, readJsonObject } from '@/lib/unknown'
 
 export const dynamic = 'force-dynamic'
 
+type InvoiceCustomer = {
+  name: string
+  email: string | null
+  phone: string | null
+}
+
+type CreatedInvoiceRow = {
+  id: string
+  company_id: string
+  customer_id: string
+  amount: number | string
+  description: string | null
+  due_date: string
+  status: string
+  payment_link: string | null
+  customers: InvoiceCustomer[] | null
+}
+
+type CreatedInvoice = Omit<CreatedInvoiceRow, 'customers'> & {
+  customer: InvoiceCustomer | null
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { company_id, customer_id, amount, description, due_date, payment_link } = await req.json()
+    const body = await readJsonObject(req)
+    const company_id = body ? getString(body, 'company_id') : undefined
+    const customer_id = body ? getString(body, 'customer_id') : undefined
+    const amount = body ? getNumber(body, 'amount') : undefined
+    const description = body ? getString(body, 'description') : undefined
+    const due_date = body ? getString(body, 'due_date') : undefined
+    const payment_link = body ? getString(body, 'payment_link') : undefined
 
     if (!company_id || !customer_id || !amount || !due_date) {
       return NextResponse.json({ error: 'company_id, customer_id, amount e due_date são obrigatórios' }, { status: 400 })
@@ -33,12 +62,19 @@ export async function POST(req: NextRequest) {
         payment_link: payment_link ?? null,
       })
       .select(`*, customers(name, email, phone)`)
+      .returns<CreatedInvoiceRow[]>()
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({ invoice: data }, { status: 201 })
+    return NextResponse.json({ invoice: normalizeCreatedInvoice(data) }, { status: 201 })
   } catch (err) {
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
+}
+
+function normalizeCreatedInvoice(invoice: CreatedInvoiceRow): CreatedInvoice {
+  const customer = Array.isArray(invoice.customers) ? invoice.customers[0] ?? null : null
+  const { customers: _customers, ...rest } = invoice
+  return { ...rest, customer }
 }

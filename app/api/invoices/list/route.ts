@@ -3,6 +3,30 @@ import { getSupabaseServerClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+type InvoiceCustomer = {
+  id: string
+  name: string
+  email: string | null
+  phone: string | null
+}
+
+type InvoiceRow = {
+  id: string
+  company_id: string
+  customer_id: string
+  amount: number | string
+  status: string
+  due_date: string
+  description: string | null
+  payment_link: string | null
+  created_at: string
+  customers: InvoiceCustomer[] | null
+}
+
+type InvoiceWithCustomer = Omit<InvoiceRow, 'customers'> & {
+  customer: InvoiceCustomer | null
+}
+
 export async function GET(req: NextRequest) {
   const params   = req.nextUrl.searchParams
   const company_id  = params.get('company_id')
@@ -22,21 +46,27 @@ export async function GET(req: NextRequest) {
   if (status && status !== 'all') query = query.eq('status', status)
   if (customer_id) query = query.eq('customer_id', customer_id)
 
-  const { data, error } = await query
+  const { data, error } = await query.returns<InvoiceRow[]>()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const invoices = data ?? []
+  const invoices = (data ?? []).map(normalizeInvoiceCustomer)
 
   // Summary metrics
   const summary = {
-    total_pending:  invoices.filter(i => i.status === 'pending').reduce((s, i) => s + i.amount, 0),
-    total_overdue:  invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.amount, 0),
-    total_paid:     invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0),
+    total_pending:  invoices.filter(i => i.status === 'pending').reduce((s, i) => s + Number(i.amount), 0),
+    total_overdue:  invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + Number(i.amount), 0),
+    total_paid:     invoices.filter(i => i.status === 'paid').reduce((s, i) => s + Number(i.amount), 0),
     count_pending:  invoices.filter(i => i.status === 'pending').length,
     count_overdue:  invoices.filter(i => i.status === 'overdue').length,
     count_paid:     invoices.filter(i => i.status === 'paid').length,
   }
 
   return NextResponse.json({ invoices, summary })
+}
+
+function normalizeInvoiceCustomer(invoice: InvoiceRow): InvoiceWithCustomer {
+  const customer = Array.isArray(invoice.customers) ? invoice.customers[0] ?? null : null
+  const { customers: _customers, ...rest } = invoice
+  return { ...rest, customer }
 }

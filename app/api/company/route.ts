@@ -18,12 +18,14 @@ export async function GET(req: NextRequest) {
     .from('users')
     .select('*, companies(*)')
     .eq('email', email)
+    .returns<UserWithCompanies[]>()
     .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!user) return NextResponse.json({ exists: false })
 
-  return NextResponse.json({ exists: true, user, company: user.companies?.[0] ?? null })
+  const company = Array.isArray(user.companies) ? user.companies[0] ?? null : null
+  return NextResponse.json({ exists: true, user, company })
 }
 
 export async function POST(req: NextRequest) {
@@ -43,6 +45,7 @@ export async function POST(req: NextRequest) {
     .from('users')
     .upsert({ email, name: name ?? null }, { onConflict: 'email' })
     .select()
+    .returns<DBUser[]>()
     .single()
 
   if (userErr) return NextResponse.json({ error: userErr.message }, { status: 500 })
@@ -51,6 +54,7 @@ export async function POST(req: NextRequest) {
     .from('companies')
     .select()
     .eq('user_id', user.id)
+    .returns<DBCompany[]>()
     .maybeSingle()
 
   let company = existingCompany
@@ -64,6 +68,7 @@ export async function POST(req: NextRequest) {
         perfil: perfil ?? null,
       })
       .select()
+      .returns<DBCompany[]>()
       .single()
 
     if (compErr) return NextResponse.json({ error: compErr.message }, { status: 500 })
