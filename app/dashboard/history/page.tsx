@@ -69,7 +69,7 @@ export default function HistoryPage() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('nexus_session')
+      const raw = sessionStorage.getItem('nexus_resultado')
       if (raw) {
         const parsed: unknown = JSON.parse(raw)
         if (isRecord(parsed)) setCompanyId(getString(parsed, 'company_id') ?? getString(parsed, 'companyId') ?? null)

@@ -41,9 +41,7 @@ export default function FinanceiroPage() {
         if (typeof cid === 'string' && cid) { setCompanyId(cid); return }
       }
     } catch { /* ignore */ }
-    // Fallback
-    const cid = localStorage.getItem('nexus_company_id')
-    if (cid) setCompanyId(cid)
+    // No company_id found in sessionStorage
   }, [])
 
   useEffect(() => { if (companyId) load() }, [companyId])
