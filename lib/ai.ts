@@ -241,3 +241,38 @@ export async function generateAIAlerts(params: {
 
   return alerts.slice(0, 4)
 }
+
+// ─── WhatsApp chat assistant ───────────────────────────────────
+// Lightweight reply generation for incoming WhatsApp messages.
+// Uses Haiku for speed and cost efficiency.
+
+export async function generateWhatsAppReply(params: {
+  userMessage: string
+  senderName?: string
+}): Promise<string> {
+  const system = [
+    'Você é um assistente de negócios especializado em ajudar empreendedores brasileiros a aumentar lucros e resolver problemas financeiros.',
+    'Responda de forma direta, clara e útil.',
+    'Máximo 300 caracteres por resposta — mensagem de WhatsApp.',
+    'Use português brasileiro natural.',
+    'Nunca use markdown, asteriscos ou formatação especial.',
+    'Se não souber, diga que pode verificar no dashboard.',
+  ].join(' ')
+
+  const message = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 150,
+    system,
+    messages: [
+      {
+        role: 'user',
+        content: params.senderName
+          ? `(Usuário: ${params.senderName}) ${params.userMessage}`
+          : params.userMessage,
+      },
+    ],
+  })
+
+  const text = message.content[0].type === 'text' ? message.content[0].text.trim() : ''
+  return text || 'Olá! Recebi sua mensagem. Como posso ajudar?'
+}

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { generateWhatsAppReply } from '@/lib/ai'
+import { replyWhatsApp } from '@/lib/whatsapp'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,9 +47,9 @@ type WhatsAppPayload = {
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
 
-  const mode      = searchParams.get('hub.mode')
-  const token     = searchParams.get('hub.verify_token')
-  const challenge = searchParams.get('hub.challenge')
+  const mode        = searchParams.get('hub.mode')
+  const token       = searchParams.get('hub.verify_token')
+  const challenge   = searchParams.get('hub.challenge')
   const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN
 
   if (mode === 'subscribe' && token === verifyToken && challenge) {
@@ -71,48 +73,96 @@ export async function GET(req: NextRequest) {
   })
 }
 
-// ─── POST — Receive WhatsApp events ──────────────────────────────────────────
+// ─── POST — Receive and reply to WhatsApp messages ───────────────────────────
 
 export async function POST(req: NextRequest) {
+  // Always return 200 fast — Meta will retry if we don't respond quickly
+  // Heavy processing happens after the response is queued (fire-and-forget)
   try {
     const body = (await req.json()) as WhatsAppPayload
-
     console.log('[whatsapp/webhook] event received:', JSON.stringify(body, null, 2))
 
-    // Extract incoming messages for future processing
-    for (const entry of body.entry ?? []) {
-      for (const change of entry.changes ?? []) {
-        if (change.field !== 'messages') continue
-
-        const value = change.value
-        const messages = value.messages ?? []
-        const contacts = value.contacts ?? []
-
-        for (const message of messages) {
-          const contact = contacts.find(c => c.wa_id === message.from)
-          const senderName = contact?.profile.name ?? 'Desconhecido'
-
-          console.log('[whatsapp/webhook] message received', {
-            from: message.from,
-            name: senderName,
-            type: message.type,
-            text: message.text?.body ?? null,
-            messageId: message.id,
-            timestamp: message.timestamp,
-          })
-
-          // ── Future integration points ──────────────────────────────────
-          // await saveMessageToSupabase({ message, senderName, phoneNumberId: value.metadata.phone_number_id })
-          // const aiReply = await generateAIResponse(message.text?.body ?? '')
-          // await sendWhatsAppReply({ to: message.from, text: aiReply })
-          // ──────────────────────────────────────────────────────────────
-        }
-      }
-    }
+    // Process each message entry asynchronously (no await — non-blocking)
+    void processIncomingMessages(body)
   } catch (err) {
-    console.error('[whatsapp/webhook] failed to process event', err)
+    console.error('[whatsapp/webhook] failed to parse event body', err)
   }
 
-  // Always return 200 fast — Meta will retry if we don't respond quickly
   return NextResponse.json({ status: 'ok' }, { status: 200 })
+}
+
+// ─── Message processing (fire-and-forget) ────────────────────────────────────
+
+async function processIncomingMessages(body: WhatsAppPayload): Promise<void> {
+  for (const entry of body.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      if (change.field !== 'messages') continue
+
+      const value           = change.value
+      const phoneNumberId   = value.metadata.phone_number_id
+      const messages        = value.messages ?? []
+      const contacts        = value.contacts ?? []
+
+      for (const message of messages) {
+        // Skip non-text messages (images, audio, etc.)
+        if (message.type !== 'text' || !message.text?.body?.trim()) {
+          console.log('[whatsapp/webhook] skipping non-text message', {
+            type: message.type,
+            from: message.from,
+          })
+          continue
+        }
+
+        const userText   = message.text.body.trim()
+        const contact    = contacts.find(c => c.wa_id === message.from)
+        const senderName = contact?.profile.name
+
+        console.log('[whatsapp/webhook] processing message', {
+          from: message.from,
+          name: senderName,
+          text: userText,
+          messageId: message.id,
+        })
+
+        await handleTextMessage({
+          from: message.from,
+          userText,
+          senderName,
+          phoneNumberId,
+        })
+      }
+    }
+  }
+}
+
+// ─── Handle a single text message ────────────────────────────────────────────
+
+async function handleTextMessage(params: {
+  from: string
+  userText: string
+  senderName?: string
+  phoneNumberId: string
+}): Promise<void> {
+  const { from, userText, senderName, phoneNumberId } = params
+
+  try {
+    // 1. Generate AI reply
+    const aiReply = await generateWhatsAppReply({ userMessage: userText, senderName })
+    console.log('[whatsapp/webhook] AI reply generated', { to: from, reply: aiReply })
+
+    // 2. Send reply via WhatsApp Cloud API
+    const result = await replyWhatsApp({ phoneNumberId, to: from, message: aiReply })
+
+    if (result.success) {
+      console.log('[whatsapp/webhook] ✅ reply sent', { to: from, messageId: result.messageId, simulated: result.simulated })
+    } else {
+      console.error('[whatsapp/webhook] ❌ reply failed', { to: from, error: result.error })
+    }
+
+    // ── Future integration points ──────────────────────────────────────────
+    // await saveConversationToSupabase({ from, senderName, userText, aiReply, phoneNumberId })
+    // ──────────────────────────────────────────────────────────────────────
+  } catch (err) {
+    console.error('[whatsapp/webhook] error handling message', { from, err })
+  }
 }
