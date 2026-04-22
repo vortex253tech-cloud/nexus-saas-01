@@ -12,10 +12,8 @@ const SUGGESTIONS = [
   'Qual minha taxa de inadimplência?',
 ]
 
-function getCompanyId(): string | null {
+function getCompanyIdFromStorage(): string | null {
   if (typeof window === 'undefined') return null
-
-  // Primary: sessionStorage nexus_resultado (set by dashboard after diagnosis)
   try {
     const raw = sessionStorage.getItem('nexus_resultado')
     if (raw) {
@@ -23,10 +21,8 @@ function getCompanyId(): string | null {
       const cid = parsed.company_id ?? parsed.companyId
       if (typeof cid === 'string' && cid) return cid
     }
-  } catch { /* ignore parse errors */ }
-
-  // Fallback: localStorage nexus_company_id
-  return localStorage.getItem('nexus_company_id')
+  } catch { /* ignore */ }
+  return null
 }
 
 export default function AssistantPage() {
@@ -38,13 +34,34 @@ export default function AssistantPage() {
   const [companyId, setCompanyId] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Read company_id after hydration (localStorage/sessionStorage only available client-side)
   useEffect(() => {
-    const cid = getCompanyId()
-    console.log('[assistant] company_id resolved:', cid)
-    setCompanyId(cid)
+    async function resolveCompanyId() {
+      // 1. Try sessionStorage first (fast, no network)
+      const fromStorage = getCompanyIdFromStorage()
+      if (fromStorage) {
+        console.log('[assistant] company_id from sessionStorage:', fromStorage)
+        setCompanyId(fromStorage)
+        return
+      }
 
-    if (!cid) {
+      // 2. Fallback: fetch auth session (works after login without onboarding)
+      try {
+        const res = await fetch('/api/auth/session')
+        if (res.ok) {
+          const json = await res.json() as { authenticated?: boolean; companyId?: string }
+          if (json.authenticated && json.companyId) {
+            console.log('[assistant] company_id from session API:', json.companyId)
+            setCompanyId(json.companyId)
+            // Save to sessionStorage so other pages also find it
+            const existing = sessionStorage.getItem('nexus_resultado')
+            const prev = existing ? (JSON.parse(existing) as Record<string, unknown>) : {}
+            sessionStorage.setItem('nexus_resultado', JSON.stringify({ ...prev, company_id: json.companyId }))
+            return
+          }
+        }
+      } catch { /* network error */ }
+
+      console.warn('[assistant] no company_id found')
       setMessages(prev => [
         ...prev,
         {
@@ -53,6 +70,8 @@ export default function AssistantPage() {
         },
       ])
     }
+
+    void resolveCompanyId()
   }, [])
 
   useEffect(() => {

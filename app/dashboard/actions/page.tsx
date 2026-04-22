@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { getBoolean, getString, isRecord } from '@/lib/unknown'
+import { resolveCompanyId } from '@/lib/get-company-id'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -244,13 +245,7 @@ export default function ActionsPage() {
   // ─── Load session ─────────────────────────────────────────
 
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem('nexus_resultado')
-      if (raw) {
-        const parsed: unknown = JSON.parse(raw)
-        if (isRecord(parsed)) setCompanyId(getString(parsed, 'company_id') ?? getString(parsed, 'companyId') ?? null)
-      }
-    } catch { /* ok */ }
+    void resolveCompanyId().then(cid => { if (cid) setCompanyId(cid) })
   }, [])
 
   // ─── Fetch actions ────────────────────────────────────────

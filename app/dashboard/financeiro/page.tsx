@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { resolveCompanyId } from '@/lib/get-company-id'
 
 interface Metrics {
   total_pending: number
@@ -32,16 +33,7 @@ export default function FinanceiroPage() {
   const [companyId, setCompanyId] = useState<string | null>(null)
 
   useEffect(() => {
-    // Read company_id from sessionStorage (set by dashboard after diagnosis)
-    try {
-      const raw = sessionStorage.getItem('nexus_resultado')
-      if (raw) {
-        const parsed = JSON.parse(raw) as Record<string, unknown>
-        const cid = parsed.company_id ?? parsed.companyId
-        if (typeof cid === 'string' && cid) { setCompanyId(cid); return }
-      }
-    } catch { /* ignore */ }
-    // No company_id found in sessionStorage
+    void resolveCompanyId().then(cid => { if (cid) setCompanyId(cid) })
   }, [])
 
   useEffect(() => { if (companyId) load() }, [companyId])

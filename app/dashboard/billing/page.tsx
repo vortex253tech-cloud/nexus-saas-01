@@ -9,6 +9,7 @@ import {
 import { cn } from '@/lib/cn'
 import Link from 'next/link'
 import { getNumber, getString, isRecord } from '@/lib/unknown'
+import { resolveCompanyId } from '@/lib/get-company-id'
 
 // ─── Plans ────────────────────────────────────────────────────
 
@@ -80,6 +81,7 @@ export default function BillingPage() {
   const [ganho, setGanho] = useState(0)
 
   useEffect(() => {
+    // Read ganho from sessionStorage
     try {
       const raw = sessionStorage.getItem('nexus_resultado')
       if (raw) {
@@ -94,6 +96,17 @@ export default function BillingPage() {
       const g = sessionStorage.getItem('nexus_ganho_potencial')
       if (g) setGanho(Number(g))
     } catch { /* ok */ }
+
+    // Also resolve company to get plan from auth session
+    void resolveCompanyId().then(async () => {
+      try {
+        const res = await fetch('/api/auth/session')
+        if (res.ok) {
+          const json = await res.json() as { user?: { plan?: string } }
+          if (json.user?.plan) setCurrentPlan(json.user.plan as 'free' | 'pro' | 'enterprise')
+        }
+      } catch { /* ok */ }
+    })
   }, [])
 
   function handleUpgrade(planId: string) {

@@ -1018,6 +1018,12 @@ export default function DashboardPage() {
               company_id: cid,
             }
             console.log('[dashboard] SESSION — user:', sessionJson.user?.email, '| company:', cid)
+            // Persist so other pages (assistant, financeiro, etc.) find it instantly
+            try {
+              const existing = sessionStorage.getItem('nexus_resultado')
+              const prev = existing ? (JSON.parse(existing) as Record<string, unknown>) : {}
+              sessionStorage.setItem('nexus_resultado', JSON.stringify({ ...prev, ...data }))
+            } catch { /* ok */ }
           }
         }
 
