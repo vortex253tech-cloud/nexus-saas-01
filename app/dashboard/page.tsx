@@ -980,45 +980,78 @@ export default function DashboardPage() {
   useEffect(() => {
     async function boot() {
       try {
-        const raw = sessionStorage.getItem('nexus_resultado')
-        if (!raw) { setLoading(false); return }
-        const data: SessionData = JSON.parse(raw)
-        setSession(data)
-
-        // Phase 7: check last visit
+        // ── Phase 7: check last visit ────────────────────────
         const lastVisitKey = 'nexus_last_visit'
         const lastVisit = localStorage.getItem(lastVisitKey)
         if (lastVisit) {
           const diff = Date.now() - Number(lastVisit)
-          if (diff > 12 * 3600 * 1000) setReturnNotif(true) // > 12h ago
+          if (diff > 12 * 3600 * 1000) setReturnNotif(true)
         }
         localStorage.setItem(lastVisitKey, String(Date.now()))
 
         const keyRes = await fetch('/api/check-config').catch(() => null)
         if (keyRes?.ok) {
-          const cfg = await keyRes.json()
-          setHasApiKey(cfg.hasAnthropicKey ?? false)
+          const cfg = await keyRes.json() as Record<string, unknown>
+          setHasApiKey(cfg.hasAnthropicKey === true)
         }
 
-        let cid = data.company_id ?? data.companyId ?? null
-        if (!cid && data.email) {
-          const res = await fetch('/api/company', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: data.email, name: data.nome ?? null,
-              nomeEmpresa: data.nomeEmpresa ?? 'Minha Empresa',
-              perfil: data.perfil ?? 'outro', setor: data.setor ?? null, quizData: data,
-            }),
-          }).catch(() => null)
-          if (res?.ok) {
-            const json = await res.json()
-            cid = json.company?.id ?? null
-            setPlan((json.user?.plan ?? 'free') as Plan)
-            setGanhoAcumulado(json.company?.ganho_acumulado ?? 0)
-            if (cid) sessionStorage.setItem('nexus_resultado', JSON.stringify({ ...data, company_id: cid }))
+        // ── Primary: get company from authenticated session ──
+        let cid: string | null = null
+        let data: SessionData = {}
+
+        const sessionRes = await fetch('/api/auth/session').catch(() => null)
+        if (sessionRes?.ok) {
+          const sessionJson = await sessionRes.json() as {
+            authenticated: boolean
+            user?: { id: string; email: string; name: string | null; plan: string }
+            company?: { id: string; name: string; perfil: string | null; email: string | null }
+            companyId?: string
+          }
+          if (sessionJson.authenticated && sessionJson.companyId) {
+            cid = sessionJson.companyId
+            setPlan((sessionJson.user?.plan ?? 'free') as Plan)
+            data = {
+              email: sessionJson.user?.email,
+              nome: sessionJson.user?.name ?? undefined,
+              nomeEmpresa: sessionJson.company?.name,
+              perfil: sessionJson.company?.perfil ?? undefined,
+              company_id: cid,
+            }
+            console.log('[dashboard] SESSION — user:', sessionJson.user?.email, '| company:', cid)
           }
         }
+
+        // ── Fallback: sessionStorage (onboarding flow) ───────
+        if (!cid) {
+          const raw = sessionStorage.getItem('nexus_resultado')
+          if (raw) {
+            const stored = JSON.parse(raw) as SessionData
+            data = stored
+            cid = stored.company_id ?? stored.companyId ?? null
+
+            if (!cid && stored.email) {
+              const res = await fetch('/api/company', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  email: stored.email, name: stored.nome ?? null,
+                  nomeEmpresa: stored.nomeEmpresa ?? 'Minha Empresa',
+                  perfil: stored.perfil ?? 'outro', setor: stored.setor ?? null,
+                }),
+              }).catch(() => null)
+              if (res?.ok) {
+                const json = await res.json() as { company?: { id: string; ganho_acumulado?: number }; user?: { plan?: string } }
+                cid = json.company?.id ?? null
+                setPlan((json.user?.plan ?? 'free') as Plan)
+                setGanhoAcumulado(json.company?.ganho_acumulado ?? 0)
+                if (cid) sessionStorage.setItem('nexus_resultado', JSON.stringify({ ...stored, company_id: cid }))
+              }
+            }
+          }
+        }
+
+        if (!cid) { setLoading(false); return }
+        setSession(data)
         setCompanyId(cid)
 
         const diagInput = { ...data, perfil: (data.perfil ?? null) as import('@/lib/types').Perfil | null }
