@@ -29,7 +29,22 @@ export default function FinanceiroPage() {
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
 
-  const companyId = typeof window !== 'undefined' ? localStorage.getItem('nexus_company_id') : null
+  const [companyId, setCompanyId] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Read company_id from sessionStorage (set by dashboard after diagnosis)
+    try {
+      const raw = sessionStorage.getItem('nexus_resultado')
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>
+        const cid = parsed.company_id ?? parsed.companyId
+        if (typeof cid === 'string' && cid) { setCompanyId(cid); return }
+      }
+    } catch { /* ignore */ }
+    // Fallback
+    const cid = localStorage.getItem('nexus_company_id')
+    if (cid) setCompanyId(cid)
+  }, [])
 
   useEffect(() => { if (companyId) load() }, [companyId])
 
