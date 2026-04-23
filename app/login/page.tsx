@@ -4,24 +4,24 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getSupabaseClient } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth-provider'
 
 function LoginForm() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const redirect     = searchParams.get('redirect') ?? '/dashboard'
 
+  const { user, loading: authLoading } = useAuth()
+
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
 
-  // If already logged in, skip to dashboard
+  // Auto-redirect when session exists (page reload, browser restart)
   useEffect(() => {
-    const supabase = getSupabaseClient()
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) router.replace(redirect)
-    })
-  }, [redirect, router])
+    if (!authLoading && user) router.replace(redirect)
+  }, [user, authLoading, redirect, router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -37,7 +37,7 @@ function LoginForm() {
         return
       }
 
-      // Session stored in cookie automatically by @supabase/ssr
+      // onAuthStateChange in AuthProvider updates state; middleware validates cookie
       router.push(redirect)
     } catch (err) {
       console.error('[login]', err)

@@ -27,11 +27,11 @@ export async function middleware(req: NextRequest) {
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: (cookiesToSet) => {
-          for (const { name, value, options } of cookiesToSet) {
-            req.cookies.set(name, value)
-            res = NextResponse.next({ request: req })
-            res.cookies.set(name, value, options)
-          }
+          // Set all cookies on the request first, then create ONE new response
+          // with all cookies — creating a response per cookie loses previous ones.
+          cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value))
+          res = NextResponse.next({ request: req })
+          cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
         },
       },
     }

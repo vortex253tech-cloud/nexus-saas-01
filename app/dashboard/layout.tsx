@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import {
@@ -10,7 +10,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { getSupabaseClient } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth-provider'
 
 const NAV = [
   { href: '/dashboard',            label: 'Dashboard',     icon: LayoutDashboard, exact: true },
@@ -79,18 +79,23 @@ function Sidebar({
   trial: TrialInfo
 }) {
   const pathname = usePathname()
-  const router   = useRouter()
+  const { user, signOut } = useAuth()
   const [nomeEmpresa, setNomeEmpresa] = useState('Minha Empresa')
   const [userEmail,   setUserEmail]   = useState('')
 
+  // email comes from Supabase Auth session (instant, no API call needed)
+  useEffect(() => {
+    if (user?.email) setUserEmail(user.email)
+  }, [user])
+
+  // company name comes from our custom table — still needs API
   useEffect(() => {
     fetch('/api/auth/session')
       .then(r => r.ok ? r.json() : null)
       .then((data: unknown) => {
         if (data && typeof data === 'object' && 'company' in data) {
-          const d = data as { company?: { name?: string }; user?: { email?: string } }
+          const d = data as { company?: { name?: string } }
           if (d.company?.name) setNomeEmpresa(d.company.name)
-          if (d.user?.email)   setUserEmail(d.user.email)
         }
       })
       .catch(() => {
@@ -99,21 +104,10 @@ function Sidebar({
           if (raw) {
             const parsed = JSON.parse(raw) as Record<string, unknown>
             if (typeof parsed.nomeEmpresa === 'string') setNomeEmpresa(parsed.nomeEmpresa)
-            if (typeof parsed.email === 'string')       setUserEmail(parsed.email)
           }
         } catch { /* ok */ }
       })
   }, [])
-
-  async function handleLogout() {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' })
-      const supabase = getSupabaseClient()
-      await supabase.auth.signOut()
-    } catch { /* ok */ }
-    sessionStorage.clear()
-    router.push('/login')
-  }
 
   function isActive(item: typeof NAV[number]) {
     if (item.exact) return pathname === item.href
@@ -185,7 +179,7 @@ function Sidebar({
             <p className="text-[10px] text-zinc-600 px-2 truncate">{userEmail}</p>
           )}
           <button
-            onClick={handleLogout}
+            onClick={signOut}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-red-400 transition-colors"
           >
             <LogOut size={13} />
