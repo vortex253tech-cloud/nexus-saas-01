@@ -887,19 +887,25 @@ function AutoPilotControl({ enabled, running, autoCount, plan, totalGanho, onTog
 function AIGenerateBar({ onGenerate, generating, hasApiKey, plan, lastGenerated }: {
   onGenerate: () => void; generating: boolean; hasApiKey: boolean; plan: Plan; lastGenerated: Date | null
 }) {
-  const canAI = isAtLeast(plan, 'starter') && hasApiKey
+  // Plan unlocks the button; API key determines real vs simulated quality
+  const canGenerate = isAtLeast(plan, 'starter')
+  const isReal = canGenerate && hasApiKey
   return (
     <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
       <div className="flex items-center gap-3">
-        <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', canAI ? 'bg-violet-600/20' : 'bg-zinc-800')}>
-          <Sparkles className={cn('h-4 w-4', canAI ? 'text-violet-400' : 'text-zinc-600')} />
+        <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', isReal ? 'bg-violet-600/20' : canGenerate ? 'bg-amber-900/30' : 'bg-zinc-800')}>
+          <Sparkles className={cn('h-4 w-4', isReal ? 'text-violet-400' : canGenerate ? 'text-amber-400' : 'text-zinc-600')} />
         </div>
         <div>
-          <p className="text-xs font-semibold text-white">{canAI ? 'IA Real ativa' : 'IA simulada (modo demo)'}</p>
+          <p className="text-xs font-semibold text-white">
+            {isReal ? 'IA Real ativa' : canGenerate ? 'IA simulada (modo demo)' : 'Upgrade para gerar análise'}
+          </p>
           <p className="text-[11px] text-zinc-500">
             {lastGenerated
-              ? `Última análise: ${lastGenerated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-              : canAI ? 'Clique para gerar análise com dados reais' : 'Configure ANTHROPIC_API_KEY para IA real'}
+              ? `Última análise: ${lastGenerated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${!isReal ? ' (simulada)' : ''}`
+              : isReal ? 'Clique para gerar análise com dados reais'
+                : canGenerate ? 'Adicione ANTHROPIC_API_KEY no Vercel para IA real'
+                  : 'Plano Starter ou superior necessário'}
           </p>
         </div>
       </div>
@@ -909,9 +915,9 @@ function AIGenerateBar({ onGenerate, generating, hasApiKey, plan, lastGenerated 
         </Link>
         <button
           onClick={onGenerate}
-          disabled={generating || !canAI}
+          disabled={generating || !canGenerate}
           className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all',
-            canAI && !generating ? 'bg-violet-600 text-white hover:bg-violet-500' : 'cursor-not-allowed bg-zinc-800 text-zinc-500')}
+            canGenerate && !generating ? 'bg-violet-600 text-white hover:bg-violet-500' : 'cursor-not-allowed bg-zinc-800 text-zinc-500')}
         >
           {generating ? <><Loader2 className="h-3 w-3 animate-spin" /> Analisando...</> : <><RefreshCw className="h-3 w-3" /> Gerar análise</>}
         </button>
@@ -1003,13 +1009,14 @@ export default function DashboardPage() {
         if (sessionRes?.ok) {
           const sessionJson = await sessionRes.json() as {
             authenticated: boolean
-            user?: { id: string; email: string; name: string | null; plan: string }
+            user?: { id: string; email: string; name: string | null; plan: string; effectivePlan?: string }
             company?: { id: string; name: string; perfil: string | null; email: string | null }
             companyId?: string
           }
           if (sessionJson.authenticated && sessionJson.companyId) {
             cid = sessionJson.companyId
-            setPlan((sessionJson.user?.plan ?? 'free') as Plan)
+            // Use effectivePlan so trial users get Pro access (not their base 'free' plan)
+            setPlan((sessionJson.user?.effectivePlan ?? sessionJson.user?.plan ?? 'free') as Plan)
             data = {
               email: sessionJson.user?.email,
               nome: sessionJson.user?.name ?? undefined,
@@ -1145,6 +1152,7 @@ export default function DashboardPage() {
   const handleGenerate = useCallback(async () => {
     if (!companyId || !session || generating) return
     setGenerating(true); setGenerateError(null)
+    const diagInput = { ...session, perfil: (session.perfil ?? null) as import('@/lib/types').Perfil | null }
     try {
       const res = await fetch('/api/insights/generate', {
         method: 'POST',
@@ -1158,14 +1166,26 @@ export default function DashboardPage() {
       })
       const json = await res.json()
       if (!res.ok) {
-        setGenerateError(json.code === 'NO_API_KEY' ? 'Configure ANTHROPIC_API_KEY no .env.local.' : json.error ?? 'Erro na geração')
+        if (json.code === 'NO_API_KEY') {
+          // API key not configured — fall back to simulated insights so user always gets content
+          fallbackMock(diagInput)
+          fallbackAlerts(diagInput)
+          setLastGenerated(new Date())
+        } else {
+          setGenerateError(json.error ?? 'Erro na geração')
+        }
         return
       }
       if (json.actions?.length > 0) setInsights(mapActions(json.actions))
       if (json.alerts?.length > 0) setAlertas(json.alerts.map((a: DBAlert) => ({ id: a.id, tipo: a.tipo, titulo: a.titulo, descricao: a.descricao ?? '', impacto: a.impacto ?? '', lido: false, isReal: true })))
       if (json.summary) setAiSummary(json.summary)
       setLastGenerated(new Date())
-    } catch (e) { setGenerateError(String(e)) }
+    } catch {
+      // Network/unexpected error — fall back to mock so user is never stuck
+      fallbackMock(diagInput)
+      fallbackAlerts(diagInput)
+      setLastGenerated(new Date())
+    }
     finally { setGenerating(false) }
   }, [companyId, session, financialData, generating]) // eslint-disable-line
 
