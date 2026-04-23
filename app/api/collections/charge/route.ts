@@ -1,13 +1,13 @@
 // POST /api/collections/charge — charge a single client manually
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getCompanyContext } from '@/lib/auth'
+import { getAuthContext } from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { chargeClient, type CollectionClient, type CollectionCompany } from '@/lib/collections'
 import { getString } from '@/lib/unknown'
 
 export async function POST(req: NextRequest) {
-  const ctx = await getCompanyContext(req)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
   const body      = await req.json() as { client_id?: string }
