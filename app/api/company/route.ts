@@ -82,11 +82,13 @@ export async function POST(req: NextRequest) {
     const { data: newCompany, error: compErr } = await db
       .from('companies')
       .insert({
-        user_id:  user.id,
-        name:     nomeEmpresa ?? 'Minha Empresa',
-        sector:   setor   ?? null,
-        perfil:   perfil  ?? null,
-        email:    email,
+        user_id:           user.id,
+        name:              nomeEmpresa ?? 'Minha Empresa',
+        sector:            setor   ?? null,
+        perfil:            perfil  ?? null,
+        email:             email,
+        principal_desafio: quizData?.principalDesafio as string | undefined ?? null,
+        meta_mensal:       quizData?.metaMensal as number | undefined ?? 50000,
       })
       .select()
       .returns<DBCompany[]>()
@@ -112,13 +114,17 @@ export async function POST(req: NextRequest) {
       if (quizInsert.error) console.error('[company] quiz_responses insert error:', quizInsert.error)
     }
 
-    // Seed subscription
+    // Seed trial subscription (7 days)
+    const trialEnd = new Date()
+    trialEnd.setDate(trialEnd.getDate() + 7)
     const subInsert = await db.from('subscriptions').insert({
-      user_id: user.id,
-      plan:    'free',
-      status:  'trialing',
+      user_id:       user.id,
+      plan:          'free',
+      status:        'trialing',
+      trial_ends_at: trialEnd.toISOString(),
     })
     if (subInsert.error) console.error('[company] subscriptions insert error:', subInsert.error)
+    else console.log('[company] trial subscription created, ends:', trialEnd.toISOString())
   }
 
   console.log('[company] ✅ COMPANY ID:', company.id)

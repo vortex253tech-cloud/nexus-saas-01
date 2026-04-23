@@ -43,6 +43,52 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // ─── Fire-and-forget: auto-trigger insight generation ─────────
+  const origin = req.nextUrl.origin
+  void (async () => {
+    try {
+      const [companyRes, finRes] = await Promise.all([
+        db.from('companies')
+          .select('nome_empresa, setor, perfil, principal_desafio, meta_mensal')
+          .eq('id', company_id)
+          .single(),
+        db.from('financial_data')
+          .select()
+          .eq('company_id', company_id)
+          .order('period_date', { ascending: false })
+          .limit(24),
+      ])
+
+      if (companyRes.error || !companyRes.data) return
+
+      const c = companyRes.data as {
+        nome_empresa?: string
+        setor?: string
+        perfil?: string
+        principal_desafio?: string
+        meta_mensal?: number
+      }
+
+      await fetch(`${origin}/api/insights/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id,
+          perfil: c.perfil ?? 'outro',
+          setor: c.setor ?? 'Negócios',
+          metaMensal: c.meta_mensal ?? 50000,
+          principalDesafio: c.principal_desafio ?? 'fluxo',
+          nomeEmpresa: c.nome_empresa ?? 'Minha Empresa',
+          financialData: finRes.data ?? [],
+        }),
+      })
+      console.log('[financial-data] Auto-triggered insight generation for', company_id)
+    } catch (err) {
+      console.error('[financial-data] Auto-trigger failed:', err)
+    }
+  })()
+
   return NextResponse.json({ data })
 }
 

@@ -46,6 +46,20 @@ export interface AIAnalysisResult {
   ai_summary: string
 }
 
+export interface PreviousInsight {
+  titulo: string
+  impacto_estimado: number
+  categoria: string
+  created_at: string
+}
+
+export interface PendingAction {
+  titulo: string
+  status: string
+  prioridade: string
+  impacto_estimado: number
+}
+
 // ─── Context builder ───────────────────────────────────────────
 
 function buildFinancialContext(financialData: DBFinancialData[]): string {
@@ -95,9 +109,26 @@ export async function generateAIAnalysis(params: {
   principalDesafio: string
   nomeEmpresa: string
   financialData: DBFinancialData[]
+  previousInsights?: PreviousInsight[]
+  pendingActions?: PendingAction[]
 }): Promise<AIAnalysisResult> {
   const financialContext = buildFinancialContext(params.financialData)
   const hasFinancialData = params.financialData.length > 0
+
+  // ─── Memory context (previous insights + pending actions) ─────
+  let memoryContext = ''
+  if (params.previousInsights && params.previousInsights.length > 0) {
+    memoryContext += '\n\nINSIGHTS ANTERIORES (considere a evolução e NÃO repita os mesmos tópicos):\n'
+    memoryContext += params.previousInsights
+      .map(i => `- ${i.titulo} | R$${Math.round(i.impacto_estimado).toLocaleString('pt-BR')}/mês | ${i.categoria} | ${new Date(i.created_at).toLocaleDateString('pt-BR')}`)
+      .join('\n')
+  }
+  if (params.pendingActions && params.pendingActions.length > 0) {
+    memoryContext += '\n\nAÇÕES PENDENTES JÁ CRIADAS (não duplicar — gere insights complementares):\n'
+    memoryContext += params.pendingActions
+      .map(a => `- ${a.titulo} [${a.status}] (R$${Math.round(a.impacto_estimado).toLocaleString('pt-BR')}/mês, prioridade: ${a.prioridade})`)
+      .join('\n')
+  }
 
   const systemPrompt = `Você é um CFO de guerra — especialista em diagnóstico financeiro de empresas brasileiras com 20 anos de experiência. Sua missão é identificar DINHEIRO PERDIDO que o dono não vê, e mostrar o caminho mais rápido para recuperá-lo.
 
@@ -120,7 +151,7 @@ META MENSAL: R$${params.metaMensal.toLocaleString('pt-BR')}
 PRINCIPAL DESAFIO: ${params.principalDesafio}
 
 ${financialContext}
-
+${memoryContext}
 ${!hasFinancialData ? 'Nota: sem dados financeiros reais inseridos ainda — baseie as estimativas no perfil e setor.' : ''}
 
 Retorne EXATAMENTE este JSON (sem markdown, sem texto extra):

@@ -3,7 +3,8 @@
 
 import { getSupabaseRouteClient } from '@/lib/supabase-server'
 import { getSupabaseServerClient } from '@/lib/supabase'
-import type { DBCompany, DBUser } from '@/lib/db'
+import type { DBCompany, DBSubscription, DBUser, Plan } from '@/lib/db'
+import { getTrialDaysLeft, getEffectivePlan } from '@/lib/trial'
 
 export interface AuthContext {
   authId: string
@@ -11,6 +12,9 @@ export interface AuthContext {
   user: DBUser
   company: DBCompany
   companyId: string
+  subscription: DBSubscription | null
+  effectivePlan: Plan
+  trialDaysLeft: number | null
 }
 
 // ─── Get authenticated user + company from session cookie ─────
@@ -58,7 +62,18 @@ export async function getAuthContext(): Promise<AuthContext | null> {
       return null
     }
 
-    console.log('[auth] ✅ resolved — user:', user.id, '| company:', company.id)
+    // Fetch subscription
+    const { data: subscription } = await db
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .returns<DBSubscription[]>()
+      .maybeSingle()
+
+    const trialDaysLeft = getTrialDaysLeft(subscription ?? null)
+    const effectivePlan = getEffectivePlan(subscription ?? null, user.plan)
+
+    console.log('[auth] ✅ resolved — user:', user.id, '| company:', company.id, '| plan:', effectivePlan)
 
     return {
       authId: authUser.id,
@@ -66,6 +81,9 @@ export async function getAuthContext(): Promise<AuthContext | null> {
       user,
       company,
       companyId: company.id,
+      subscription: subscription ?? null,
+      effectivePlan,
+      trialDaysLeft,
     }
   } catch (err) {
     console.error('[auth] getAuthContext error:', err)

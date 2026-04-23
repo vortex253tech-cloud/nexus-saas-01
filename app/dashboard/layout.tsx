@@ -6,7 +6,8 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Database, Zap, Bell, History,
   CreditCard, Menu, X, Building2, ChevronRight,
-  DollarSign, MessageSquare, LogOut,
+  DollarSign, MessageSquare, LogOut, Users, Clock,
+  ArrowRight,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { getSupabaseClient } from '@/lib/supabase'
@@ -14,6 +15,7 @@ import { getSupabaseClient } from '@/lib/supabase'
 const NAV = [
   { href: '/dashboard',            label: 'Dashboard',     icon: LayoutDashboard, exact: true },
   { href: '/dashboard/financeiro', label: 'Financeiro',    icon: DollarSign },
+  { href: '/dashboard/clients',    label: 'Clientes',      icon: Users },
   { href: '/dashboard/assistant',  label: 'Assistente IA', icon: MessageSquare },
   { href: '/dashboard/dados',      label: 'Dados',         icon: Database },
   { href: '/dashboard/actions',    label: 'Ações',         icon: Zap },
@@ -22,14 +24,66 @@ const NAV = [
   { href: '/dashboard/billing',    label: 'Plano',         icon: CreditCard },
 ]
 
-function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+// ─── Trial Banner ──────────────────────────────────────────────
+
+interface TrialInfo {
+  isTrialActive: boolean
+  trialDaysLeft: number | null
+  effectivePlan: string
+}
+
+function TrialBanner({ trial }: { trial: TrialInfo }) {
+  if (!trial.isTrialActive || trial.trialDaysLeft === null) return null
+
+  const urgent = trial.trialDaysLeft <= 2
+
+  return (
+    <div className={cn(
+      'flex items-center justify-between gap-3 px-4 py-2.5 border-b text-xs',
+      urgent
+        ? 'bg-orange-500/10 border-orange-500/30 text-orange-300'
+        : 'bg-violet-500/10 border-violet-500/30 text-violet-300',
+    )}>
+      <div className="flex items-center gap-2">
+        <Clock size={12} className="shrink-0" />
+        <span>
+          {urgent
+            ? `⚠ Trial expira em ${trial.trialDaysLeft} dia${trial.trialDaysLeft !== 1 ? 's' : ''}!`
+            : `Trial: ${trial.trialDaysLeft} dias restantes — todos os recursos PRO liberados`}
+        </span>
+      </div>
+      <Link
+        href="/dashboard/billing"
+        className={cn(
+          'flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold whitespace-nowrap transition-colors',
+          urgent
+            ? 'bg-orange-500 text-white hover:bg-orange-400'
+            : 'bg-violet-600 text-white hover:bg-violet-500',
+        )}
+      >
+        Ativar plano <ArrowRight size={10} />
+      </Link>
+    </div>
+  )
+}
+
+// ─── Sidebar ───────────────────────────────────────────────────
+
+function Sidebar({
+  open,
+  onClose,
+  trial,
+}: {
+  open: boolean
+  onClose: () => void
+  trial: TrialInfo
+}) {
   const pathname = usePathname()
   const router   = useRouter()
   const [nomeEmpresa, setNomeEmpresa] = useState('Minha Empresa')
   const [userEmail,   setUserEmail]   = useState('')
 
   useEffect(() => {
-    // Load company name from auth session
     fetch('/api/auth/session')
       .then(r => r.ok ? r.json() : null)
       .then((data: unknown) => {
@@ -40,7 +94,6 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         }
       })
       .catch(() => {
-        // Fallback to sessionStorage
         try {
           const raw = sessionStorage.getItem('nexus_resultado')
           if (raw) {
@@ -93,8 +146,21 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           </button>
         </div>
 
+        {/* Trial indicator in sidebar */}
+        {trial.isTrialActive && trial.trialDaysLeft !== null && (
+          <div className="px-3 pt-3">
+            <Link href="/dashboard/billing" className="flex items-center gap-2 rounded-lg bg-violet-600/15 border border-violet-600/30 px-3 py-2 hover:bg-violet-600/25 transition-colors">
+              <Clock size={12} className="text-violet-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold text-violet-300 uppercase tracking-wide">Trial PRO</p>
+                <p className="text-[11px] text-violet-400">{trial.trialDaysLeft} dias restantes</p>
+              </div>
+            </Link>
+          </div>
+        )}
+
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
+        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
           {NAV.map((item) => {
             const active = isActive(item)
             return (
@@ -113,7 +179,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           })}
         </nav>
 
-        {/* Footer with logout */}
+        {/* Footer */}
         <div className="px-4 py-4 border-t border-zinc-800/60 space-y-2">
           {userEmail && (
             <p className="text-[10px] text-zinc-600 px-2 truncate">{userEmail}</p>
@@ -135,13 +201,42 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   )
 }
 
+// ─── Layout ────────────────────────────────────────────────────
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [trial, setTrial] = useState<TrialInfo>({
+    isTrialActive: false,
+    trialDaysLeft: null,
+    effectivePlan: 'free',
+  })
+
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then(r => r.ok ? r.json() : null)
+      .then((data: unknown) => {
+        if (!data || typeof data !== 'object') return
+        const d = data as {
+          isTrialActive?: boolean
+          trialDaysLeft?: number | null
+          user?: { effectivePlan?: string }
+        }
+        setTrial({
+          isTrialActive: d.isTrialActive ?? false,
+          trialDaysLeft: d.trialDaysLeft ?? null,
+          effectivePlan: d.user?.effectivePlan ?? 'free',
+        })
+      })
+      .catch(() => { /* ok — no trial info */ })
+  }, [])
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} trial={trial} />
       <div className="lg:pl-60">
+        {/* Trial banner — top of all pages */}
+        <TrialBanner trial={trial} />
+
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-zinc-800/60 bg-zinc-950/95 px-4 py-3 backdrop-blur lg:hidden">
           <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white">
             <Menu size={18} />

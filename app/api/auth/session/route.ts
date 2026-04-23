@@ -18,6 +18,7 @@ export async function GET() {
         email: ctx.email,
         name: ctx.user.name,
         plan: ctx.user.plan,
+        effectivePlan: ctx.effectivePlan,
       },
       company: {
         id: ctx.company.id,
@@ -28,6 +29,15 @@ export async function GET() {
         phone: ctx.company.phone,
       },
       companyId: ctx.companyId,
+      subscription: ctx.subscription
+        ? {
+            status: ctx.subscription.status,
+            plan: ctx.subscription.plan,
+            trial_ends_at: ctx.subscription.trial_ends_at,
+          }
+        : null,
+      trialDaysLeft: ctx.trialDaysLeft,
+      isTrialActive: ctx.trialDaysLeft !== null && ctx.trialDaysLeft > 0,
     })
   } catch (err) {
     console.error('[auth/session]', err)

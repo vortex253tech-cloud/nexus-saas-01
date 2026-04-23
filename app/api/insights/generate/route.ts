@@ -6,7 +6,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { generateAIAnalysis } from '@/lib/ai'
 import type { DBFinancialData } from '@/lib/db'
+import type { PreviousInsight, PendingAction } from '@/lib/ai'
 import { getNumber, getString, isRecord, readJsonObject } from '@/lib/unknown'
+import { sendWhatsAppInsight } from '@/lib/whatsapp'
 
 export async function POST(req: NextRequest) {
   const body = await readJsonObject(req)
@@ -33,6 +35,53 @@ export async function POST(req: NextRequest) {
   const db = getSupabaseServerClient()
 
   try {
+    // ─── Fetch memory: previous insights + pending actions ───────
+    const previousInsights: PreviousInsight[] = []
+    const pendingActions: PendingAction[] = []
+
+    const [diagRes, actRes] = await Promise.all([
+      db.from('diagnostics')
+        .select('raw_data, created_at')
+        .eq('company_id', company_id)
+        .order('created_at', { ascending: false })
+        .limit(2),
+      db.from('actions')
+        .select('titulo, status, prioridade, impacto_estimado')
+        .eq('company_id', company_id)
+        .neq('status', 'done')
+        .order('created_at', { ascending: false })
+        .limit(10),
+    ])
+
+    if (diagRes.data) {
+      for (const d of diagRes.data) {
+        const raw = d.raw_data as { insights?: Array<{ titulo?: string; impacto_estimado?: number; categoria?: string }> } | null
+        if (raw?.insights) {
+          for (const ins of raw.insights.slice(0, 3)) {
+            if (ins.titulo) {
+              previousInsights.push({
+                titulo: ins.titulo,
+                impacto_estimado: ins.impacto_estimado ?? 0,
+                categoria: ins.categoria ?? 'operacional',
+                created_at: d.created_at as string,
+              })
+            }
+          }
+        }
+      }
+    }
+
+    if (actRes.data) {
+      for (const a of actRes.data) {
+        pendingActions.push({
+          titulo: a.titulo as string,
+          status: a.status as string,
+          prioridade: a.prioridade as string,
+          impacto_estimado: a.impacto_estimado as number,
+        })
+      }
+    }
+
     const result = await generateAIAnalysis({
       perfil: perfil ?? 'outro',
       setor: setor ?? 'Negócios',
@@ -40,6 +89,8 @@ export async function POST(req: NextRequest) {
       principalDesafio: principalDesafio ?? 'fluxo',
       nomeEmpresa: nomeEmpresa ?? 'Minha Empresa',
       financialData,
+      previousInsights,
+      pendingActions,
     })
 
     // Save diagnostic
@@ -112,6 +163,36 @@ export async function POST(req: NextRequest) {
       .select()
 
     if (alertErr) console.error('Alerts save error:', alertErr)
+
+    // ─── Fire-and-forget: WhatsApp insight notification ──────────
+    void (async () => {
+      try {
+        const { data: company } = await db
+          .from('companies')
+          .select('user_id')
+          .eq('id', company_id)
+          .single()
+
+        if (!company?.user_id) return
+
+        const { data: user } = await db
+          .from('users')
+          .select('phone')
+          .eq('id', company.user_id)
+          .single()
+
+        const phone = (user as { phone?: string | null } | null)?.phone
+        if (!phone || !result.insights.length) return
+
+        const top = result.insights[0]
+        const valor = `R$ ${Math.round(top.impacto_estimado).toLocaleString('pt-BR')}`
+        const msg = `💡 *NEXUS CFO*\n${top.titulo}\n${top.descricao}\n💰 ${valor}/mês`
+        const waResult = await sendWhatsAppInsight(phone, msg)
+        console.log('[insights] WhatsApp sent:', waResult)
+      } catch (err) {
+        console.error('[insights] WhatsApp notification failed:', err)
+      }
+    })()
 
     return NextResponse.json({
       diagnostic,

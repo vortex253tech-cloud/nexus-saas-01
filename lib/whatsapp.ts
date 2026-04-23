@@ -185,6 +185,17 @@ export function buildHelpMessage(): string {
   ].join('\n')
 }
 
+// ─── Insight notification (max 300 chars) ─────────────────────
+
+export async function sendWhatsAppInsight(
+  phone: string,
+  message: string,
+): Promise<WhatsAppResult> {
+  const truncated = message.length > 300 ? message.slice(0, 297) + '...' : message
+  console.log(`[WhatsApp] Sending insight to ${normalizePhone(phone)}`)
+  return sendWhatsApp({ phone, message: truncated })
+}
+
 // ─── Legacy alias (mantém compatibilidade com executor.ts) ────
 
 export const buildWhatsAppMessage = buildActionNotification
