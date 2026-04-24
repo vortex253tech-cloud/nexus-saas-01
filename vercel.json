@@ -1,12 +1,12 @@
 {
   "crons": [
     {
-      "path": "/api/cron/charge",
-      "schedule": "0 9 * * *"
-    },
-    {
       "path": "/api/cron/autopilot",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/charge-email",
+      "schedule": "0 9 * * *"
     }
   ]
 }

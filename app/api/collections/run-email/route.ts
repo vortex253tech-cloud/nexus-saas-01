@@ -1,4 +1,4 @@
-// POST /api/collections/run — charge all overdue clients for a company
+// POST /api/collections/run-email — charge all overdue clients with email
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/auth'

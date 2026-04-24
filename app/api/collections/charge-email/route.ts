@@ -1,4 +1,4 @@
-// POST /api/collections/charge — charge a single client manually
+// POST /api/collections/charge-email — charge a single client via email only
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/auth'
@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-  const body      = await req.json() as { client_id?: string }
-  const clientId  = getString(body as Record<string, unknown>, 'client_id')
+  const body     = await req.json() as { client_id?: string }
+  const clientId = getString(body as Record<string, unknown>, 'client_id')
   if (!clientId) return NextResponse.json({ error: 'client_id required' }, { status: 400 })
 
   const db = getSupabaseServerClient()
@@ -25,6 +25,10 @@ export async function POST(req: NextRequest) {
 
   if (error || !client) {
     return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
+  }
+
+  if (!client.email) {
+    return NextResponse.json({ error: 'Cliente sem email cadastrado' }, { status: 422 })
   }
 
   const { data: company } = await db

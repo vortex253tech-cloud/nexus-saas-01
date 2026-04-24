@@ -6,7 +6,7 @@ import {
   Users, Plus, Download, TrendingUp, Crown, Loader2,
   RefreshCw, Trash2, X, AlertCircle, Lock, CheckCircle2,
   ChevronDown, ChevronUp, MessageSquare, DollarSign,
-  Clock, AlertTriangle, Send,
+  Clock, AlertTriangle, Mail,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { resolveCompanyId } from '@/lib/get-company-id'
@@ -46,6 +46,7 @@ interface CollectionMetrics {
   recoveredValue: number
   recoveryRate: number
   chargedCount: number
+  emailChargedCount: number
 }
 
 interface TrialInfo {
@@ -237,8 +238,8 @@ export default function ClientsPage() {
   const [loading, setLoading]           = useState(true)
   const [showAdd, setShowAdd]           = useState(false)
   const [exporting, setExporting]       = useState(false)
-  const [chargingAll, setChargingAll]   = useState(false)
-  const [charging, setCharging]         = useState<Set<string>>(new Set())
+  const [chargingAllEmail, setChargingAllEmail] = useState(false)
+  const [chargingEmail, setChargingEmail]     = useState<Set<string>>(new Set())
   const [markingPaid, setMarkingPaid]   = useState<Set<string>>(new Set())
   const [showAnalysis, setShowAnalysis] = useState(false)
   const [toast, setToast]               = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
@@ -300,27 +301,6 @@ export default function ClientsPage() {
     setClients(prev => prev.filter(c => c.id !== id))
   }
 
-  async function handleCharge(client: Client) {
-    setCharging(prev => new Set(prev).add(client.id))
-    try {
-      const res = await fetch('/api/collections/charge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: client.id }),
-      })
-      const json = await res.json() as { success?: boolean; error?: string }
-      if (json.success) {
-        showToast(`Cobrança enviada para ${client.name}!`)
-        await fetchClients()
-      } else {
-        showToast(json.error === 'no_phone'
-          ? `${client.name} não tem telefone cadastrado`
-          : `Falha ao enviar para ${client.name}`, 'err')
-      }
-    } catch { showToast('Erro de rede', 'err') }
-    finally { setCharging(prev => { const s = new Set(prev); s.delete(client.id); return s }) }
-  }
-
   async function handleMarkPaid(client: Client) {
     setMarkingPaid(prev => new Set(prev).add(client.id))
     try {
@@ -335,18 +315,41 @@ export default function ClientsPage() {
     finally { setMarkingPaid(prev => { const s = new Set(prev); s.delete(client.id); return s }) }
   }
 
-  async function handleChargeAll() {
-    setChargingAll(true)
+  async function handleChargeEmail(client: Client) {
+    if (!client.email) {
+      showToast('Cliente sem email cadastrado', 'err')
+      return
+    }
+    setChargingEmail(prev => new Set(prev).add(client.id))
     try {
-      const res = await fetch('/api/collections/run', { method: 'POST' })
+      const res = await fetch('/api/collections/charge-email', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ client_id: client.id }),
+      })
+      const json = await res.json() as { success?: boolean; error?: string }
+      if (json.success) {
+        showToast(`Email enviado para ${client.name}!`)
+        await fetchClients()
+      } else {
+        showToast(json.error ?? `Falha ao enviar email para ${client.name}`, 'err')
+      }
+    } catch { showToast('Erro de rede', 'err') }
+    finally { setChargingEmail(prev => { const s = new Set(prev); s.delete(client.id); return s }) }
+  }
+
+  async function handleChargeAllEmail() {
+    setChargingAllEmail(true)
+    try {
+      const res  = await fetch('/api/collections/run-email', { method: 'POST' })
       const json = await res.json() as { charged?: number; failed?: number }
       showToast(
-        `${json.charged ?? 0} cobrado${(json.charged ?? 0) !== 1 ? 's' : ''}, ` +
-        `${json.failed ?? 0} falha${(json.failed ?? 0) !== 1 ? 's' : ''}`
+        `${json.charged ?? 0} email${(json.charged ?? 0) !== 1 ? 's' : ''} enviado${(json.charged ?? 0) !== 1 ? 's' : ''}, ` +
+        `${json.failed ?? 0} falha${(json.failed ?? 0) !== 1 ? 's' : ''}`,
       )
       await fetchClients()
-    } catch { showToast('Erro ao executar cobranças', 'err') }
-    finally { setChargingAll(false) }
+    } catch { showToast('Erro ao enviar emails', 'err') }
+    finally { setChargingAllEmail(false) }
   }
 
   async function handleExport() {
@@ -408,21 +411,17 @@ export default function ClientsPage() {
             <Users size={22} className="text-violet-400" />
             <h1 className="text-2xl font-bold text-white">Clientes</h1>
           </div>
-          <p className="text-zinc-500 text-sm">Gerencie clientes, rastreie vencimentos e envie cobranças via WhatsApp.</p>
+          <p className="text-zinc-500 text-sm">Gerencie clientes, rastreie vencimentos e envie cobranças via WhatsApp e Email.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {overdueClients.length > 0 && (
+          {overdueClients.some(c => c.email) && (
             <button
-              onClick={() => void handleChargeAll()}
-              disabled={chargingAll}
-              className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50 transition-colors"
+              onClick={() => void handleChargeAllEmail()}
+              disabled={chargingAllEmail}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
             >
-              {chargingAll
-                ? <Loader2 size={14} className="animate-spin" />
-                : <Send size={14} />}
-              {chargingAll
-                ? 'Enviando...'
-                : `Cobrar todos (${overdueClients.length})`}
+              {chargingAllEmail ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+              {chargingAllEmail ? 'Enviando...' : `Email todos (${overdueClients.filter(c => c.email).length})`}
             </button>
           )}
           <button onClick={() => void fetchClients()}
@@ -455,7 +454,7 @@ export default function ClientsPage() {
 
       {/* Recovery metrics */}
       {metrics && (
-        <div className="mb-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="mb-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 flex items-start gap-3">
             <AlertTriangle size={18} className="text-red-400 mt-0.5 shrink-0" />
             <div>
@@ -467,9 +466,17 @@ export default function ClientsPage() {
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
             <MessageSquare size={18} className="text-amber-400 mt-0.5 shrink-0" />
             <div>
-              <p className="text-xs text-zinc-500">Cobrados via WhatsApp</p>
-              <p className="text-lg font-bold text-amber-400">{metrics.chargedCount}</p>
+              <p className="text-xs text-zinc-500">Cobrados (WhatsApp)</p>
+              <p className="text-lg font-bold text-amber-400">{metrics.chargedCount - metrics.emailChargedCount}</p>
               <p className="text-xs text-zinc-600 mt-0.5">mensagens enviadas</p>
+            </div>
+          </div>
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 flex items-start gap-3">
+            <Mail size={18} className="text-blue-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-zinc-500">Cobrados por Email</p>
+              <p className="text-lg font-bold text-blue-400">{metrics.emailChargedCount}</p>
+              <p className="text-xs text-zinc-600 mt-0.5">emails enviados</p>
             </div>
           </div>
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 flex items-start gap-3">
@@ -565,9 +572,11 @@ export default function ClientsPage() {
 
           <AnimatePresence>
             {clients.map((client, i) => {
-              const st       = statusLabel(client.effective_status)
-              const isCharging   = charging.has(client.id)
+              const st            = statusLabel(client.effective_status)
               const isMarkingPaid = markingPaid.has(client.id)
+              const waLink        = client.phone
+                ? `https://wa.me/${client.phone.replace(/[^\d]/g, '')}?text=${encodeURIComponent(`Olá ${client.name}, tudo bem?\n\nIdentificamos um pagamento pendente de ${fmtBRL(client.total_revenue)}${client.due_date ? ` com vencimento em ${fmtDate(client.due_date)}` : ''}.\n\nPode verificar para mim?`)}`
+                : ''
 
               return (
                 <motion.div
@@ -646,16 +655,27 @@ export default function ClientsPage() {
                   <div className="flex items-center justify-center gap-1">
                     {client.effective_status === 'overdue' && (
                       <>
-                        <button
-                          onClick={() => void handleCharge(client)}
-                          disabled={isCharging}
-                          title="Cobrar via WhatsApp"
-                          className="flex items-center gap-1 rounded-lg bg-red-500/10 border border-red-500/20 px-2 py-1 text-[10px] font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors whitespace-nowrap"
+                        <a
+                          href={waLink || undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={client.phone ? 'Abrir WhatsApp' : 'Sem telefone cadastrado'}
+                          className={cn(
+                            'flex items-center gap-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 text-[10px] font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors whitespace-nowrap',
+                            !client.phone && 'opacity-30 pointer-events-none',
+                          )}
                         >
-                          {isCharging
-                            ? <Loader2 size={9} className="animate-spin" />
-                            : <MessageSquare size={9} />}
-                          Cobrar
+                          <MessageSquare size={9} />
+                          WA
+                        </a>
+                        <button
+                          onClick={() => void handleChargeEmail(client)}
+                          disabled={chargingEmail.has(client.id) || !client.email}
+                          title={client.email ? 'Cobrar via Email' : 'Cliente sem email cadastrado'}
+                          className="flex items-center gap-1 rounded-lg bg-blue-500/10 border border-blue-500/20 px-2 py-1 text-[10px] font-semibold text-blue-400 hover:bg-blue-500/20 disabled:opacity-30 transition-colors whitespace-nowrap"
+                        >
+                          {chargingEmail.has(client.id) ? <Loader2 size={9} className="animate-spin" /> : <Mail size={9} />}
+                          Email
                         </button>
                         <button
                           onClick={() => void handleMarkPaid(client)}
@@ -663,9 +683,7 @@ export default function ClientsPage() {
                           title="Marcar como pago"
                           className="flex items-center gap-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 text-[10px] font-semibold text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors whitespace-nowrap"
                         >
-                          {isMarkingPaid
-                            ? <Loader2 size={9} className="animate-spin" />
-                            : <CheckCircle2 size={9} />}
+                          {isMarkingPaid ? <Loader2 size={9} className="animate-spin" /> : <CheckCircle2 size={9} />}
                           Pago
                         </button>
                       </>
@@ -705,7 +723,8 @@ export default function ClientsPage() {
             {[
               { label: `Top ${meta.top20Count} clientes identificados`, done: true },
               { label: 'Cadastrar data de vencimento nos clientes',         done: clients.some(c => c.due_date !== null) },
-              { label: 'Cobrar clientes inadimplentes via WhatsApp',        done: (metrics?.chargedCount ?? 0) > 0 },
+              { label: 'Cobrar clientes inadimplentes via WhatsApp',        done: (metrics?.chargedCount ?? 0) - (metrics?.emailChargedCount ?? 0) > 0 },
+              { label: 'Cobrar clientes inadimplentes via Email',           done: (metrics?.emailChargedCount ?? 0) > 0 },
               { label: 'Exportar relatório para o time comercial',          done: false },
               { label: 'Criar proposta de upsell para top 20%',            done: false },
             ].map((item, idx) => (
