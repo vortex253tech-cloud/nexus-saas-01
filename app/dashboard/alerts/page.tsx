@@ -144,12 +144,15 @@ function AlertCard({
   )
 }
 
+type FilterTipo = 'todos' | 'perigo' | 'atencao' | 'oportunidade' | 'info'
+
 // ─── Page ─────────────────────────────────────────────────────
 
 export default function AlertsPage() {
   const [companyId, setCompanyId] = useState<string | null>(null)
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<FilterTipo>('todos')
 
   useEffect(() => {
     void resolveCompanyId().then(cid => { if (cid) setCompanyId(cid) })
@@ -191,7 +194,9 @@ export default function AlertsPage() {
 
   const unread = alerts.filter(a => !a.lido).length
   const perigoCount = alerts.filter(a => a.tipo === 'perigo').length
+  const atencaoCount = alerts.filter(a => a.tipo === 'atencao').length
   const oportunidadeCount = alerts.filter(a => a.tipo === 'oportunidade').length
+  const filteredAlerts = filter === 'todos' ? alerts : alerts.filter(a => a.tipo === filter)
 
   if (!companyId) {
     return (
@@ -234,8 +239,40 @@ export default function AlertsPage() {
         ))}
       </div>
 
-      {/* Refresh */}
-      <div className="mb-4 flex justify-end">
+      {/* Filter tabs + refresh */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900/60 p-1">
+          {([
+            { key: 'todos' as FilterTipo,        label: 'Todos',        count: alerts.length },
+            { key: 'perigo' as FilterTipo,       label: 'Perigo',       count: perigoCount },
+            { key: 'atencao' as FilterTipo,      label: 'Atenção',      count: atencaoCount },
+            { key: 'oportunidade' as FilterTipo, label: 'Oportunidade', count: oportunidadeCount },
+          ]).map(f => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
+                filter === f.key ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300',
+              )}
+            >
+              {f.label}
+              {f.count > 0 && (
+                <span className={cn(
+                  'rounded-full px-1.5 text-[10px] font-bold',
+                  filter === f.key
+                    ? f.key === 'perigo' ? 'bg-red-500 text-white'
+                      : f.key === 'atencao' ? 'bg-orange-500 text-white'
+                        : f.key === 'oportunidade' ? 'bg-emerald-600 text-white'
+                          : 'bg-violet-600 text-white'
+                    : 'bg-zinc-700 text-zinc-400',
+                )}>
+                  {f.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
         <button
           onClick={fetchAlerts}
           className="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:text-white transition-colors"
@@ -249,15 +286,17 @@ export default function AlertsPage() {
         <div className="flex items-center justify-center py-20">
           <Loader2 size={28} className="animate-spin text-violet-400" />
         </div>
-      ) : alerts.length === 0 ? (
+      ) : filteredAlerts.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 py-16 text-center">
           <CheckCircle2 size={36} className="mx-auto mb-3 text-zinc-700" />
-          <p className="text-zinc-500 text-sm">Nenhum alerta ativo. Tudo em ordem!</p>
+          <p className="text-zinc-500 text-sm">
+            {filter === 'todos' ? 'Nenhum alerta ativo. Tudo em ordem!' : `Nenhum alerta do tipo "${filter}".`}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
           <AnimatePresence mode="popLayout">
-            {alerts.map(alert => (
+            {filteredAlerts.map(alert => (
               <AlertCard
                 key={alert.id}
                 alert={alert}

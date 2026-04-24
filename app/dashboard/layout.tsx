@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Database, Zap, Bell, History,
   CreditCard, Menu, X, Building2, ChevronRight,
   DollarSign, MessageSquare, LogOut, Users, Clock,
-  ArrowRight,
+  ArrowRight, Mail,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -16,6 +16,7 @@ const NAV = [
   { href: '/dashboard',            label: 'Dashboard',     icon: LayoutDashboard, exact: true },
   { href: '/dashboard/financeiro', label: 'Financeiro',    icon: DollarSign },
   { href: '/dashboard/clients',    label: 'Clientes',      icon: Users },
+  { href: '/dashboard/automations', label: 'Mensagens',     icon: Mail },
   { href: '/dashboard/assistant',  label: 'Assistente IA', icon: MessageSquare },
   { href: '/dashboard/dados',      label: 'Dados',         icon: Database },
   { href: '/dashboard/actions',    label: 'Ações',         icon: Zap },

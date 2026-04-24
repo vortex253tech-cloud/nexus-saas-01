@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   // Fetch collection logs
   const { data: logs } = await db
     .from('collection_logs')
-    .select('client_id, amount_due, status')
+    .select('client_id, amount_due, status, method')
     .eq('company_id', company_id)
 
   const allClients   = clients ?? []
@@ -50,6 +50,13 @@ export async function GET(req: NextRequest) {
   // Total charged = distinct clients with at least one log
   const chargedCount = chargedClientIds.size
 
+  // Email-specific: clients that received at least one email
+  const emailChargedCount = new Set(
+    allLogs
+      .filter(l => (l as { method?: string }).method === 'email')
+      .map(l => l.client_id as string)
+  ).size
+
   // Recovery rate = recovered / (recovered + overdue)
   const total        = recoveredValue + overdueValue
   const recoveryRate = total > 0 ? Math.round((recoveredValue / total) * 100) : 0
@@ -60,5 +67,6 @@ export async function GET(req: NextRequest) {
     recoveredValue,
     recoveryRate,
     chargedCount,
+    emailChargedCount,
   })
 }

@@ -862,7 +862,7 @@ function AutoPilotControl({ enabled, running, autoCount, plan, totalGanho, onTog
           </p>
         </div>
       </div>
-      {autoCount > 0 && (
+      {(autoCount > 0 || (enabled && canAutoRun)) && (
         <button
           onClick={handleClick}
           disabled={running}
@@ -873,8 +873,8 @@ function AutoPilotControl({ enabled, running, autoCount, plan, totalGanho, onTog
                 : 'bg-violet-600 text-white hover:bg-violet-500 shadow-[0_0_16px_rgba(124,58,237,0.3)]',
           )}
         >
-          {running ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Aguarde</>
-            : enabled && canAutoRun ? <><X className="h-3.5 w-3.5" /> Parar</>
+          {running ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Executando...</>
+            : enabled && canAutoRun ? <><X className="h-3.5 w-3.5" /> Parar Auto-Pilot</>
               : <><Play className="h-3.5 w-3.5" /> Iniciar Auto-Pilot</>}
         </button>
       )}
@@ -970,7 +970,7 @@ export default function DashboardPage() {
   const [generateError, setGenerateError] = useState<string | null>(null)
 
   const [autopilotRunning, setAutopilotRunning] = useState(false)
-  const autopilotCancelRef = useRef(false)
+  const [autopilotEnabled, setAutopilotEnabled] = useState(false)
 
   // Modals & notifications
   const [modal, setModal] = useState<{ open: boolean; type: 'action' | 'autopilot'; insight?: UnifiedInsight }>({ open: false, type: 'action' })
@@ -1071,11 +1071,12 @@ export default function DashboardPage() {
         setDiagnostico(gerarDiagnostico(diagInput))
 
         if (cid) {
-          const [fdRes, actRes, alertRes, histRes] = await Promise.all([
+          const [fdRes, actRes, alertRes, histRes, apRes] = await Promise.all([
             fetch(`/api/financial-data?company_id=${cid}`).catch(() => null),
             fetch(`/api/actions?company_id=${cid}`).catch(() => null),
             fetch(`/api/alerts?company_id=${cid}`).catch(() => null),
             fetch(`/api/execution-history?company_id=${cid}`).catch(() => null),
+            fetch('/api/autopilot/enable').catch(() => null),
           ])
           if (fdRes?.ok) { const fd = await fdRes.json(); setFinancialData(fd.data ?? []) }
 
@@ -1093,6 +1094,10 @@ export default function DashboardPage() {
             }
           }
           if (histRes?.ok) { const hj = await histRes.json(); setHistorico(hj.data ?? []) }
+          if (apRes?.ok) {
+            const apJson = await apRes.json() as { autopilot_enabled?: boolean }
+            setAutopilotEnabled(apJson.autopilot_enabled ?? false)
+          }
           if (!hasReal) fallbackMock(diagInput)
           if (!hasRealAlerts) fallbackAlerts(diagInput)
         } else {
@@ -1212,31 +1217,50 @@ export default function DashboardPage() {
   // ─── Auto-pilot ───────────────────────────────────────────
 
   const handleAutoPilot = useCallback(async () => {
-    if (autopilotRunning) { autopilotCancelRef.current = true; setAutopilotRunning(false); return }
-    const queue = insights.filter(i => i.auto_executable && i.status === 'pending' && i.isReal)
-    if (!queue.length) return
-    autopilotCancelRef.current = false; setAutopilotRunning(true)
-    for (const action of queue) {
-      if (autopilotCancelRef.current) break
-      setInsights(prev => prev.map(i => i.id === action.id ? { ...i, status: 'in_progress' } : i))
-      try {
-        const res = await fetch('/api/actions/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: action.id }) })
-        const json = await res.json()
-        if (res.ok) {
-          const ganho = json.data?.ganho_realizado ?? action.impacto_estimado
-          setInsights(prev => prev.map(i => i.id === action.id ? { ...i, status: 'done', ganho_realizado: ganho } : i))
-          setGanhoAcumulado(prev => prev + ganho)
-          setHistorico(prev => [{ id: action.id + '-h-' + Date.now(), titulo: action.titulo, execution_type: action.execution_type, ganho_realizado: ganho, execution_log: json.data?.log ?? null, executed_at: new Date().toISOString() }, ...prev])
-          await new Promise(r => setTimeout(r, 800))
-        } else {
-          setInsights(prev => prev.map(i => i.id === action.id ? { ...i, status: 'pending' } : i))
-        }
-      } catch {
-        setInsights(prev => prev.map(i => i.id === action.id ? { ...i, status: 'pending' } : i))
-      }
+    if (autopilotRunning) return
+
+    if (autopilotEnabled) {
+      // Disable — stop daily cron scheduling
+      await fetch('/api/autopilot/enable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      }).catch(() => null)
+      setAutopilotEnabled(false)
+      return
     }
-    setAutopilotRunning(false)
-  }, [autopilotRunning, insights])
+
+    // Enable + run the engine right now
+    await fetch('/api/autopilot/enable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    }).catch(() => null)
+    setAutopilotEnabled(true)
+    setAutopilotRunning(true)
+
+    try {
+      const res = await fetch('/api/autopilot/run', { method: 'POST' })
+      const json = await res.json() as { actionsExecuted?: number }
+      if (res.ok && (json.actionsExecuted ?? 0) > 0 && companyId) {
+        // Refresh actions + history from DB after execution
+        const [actRes, histRes] = await Promise.all([
+          fetch(`/api/actions?company_id=${companyId}`).catch(() => null),
+          fetch(`/api/execution-history?company_id=${companyId}`).catch(() => null),
+        ])
+        if (actRes?.ok) {
+          const aj = await actRes.json()
+          if (aj.data?.length > 0) setInsights(mapActions(aj.data))
+        }
+        if (histRes?.ok) {
+          const hj = await histRes.json()
+          setHistorico(hj.data ?? [])
+        }
+      }
+    } finally {
+      setAutopilotRunning(false)
+    }
+  }, [autopilotEnabled, autopilotRunning, companyId]) // eslint-disable-line
 
   // ─── Computed ─────────────────────────────────────────────
 
@@ -1391,7 +1415,7 @@ export default function DashboardPage() {
 
               {/* Auto-Pilot */}
               <AutoPilotControl
-                enabled={autopilotRunning} running={autopilotRunning}
+                enabled={autopilotEnabled} running={autopilotRunning}
                 autoCount={autoExecPending} plan={plan} totalGanho={ganhoEstimado}
                 onToggle={handleAutoPilot}
                 onPaywall={() => setModal({ open: true, type: 'autopilot' })}
