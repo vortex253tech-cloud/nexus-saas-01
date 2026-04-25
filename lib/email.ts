@@ -235,3 +235,22 @@ export async function sendEmail(params: SendEmailParams): Promise<EmailResult> {
     return { success: false, error: msg }
   }
 }
+
+// ─── WhatsApp (stub — replace body with real provider when ready) ─────────────
+
+export interface WhatsAppResult {
+  success:    boolean
+  id?:        string
+  error?:     string
+  simulated?: true
+}
+
+export async function sendWhatsApp(params: {
+  to:   string  // E.164 format, e.g. +5511999999999
+  body: string
+}): Promise<WhatsAppResult> {
+  // Placeholder: log and return simulated success
+  // When integrating a provider (Twilio, Z-API, etc.), replace this block.
+  console.log(`[whatsapp] stub → to=${params.to} | "${params.body.slice(0, 60)}${params.body.length > 60 ? '...' : ''}"`)
+  return { success: true, simulated: true, id: `wa_stub_${Date.now()}` }
+}
