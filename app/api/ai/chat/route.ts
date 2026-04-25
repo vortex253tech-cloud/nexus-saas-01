@@ -6,6 +6,7 @@ import { getAuthContext } from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { getString, readJsonObject } from '@/lib/unknown'
 import { buildFinancialContext, buildSmartFallback, fmtBRL } from '@/lib/services/context-builder'
+import { detectIntent, runAction, formatActionResult } from '@/lib/actions/runner'
 import Anthropic from '@anthropic-ai/sdk'
 
 export const dynamic = 'force-dynamic'
@@ -89,14 +90,35 @@ export async function POST(req: NextRequest) {
     }
     console.log('[ai/chat] ──────────────────────────────────────────────────')
 
-    // ── 3. No API key → smart rule-based fallback ─────────────────────────────
+    // ── 3. Detect intent → run real action if matched ────────────────────────
+    const intent = detectIntent(message)
+    let actionSummary: string | null = null
+
+    if (intent) {
+      console.log(`[ai/chat] intent detected: ${intent}`)
+      const actionResult = await runAction(intent, companyId)
+      actionSummary = actionResult.summary
+
+      // No API key → format action result directly and return
+      if (!process.env.ANTHROPIC_API_KEY) {
+        const reply = formatActionResult(actionResult)
+        console.log('[ai/chat] no API key — returning formatted action result')
+        return NextResponse.json({ reply })
+      }
+    }
+
+    // ── 4. No API key (no intent matched) → smart fallback ───────────────────
     if (!process.env.ANTHROPIC_API_KEY) {
       console.log('[ai/chat] no API key — using smart fallback')
       const reply = buildSmartFallback(ctx, message)
       return NextResponse.json({ reply })
     }
 
-    // ── 4. Build prompt ───────────────────────────────────────────────────────
+    // ── 5. Build prompt ───────────────────────────────────────────────────────
+    const actionBlock = actionSummary
+      ? `\n\nAÇÃO EXECUTADA AGORA (resultado real, acabou de acontecer):\n${actionSummary}\n\nBase sua resposta PRINCIPALMENTE neste resultado da ação, confirmando o que foi feito.`
+      : ''
+
     const systemPrompt = `Você é o assistente financeiro inteligente do NEXUS.
 
 REGRAS CRÍTICAS — NUNCA VIOLE:
@@ -109,10 +131,10 @@ REGRAS CRÍTICAS — NUNCA VIOLE:
 7. Se não houver dados para a pergunta (ex: 0 inadimplentes), diga isso claramente e de forma positiva.
 
 DADOS REAIS DA EMPRESA (use estes números):
-${JSON.stringify(ctx, null, 2)}`
+${JSON.stringify(ctx, null, 2)}${actionBlock}`
 
-    // ── 5. Call Claude ────────────────────────────────────────────────────────
-    const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    // ── 6. Call Claude ────────────────────────────────────────────────────────
+    const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
     const aiRes = await ai.messages.create({
       model:      'claude-haiku-4-5-20251001',
