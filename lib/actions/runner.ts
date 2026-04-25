@@ -16,9 +16,9 @@ export interface ActionResult {
   summary: string
   /** Structured data for building rich responses */
   data: {
-    charged?:      number
-    failed?:       number
-    skipped?:      number
+    charged?:       number
+    failed?:        number
+    skipped?:       number
     total_overdue?: number
     total_pending?: number
     clients?:      Pick<ClientCtx, 'nome' | 'valor' | 'email' | 'dias_atraso'>[]
@@ -100,13 +100,17 @@ export async function runAction(
           }
         })
 
+      const skipped = emailResult.skipped ?? 0
       const summary =
         emailResult.charged === 0
-          ? `Nenhum cliente cobrado (${emailResult.failed > 0 ? `${emailResult.failed} falha${emailResult.failed > 1 ? 's' : ''}` : 'todos já cobrados hoje ou não há inadimplentes'})`
+          ? skipped > 0
+            ? `${skipped} cliente${skipped > 1 ? 's' : ''} já cobrado${skipped > 1 ? 's' : ''} hoje — nenhum novo envio necessário`
+            : `Nenhum cliente cobrado (${emailResult.failed > 0 ? `${emailResult.failed} falha${emailResult.failed > 1 ? 's' : ''}` : 'sem inadimplentes com email cadastrado'})`
           : `${emailResult.charged} cliente${emailResult.charged > 1 ? 's' : ''} cobrado${emailResult.charged > 1 ? 's' : ''} com sucesso por e-mail` +
-            (emailResult.failed > 0 ? ` | ${emailResult.failed} falha${emailResult.failed > 1 ? 's' : ''}` : '')
+            (emailResult.failed  > 0 ? ` | ${emailResult.failed} falha${emailResult.failed > 1 ? 's' : ''}` : '') +
+            (skipped             > 0 ? ` | ${skipped} já cobrado${skipped > 1 ? 's' : ''} hoje (pulado${skipped > 1 ? 's' : ''})` : '')
 
-      console.log(`[action-runner] RUN_RECOVERY → charged: ${emailResult.charged}, failed: ${emailResult.failed}`)
+      console.log(`[action-runner] RUN_RECOVERY → charged: ${emailResult.charged}, failed: ${emailResult.failed}, skipped: ${skipped}`)
       chargedClients.forEach(c =>
         console.log(`  ✉ ${c.nome} <${c.email ?? 'sem email'}> — ${fmtBRL(c.valor)}`)
       )
@@ -116,6 +120,7 @@ export async function runAction(
         data: {
           charged:       emailResult.charged,
           failed:        emailResult.failed,
+          skipped,
           total_overdue: ctx.total_inadimplente,
           clients:       chargedClients,
         },
@@ -164,7 +169,8 @@ export function formatActionResult(result: ActionResult): string {
       `✅ **${data.charged} cliente${data.charged > 1 ? 's' : ''} cobrado${data.charged > 1 ? 's' : ''} com sucesso!**\n\n` +
       (lista ? `${lista}\n\n` : '') +
       `**Total em cobrança: ${fmtBRL(data.total_overdue ?? 0)}**\n\n` +
-      (data.failed ? `⚠️ ${data.failed} envio${data.failed > 1 ? 's' : ''} falhou (sem e-mail cadastrado).\n\n` : '') +
+      (data.failed  ? `⚠️ ${data.failed} envio${data.failed > 1 ? 's' : ''} falhou (sem e-mail cadastrado).\n\n` : '') +
+      (data.skipped ? `ℹ️ ${data.skipped} cliente${data.skipped > 1 ? 's' : ''} já cobrado${data.skipped > 1 ? 's' : ''} hoje — pulado${data.skipped > 1 ? 's' : ''}.\n\n` : '') +
       `Acompanhe as respostas na aba **Mensagens**.`
     )
   }

@@ -110,14 +110,17 @@ export async function chargeClientByEmail(
 
   const emailResult = await sendEmail({ to: client.email, subject, html })
 
-  void db.from('collection_logs').insert({
+  const logRow: Record<string, unknown> = {
     client_id:  client.id,
     company_id: company.id,
     message:    subject,
     status:     emailResult.success ? 'sent' : 'failed',
     method:     'email',
     amount_due: client.total_revenue,
-  })
+  }
+  if (emailResult.id) logRow.resend_id = emailResult.id
+
+  void db.from('collection_logs').insert(logRow)
 
   if (client.status !== 'overdue' && client.status !== 'paid') {
     void db.from('clients').update({ status: 'overdue' }).eq('id', client.id)
@@ -137,7 +140,8 @@ export async function chargeClientByEmail(
 
 export async function runEmailCollections(companyId: string): Promise<{
   charged: number
-  failed: number
+  failed:  number
+  skipped: number
   results: CollectionResult[]
 }> {
   const db    = getSupabaseServerClient()
@@ -151,37 +155,69 @@ export async function runEmailCollections(companyId: string): Promise<{
     .eq('status', 'pending')
     .lt('due_date', today)
 
-  const { data: overdueClients } = await db
-    .from('clients')
-    .select('id, name, phone, email, total_revenue, due_date, status')
-    .eq('company_id', companyId)
-    .eq('status', 'overdue')
-    .not('email', 'is', null)
+  const [clientsRes, logsRes, companyRes] = await Promise.all([
+    db
+      .from('clients')
+      .select('id, name, phone, email, total_revenue, due_date, status')
+      .eq('company_id', companyId)
+      .eq('status', 'overdue')
+      .not('email', 'is', null),
+    // Clients already charged today via email — dedup guard
+    db
+      .from('collection_logs')
+      .select('client_id')
+      .eq('company_id', companyId)
+      .eq('method', 'email')
+      .eq('status', 'sent')
+      .gte('sent_at', `${today}T00:00:00Z`),
+    db
+      .from('companies')
+      .select('id, nome')
+      .eq('id', companyId)
+      .single(),
+  ])
 
-  if (!overdueClients || overdueClients.length === 0) {
-    return { charged: 0, failed: 0, results: [] }
+  const overdueClients = clientsRes.data ?? []
+  if (overdueClients.length === 0) {
+    return { charged: 0, failed: 0, skipped: 0, results: [] }
   }
 
-  const { data: company } = await db
-    .from('companies')
-    .select('id, nome')
-    .eq('id', companyId)
-    .single()
+  // Build set of already-charged client ids for O(1) lookup
+  const alreadyCharged = new Set((logsRes.data ?? []).map(l => l.client_id as string))
 
   const companyInfo: CollectionCompany = {
     id:   companyId,
-    nome: (company as { nome?: string } | null)?.nome ?? 'Empresa',
+    nome: (companyRes.data as { nome?: string } | null)?.nome ?? 'Empresa',
   }
 
   const results: CollectionResult[] = []
+  let skipped = 0
+
   for (const client of overdueClients) {
-    const result = await chargeClientByEmail(client as CollectionClient, companyInfo)
+    const c = client as CollectionClient
+
+    if (alreadyCharged.has(c.id)) {
+      console.log(`[collections] ⏭ ${c.name} — já cobrado hoje, pulando`)
+      skipped++
+      results.push({
+        clientId:   c.id,
+        clientName: c.name,
+        success:    false,
+        message:    'Já cobrado hoje',
+        method:     'email',
+        error:      'already_sent_today',
+      })
+      continue
+    }
+
+    const result = await chargeClientByEmail(c, companyInfo)
     results.push(result)
   }
 
   return {
     charged: results.filter(r => r.success).length,
-    failed:  results.filter(r => !r.success).length,
+    failed:  results.filter(r => !r.success && r.error !== 'already_sent_today').length,
+    skipped,
     results,
   }
 }
