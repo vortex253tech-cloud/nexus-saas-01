@@ -27,7 +27,10 @@ export interface Automation {
 // ─── HTML builder for automation emails ───────────────────────────────────────
 
 export function renderAutomationEmail(html: string, vars: Record<string, string>): string {
-  return html.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`)
+  // Support both {{var}} (templates) and {var} (legacy steps) formats
+  return html
+    .replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`)
+    .replace(/\{(\w+)\}/g,     (_, key) => vars[key] ?? `{${key}}`)
 }
 
 export function buildWelcomeEmailHTML(params: {
@@ -223,12 +226,17 @@ export async function processAutomationEnrollments(): Promise<{
       continue
     }
 
-    // Render email replacing {nome}, {empresa}, {valor}, {data}
+    // Render email replacing {{nome}}/{nome}, {{empresa}}/{empresa}, etc.
+    const dueDateFmt = client.due_date
+      ? new Date(client.due_date + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
+    const valorFmt = `R$ ${(client.total_revenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
     const vars: Record<string, string> = {
-      nome:    client.name,
-      empresa: company.nome,
-      valor:   `R$ ${(client.total_revenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      data:    client.due_date ? new Date(client.due_date + 'T12:00:00').toLocaleDateString('pt-BR') : '—',
+      nome:           client.name,
+      empresa:        company.nome,
+      valor:          valorFmt,
+      data:           dueDateFmt,
+      vencimento:     dueDateFmt,
+      link_pagamento: '',
     }
     const subject = renderAutomationEmail(currentStep.subject, vars)
     const html    = currentStep.body_html
@@ -236,6 +244,21 @@ export async function processAutomationEnrollments(): Promise<{
       : buildFollowupEmailHTML({ clientName: client.name, nomeEmpresa: company.nome })
 
     const result = await sendEmail({ to: client.email, subject, html })
+
+    // Log to message_logs regardless of outcome
+    await db.from('message_logs').insert({
+      company_id:    enrollment.company_id,
+      automation_id: enrollment.automation_id,
+      enrollment_id: enrollment.id,
+      client_id:     client.id,
+      client_name:   client.name,
+      channel:       'email',
+      to_address:    client.email,
+      subject,
+      body_preview:  html.replace(/<[^>]+>/g, '').slice(0, 200),
+      status:        result.success ? (result.simulated ? 'simulated' : 'sent') : 'failed',
+      error_message: result.error ?? null,
+    })
 
     if (result.success) {
       sent++
@@ -483,11 +506,16 @@ export async function executeFlow(flowId: string, companyId: string): Promise<{
       continue
     }
 
+    const dueDateFmt = client.due_date
+      ? new Date(client.due_date + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
+    const valorFmt = `R$ ${(client.total_revenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
     const vars: Record<string, string> = {
-      nome:    client.name,
-      empresa: companyNome,
-      valor:   `R$ ${(client.total_revenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      data:    client.due_date ? new Date(client.due_date + 'T12:00:00').toLocaleDateString('pt-BR') : '—',
+      nome:           client.name,
+      empresa:        companyNome,
+      valor:          valorFmt,
+      data:           dueDateFmt,
+      vencimento:     dueDateFmt,
+      link_pagamento: '',
     }
 
     const subject = renderAutomationEmail(step.subject, vars)
@@ -496,6 +524,21 @@ export async function executeFlow(flowId: string, companyId: string): Promise<{
       : buildFollowupEmailHTML({ clientName: client.name, nomeEmpresa: companyNome })
 
     const result = await sendEmail({ to: client.email, subject, html })
+
+    // Log every send attempt to message_logs
+    await db.from('message_logs').insert({
+      company_id:    companyId,
+      automation_id: flowId,
+      enrollment_id: enrollment.id,
+      client_id:     client.id,
+      client_name:   client.name,
+      channel:       'email',
+      to_address:    client.email,
+      subject,
+      body_preview:  html.replace(/<[^>]+>/g, '').slice(0, 200),
+      status:        result.success ? (result.simulated ? 'simulated' : 'sent') : 'failed',
+      error_message: result.error ?? null,
+    })
 
     if (result.success) {
       sent++
