@@ -11,7 +11,21 @@ function getResend(): Resend | null {
   return _resend
 }
 
-const FROM_ADDRESS = process.env.RESEND_FROM ?? 'NEXUS <onboarding@resend.dev>'
+// Validate RESEND_FROM — must be "email@x.com" or "Name <email@x.com>"
+function resolveFromAddress(): string {
+  const raw = (process.env.RESEND_FROM ?? '').trim()
+  if (!raw) return 'NEXUS <onboarding@resend.dev>'
+  // Must contain @ and either be plain email or Name <email> format
+  const isPlain  = /^[^\s]+@[^\s]+\.[^\s]+$/.test(raw)
+  const isNamed  = /^.+<[^\s]+@[^\s]+\.[^\s]+>$/.test(raw)
+  if (isPlain || isNamed) return raw
+  // Bad format — try to salvage by wrapping with angle brackets
+  const emailMatch = raw.match(/([^\s<>]+@[^\s<>]+\.[^\s<>]+)/)
+  if (emailMatch) return `NEXUS <${emailMatch[1]}>`
+  return 'NEXUS <onboarding@resend.dev>'
+}
+
+const FROM_ADDRESS = resolveFromAddress()
 
 // ─── Types ─────────────────────────────────────────────────────
 

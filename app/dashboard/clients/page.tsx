@@ -6,7 +6,7 @@ import {
   Users, Plus, Download, TrendingUp, Crown, Loader2,
   RefreshCw, Trash2, X, AlertCircle, Lock, CheckCircle2,
   ChevronDown, ChevronUp, MessageSquare, DollarSign,
-  Clock, AlertTriangle, Mail,
+  Clock, AlertTriangle, Mail, Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { resolveCompanyId } from '@/lib/get-company-id'
@@ -71,6 +71,30 @@ function statusLabel(s: PaymentStatus) {
   if (s === 'paid')    return { text: 'Pago',        color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-500/30' }
   if (s === 'overdue') return { text: 'Vencido',     color: 'text-red-400',     bg: 'bg-red-400/10 border-red-500/30' }
   return                      { text: 'Pendente',    color: 'text-zinc-400',    bg: 'bg-zinc-800 border-zinc-700' }
+}
+
+function clientRisk(client: Client): 'high' | 'medium' | 'low' {
+  let score = 0
+  const daysOverdue = client.due_date
+    ? Math.max(0, Math.floor((Date.now() - new Date(client.due_date).getTime()) / 86_400_000))
+    : 0
+  if (client.effective_status === 'overdue') score += 40
+  else if (client.effective_status === 'pending') score += 15
+  if (daysOverdue >= 30) score += 30
+  else if (daysOverdue >= 14) score += 20
+  else if (daysOverdue >= 7) score += 10
+  else if (daysOverdue >= 1) score += 5
+  if (client.total_revenue >= 50_000) score += 20
+  else if (client.total_revenue >= 10_000) score += 10
+  const daysSinceCreation = Math.floor((Date.now() - new Date(client.created_at).getTime()) / 86_400_000)
+  if (daysSinceCreation < 30 && client.effective_status !== 'paid') score += 5
+  return score >= 50 ? 'high' : score >= 25 ? 'medium' : 'low'
+}
+
+function riskBadgeStyle(risk: 'high' | 'medium' | 'low') {
+  if (risk === 'high')   return { label: '⚠ Alto risco',  color: 'text-red-400',   bg: 'bg-red-500/10 border-red-500/30' }
+  if (risk === 'medium') return { label: '~ Médio risco', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' }
+  return null
 }
 
 // ─── Plan Gate ─────────────────────────────────────────────────
@@ -244,6 +268,7 @@ export default function ClientsPage() {
   const [showAnalysis, setShowAnalysis] = useState(false)
   const [toast, setToast]               = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [trial, setTrial]               = useState<TrialInfo>({ isTrialActive: false, effectivePlan: 'free' })
+  const [recovering, setRecovering]     = useState(false)
 
   function showToast(msg: string, type: 'ok' | 'err' = 'ok') {
     setToast({ msg, type })
@@ -338,6 +363,17 @@ export default function ClientsPage() {
     finally { setChargingEmail(prev => { const s = new Set(prev); s.delete(client.id); return s }) }
   }
 
+  async function handleRecover() {
+    setRecovering(true)
+    try {
+      const res  = await fetch('/api/recover', { method: 'POST' })
+      const json = await res.json() as { summary?: string; engine?: { actionsGenerated: number } }
+      showToast(json.summary ?? `${json.engine?.actionsGenerated ?? 0} ações geradas`)
+      await fetchClients()
+    } catch { showToast('Erro ao recuperar', 'err') }
+    finally { setRecovering(false) }
+  }
+
   async function handleChargeAllEmail() {
     setChargingAllEmail(true)
     try {
@@ -414,6 +450,14 @@ export default function ClientsPage() {
           <p className="text-zinc-500 text-sm">Gerencie clientes, rastreie vencimentos e envie cobranças via WhatsApp e Email.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => void handleRecover()}
+            disabled={recovering}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-bold text-white hover:from-violet-500 hover:to-purple-500 disabled:opacity-50 transition-all shadow-lg shadow-violet-900/40"
+          >
+            {recovering ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+            {recovering ? 'Recuperando...' : '💰 Recuperar agora'}
+          </button>
           {overdueClients.some(c => c.email) && (
             <button
               onClick={() => void handleChargeAllEmail()}
@@ -608,13 +652,22 @@ export default function ClientsPage() {
 
                   {/* Name */}
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium text-white truncate">{client.name}</p>
                       {client.is_top20 && (
                         <span className="shrink-0 flex items-center gap-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 px-1.5 py-0.5 text-[9px] font-bold text-amber-300">
                           <Crown size={8} /> Top
                         </span>
                       )}
+                      {(() => {
+                        const rb = riskBadgeStyle(clientRisk(client))
+                        if (!rb) return null
+                        return (
+                          <span className={cn('shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold', rb.color, rb.bg)}>
+                            {rb.label}
+                          </span>
+                        )
+                      })()}
                     </div>
                     {client.origem && (
                       <p className="text-[10px] text-zinc-600 mt-0.5 truncate">via {client.origem}</p>
