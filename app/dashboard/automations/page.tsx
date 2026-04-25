@@ -1,15 +1,39 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import {
-  Send, Plus, Zap, Mail, Users, Play, Pause,
+  Send, Plus, Zap, Mail, Users, Play,
   Loader2, ArrowRight, Clock, CheckCircle2,
   Trash2, ToggleLeft, ToggleRight, AlertCircle,
-  Star, RefreshCw,
+  Star, Sparkles, X,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+interface Toast {
+  id:      string
+  type:    'success' | 'error' | 'info'
+  message: string
+}
+
+function useToast() {
+  const [toasts, setToasts] = useState<Toast[]>([])
+
+  const show = useCallback((type: Toast['type'], message: string) => {
+    const id = Math.random().toString(36).slice(2)
+    setToasts(prev => [...prev, { id, type, message }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
+  }, [])
+
+  const dismiss = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }, [])
+
+  return { toasts, show, dismiss }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,6 +140,9 @@ export default function AutomationsPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [enrollingId, setEnrollingId] = useState<string | null>(null)
+  const [seeding, setSeeding]       = useState(false)
+  const autoSeedDone                = useRef(false)
+  const { toasts, show: showToast, dismiss } = useToast()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -127,6 +154,42 @@ export default function AutomationsPage() {
       setLoading(false)
     }
   }, [])
+
+  // ── Derived: does a client_overdue automation already exist? ──────────────
+  const hasSmartAuto = automations.some(a => a.trigger_type === 'client_overdue')
+
+  // ── Seed handler ──────────────────────────────────────────────────────────
+  const handleSeed = useCallback(async () => {
+    if (seeding) return
+    setSeeding(true)
+    try {
+      const res  = await fetch('/api/automations/seed', { method: 'POST' })
+      const data = await res.json() as { id?: string; created?: boolean; error?: string }
+      if (res.ok) {
+        showToast(
+          'success',
+          data.created
+            ? 'Automações inteligentes ativadas com sucesso 🚀'
+            : 'Automações já estavam ativas ✅',
+        )
+        await load()
+      } else {
+        showToast('error', data.error ?? 'Erro ao ativar automações')
+      }
+    } catch {
+      showToast('error', 'Erro de conexão')
+    } finally {
+      setSeeding(false)
+    }
+  }, [seeding, showToast, load])
+
+  // ── Auto-seed once after first load if no overdue automation exists ───────
+  useEffect(() => {
+    if (!loading && !hasSmartAuto && !autoSeedDone.current) {
+      autoSeedDone.current = true
+      void handleSeed()
+    }
+  }, [loading, hasSmartAuto, handleSeed])
 
   useEffect(() => { void load() }, [load])
 
@@ -191,8 +254,37 @@ export default function AutomationsPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 p-6 lg:p-8">
+
+      {/* ── Toast notifications ── */}
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+        <AnimatePresence>
+          {toasts.map(t => (
+            <motion.div
+              key={t.id}
+              initial={{ opacity: 0, x: 64, scale: 0.95 }}
+              animate={{ opacity: 1, x: 0,  scale: 1 }}
+              exit={{ opacity: 0, x: 64, scale: 0.95 }}
+              className={cn(
+                'pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3 shadow-xl text-sm font-medium max-w-xs',
+                t.type === 'success' && 'bg-emerald-900/90 text-emerald-200 border border-emerald-700/50',
+                t.type === 'error'   && 'bg-red-900/90 text-red-200 border border-red-700/50',
+                t.type === 'info'    && 'bg-zinc-800 text-zinc-200 border border-zinc-700',
+              )}
+            >
+              {t.type === 'success' && <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />}
+              {t.type === 'error'   && <AlertCircle  size={16} className="shrink-0 text-red-400" />}
+              {t.type === 'info'    && <Sparkles     size={16} className="shrink-0 text-violet-400" />}
+              <span className="flex-1">{t.message}</span>
+              <button onClick={() => dismiss(t.id)} className="shrink-0 text-current opacity-60 hover:opacity-100">
+                <X size={13} />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       {/* ── Header ── */}
-      <div className="mb-8 flex items-start justify-between gap-4">
+      <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/20 border border-violet-600/30">
@@ -213,8 +305,65 @@ export default function AutomationsPage() {
         </Link>
       </div>
 
+      {/* ── Smart Automations Banner ── */}
+      <AnimatePresence>
+        {!loading && (
+          <motion.div
+            key="smart-banner"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={cn(
+              'mb-6 flex items-center justify-between gap-4 rounded-2xl border p-4',
+              hasSmartAuto
+                ? 'bg-emerald-950/40 border-emerald-700/30'
+                : 'bg-violet-950/40 border-violet-700/30',
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+                hasSmartAuto ? 'bg-emerald-500/20' : 'bg-violet-600/20',
+              )}>
+                {hasSmartAuto
+                  ? <CheckCircle2 size={17} className="text-emerald-400" />
+                  : <Sparkles     size={17} className="text-violet-400" />
+                }
+              </div>
+              <div>
+                <p className={cn('text-sm font-semibold', hasSmartAuto ? 'text-emerald-300' : 'text-white')}>
+                  {hasSmartAuto ? 'Automações inteligentes ativas' : 'Ativar automações inteligentes'}
+                </p>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  {hasSmartAuto
+                    ? 'Clientes inadimplentes recebem e-mails automáticos em D+0, D+3 e D+7.'
+                    : 'Cobre clientes inadimplentes automaticamente com sequência de 3 e-mails.'}
+                </p>
+              </div>
+            </div>
+
+            {hasSmartAuto ? (
+              <span className="shrink-0 rounded-full bg-emerald-500/20 border border-emerald-500/30 px-3 py-1 text-xs font-semibold text-emerald-400">
+                Ativa
+              </span>
+            ) : (
+              <button
+                onClick={() => void handleSeed()}
+                disabled={seeding}
+                className="shrink-0 flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2 text-sm font-semibold text-white transition-colors"
+              >
+                {seeding
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : <Zap      size={14} />
+                }
+                {seeding ? 'Ativando...' : 'Ativar agora'}
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Tabs ── */}
-      <div className="mb-6 flex gap-1 rounded-xl bg-zinc-900 p-1 w-fit border border-zinc-800">
+      <div className="mb-6 flex gap-1 rounded-xl bg-zinc-900 p-1 w-fit border border-zinc-800 mt-2">
         {[
           { key: 'mine',      label: 'Minhas Automações' },
           { key: 'templates', label: 'Modelos' },
