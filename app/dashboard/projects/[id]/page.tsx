@@ -34,8 +34,7 @@ interface Analysis {
 
 const STATUS_LABELS: Record<string, string> = {
   active:       '🟢 Ativo',
-  inactive:     '🔴 Inativo',
-  testing:      '🟡 Teste',
+  paused:       '🔴 Pausado',
   discontinued: '⛔ Descontinuado',
 }
 
@@ -98,8 +97,7 @@ function AddProductModal({ projectId, onClose, onAdded }: {
         <Field label="Status">
           <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className={inputCls}>
             <option value="active">🟢 Ativo</option>
-            <option value="inactive">🔴 Inativo</option>
-            <option value="testing">🟡 Teste</option>
+            <option value="paused">🔴 Pausado</option>
             <option value="discontinued">⛔ Descontinuado</option>
           </select>
         </Field>
