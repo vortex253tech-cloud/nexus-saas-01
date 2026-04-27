@@ -48,17 +48,19 @@ function buildSummary(
   const errorCount     = logs.filter(l => l.status === 'error').length
   const skippedCount   = logs.filter(l => l.status === 'skipped').length
 
-  const actionLogs      = logs.filter(l => l.nodeType === 'ACTION')
+  // Match both engine type ('ACTION') and canvas raw type ('auto_action')
+  const actionLogs      = logs.filter(l => l.nodeType === 'ACTION' || l.nodeType === 'auto_action')
   const actionsExecuted = actionLogs.filter(l => l.status === 'success').length
 
   const emailsSent = actionLogs.reduce((sum, l) => {
-    const out = l.output as Record<string, number> | null
-    return sum + (out?.succeeded ?? 0)
+    const out = l.output as Record<string, unknown> | null
+    if (out?.channel === 'email') return sum + Number(out?.succeeded ?? out?.sent ?? 0)
+    return sum + Number((out?.succeeded as number | undefined) ?? 0)
   }, 0)
 
   const whatsappSent = actionLogs.reduce((sum, l) => {
     const out = l.output as Record<string, unknown> | null
-    if (out?.channel === 'whatsapp') return sum + (Number(out?.sent ?? 0))
+    if (out?.channel === 'whatsapp') return sum + Number(out?.sent ?? out?.succeeded ?? 0)
     const payload = out?.payload as Record<string, unknown> | undefined
     if (payload?.recipients && Array.isArray(payload.recipients)) return sum + payload.recipients.length
     return sum

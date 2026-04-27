@@ -55,10 +55,12 @@ async function fetchData(
   _filters?: Record<string, unknown>,
 ): Promise<AnalysisOutput> {
   switch (source) {
-    case 'overdue':   return fetchOverdue(db, companyId, limit)
-    case 'invoices':  return fetchInvoices(db, companyId, limit)
-    case 'financial': return fetchFinancial(db, companyId, limit)
-    default:          return fetchClients(db, companyId, limit)
+    case 'overdue':     return fetchOverdue(db, companyId, limit)
+    case 'invoices':    return fetchInvoices(db, companyId, limit)
+    case 'financial':   return fetchFinancial(db, companyId, limit)
+    case 'inactive':    return fetchInactiveClients(db, companyId, limit)
+    case 'all_clients': return fetchClients(db, companyId, limit)
+    default:            return fetchClients(db, companyId, limit)
   }
 }
 
@@ -121,6 +123,24 @@ async function fetchFinancial(db: SupabaseClient, companyId: string, limit: numb
     records,
     summary: { revenue, expenses, profit: revenue - expenses },
     source:  'financial',
+  }
+}
+
+async function fetchInactiveClients(db: SupabaseClient, companyId: string, limit: number): Promise<AnalysisOutput> {
+  const { data } = await db
+    .from('clients')
+    .select('id, name, email, status, phone')
+    .eq('company_id', companyId)
+    .eq('status', 'inactive')
+    .limit(limit)
+
+  const records = data ?? []
+
+  return {
+    count:   records.length,
+    records,
+    summary: { total: records.length, inactive: records.length },
+    source:  'inactive',
   }
 }
 

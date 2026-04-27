@@ -59,11 +59,8 @@ export class FlowEngineService {
     try {
       await this.runNodes(flow.nodes, flow.edges, ctx, executionId)
 
-      const hasErrors = ctx.logs.some(l => l.status === 'error')
-      const status    = hasErrors ? 'completed' : 'completed'
-
       await this.repo.updateExecution(
-        executionId, status, ctx.logs,
+        executionId, 'completed', ctx.logs,
         ctx.lastOutput,
         new Date().toISOString(),
       )
@@ -100,6 +97,28 @@ export class FlowEngineService {
     return { logs: ctx.logs, output: ctx.lastOutput }
   }
 
+  // ─── Node normaliser ─────────────────────────────────────────────────────────
+  // Canvas nodes are stored as GrowthNode: { id, type, position, data: { label, config } }
+  // The engine FlowNode interface expects a top-level `config` field.
+  // This method bridges the gap by promoting data.config → config so every
+  // handler can safely read `node.config` without touching `node.data`.
+
+  private normaliseNode(raw: FlowNode): FlowNode {
+    const data = raw.data as Record<string, unknown> | undefined
+
+    // Config is already at top level (engine-native format) — keep as-is
+    if (raw.config && Object.keys(raw.config).length > 0) return raw
+
+    // Promote data.config to top-level config (canvas / template format)
+    const dataConfig = (data?.config ?? {}) as Record<string, unknown>
+
+    return {
+      ...raw,
+      config: dataConfig,
+      label:  raw.label ?? (data?.label as string | undefined),
+    }
+  }
+
   // ─── Node runner ────────────────────────────────────────────────────────────
   // RESILIENCE: each node is individually isolated. An error in any single
   // node is logged and execution continues — it does NOT halt the flow.
@@ -114,7 +133,9 @@ export class FlowEngineService {
     const sorted          = this.topologicalSort(nodes, edges)
     const branchDecisions = new Map<string, string>()
 
-    for (const node of sorted) {
+    for (const rawNode of sorted) {
+      // Normalise canvas format → engine format before any access
+      const node    = this.normaliseNode(rawNode)
       const skipped = this.shouldSkip(node, edges, branchDecisions)
 
       if (skipped) {
@@ -145,28 +166,24 @@ export class FlowEngineService {
         if (result.success) {
           ctx.lastOutput = result.output
         } else {
-          // Node failed — log error but keep lastOutput and continue
-          // TRIGGER failure is special: it means the flow should not run at all
+          // TRIGGER failure halts the flow; all other failures are logged and swallowed
           if (this.normaliseType(node.type) === (FlowNodeType.TRIGGER as string)) {
             log.status  = 'error'
             await this.repo.appendLog(executionId, ctx.logs)
             throw new Error(result.message ?? 'Trigger condition failed')
           }
-          // All other nodes: log error, keep going
           log.status = 'error'
         }
 
         await this.repo.appendLog(executionId, ctx.logs)
 
       } catch (err) {
-        // Unexpected runtime exception (network, DB, etc.)
         const log = this.makeLog(node, 'error', ctx.lastOutput, null, Date.now() - t0, String(err))
         ctx.logs.push(log)
         await this.repo.appendLog(executionId, ctx.logs)
 
-        // Re-throw only for TRIGGER so the outer handler marks flow as error
         if (this.normaliseType(node.type) === FlowNodeType.TRIGGER) throw err
-        // For all other nodes, swallow and continue
+        // All other nodes: swallow and continue
       }
     }
   }
@@ -200,7 +217,7 @@ export class FlowEngineService {
       data_analysis: FlowNodeType.ANALYSIS,
       opportunity:   FlowNodeType.ANALYSIS,
       decision:      FlowNodeType.DECISION,
-      message_gen:   'MESSAGE_GEN',           // enriches records with message content
+      message_gen:   'MESSAGE_GEN',
       auto_action:   FlowNodeType.ACTION,
       result:        FlowNodeType.RESULT,
     }
