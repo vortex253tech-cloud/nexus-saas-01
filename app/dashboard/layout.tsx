@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Database, Zap, Bell, History,
   CreditCard, Menu, X, Building2, ChevronRight,
   DollarSign, MessageSquare, LogOut, Users, Clock,
-  ArrowRight, Mail, FolderOpen,
+  ArrowRight, Mail, FolderOpen, Map,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -17,8 +17,9 @@ const NAV = [
   { href: '/dashboard/financeiro', label: 'Financeiro',    icon: DollarSign },
   { href: '/dashboard/clients',    label: 'Clientes',      icon: Users },
   { href: '/dashboard/messages',   label: 'Mensagens',     icon: Mail },
-  { href: '/dashboard/projects',   label: 'Projetos',      icon: FolderOpen },
-  { href: '/dashboard/assistant',  label: 'Assistente IA', icon: MessageSquare },
+  { href: '/dashboard/projects',    label: 'Projetos',           icon: FolderOpen },
+  { href: '/dashboard/growth-map', label: 'Mapa de Crescimento', icon: Map },
+  { href: '/dashboard/assistant',  label: 'Assistente IA',       icon: MessageSquare },
   { href: '/dashboard/dados',      label: 'Dados',         icon: Database },
   { href: '/dashboard/actions',    label: 'Ações',         icon: Zap },
   { href: '/dashboard/alerts',     label: 'Alertas',       icon: Bell },
