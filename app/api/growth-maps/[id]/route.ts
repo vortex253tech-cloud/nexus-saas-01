@@ -23,16 +23,30 @@ export async function GET(_: NextRequest, { params }: Params) {
 
   if (error || !data) return NextResponse.json({ error: 'Mapa não encontrado' }, { status: 404 })
 
-  // Last execution
+  // Last execution from the flow engine table
   const { data: lastExec } = await db
-    .from('growth_map_executions')
-    .select('id, results, summary, actions_taken, created_at')
-    .eq('map_id', id)
-    .order('created_at', { ascending: false })
+    .from('flow_executions')
+    .select('id, status, logs, output, started_at, finished_at')
+    .eq('flow_id', id)
+    .eq('company_id', ctx.company.id)
+    .order('started_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
-  return NextResponse.json({ map: data, lastExecution: lastExec ?? null })
+  const lastExecution = lastExec
+    ? {
+        id:         (lastExec as Record<string, unknown>).id as string,
+        flowId:     id,
+        companyId:  ctx.company.id,
+        status:     (lastExec as Record<string, unknown>).status as string,
+        logs:       (lastExec as Record<string, unknown>).logs ?? [],
+        output:     (lastExec as Record<string, unknown>).output ?? null,
+        startedAt:  (lastExec as Record<string, unknown>).started_at as string,
+        finishedAt: (lastExec as Record<string, unknown>).finished_at as string | undefined,
+      }
+    : null
+
+  return NextResponse.json({ map: data, lastExecution })
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {

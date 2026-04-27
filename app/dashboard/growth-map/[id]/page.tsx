@@ -200,10 +200,24 @@ export default function GrowthMapDetailPage() {
     setLoading(true)
     try {
       const res  = await fetch(`/api/growth-maps/${id}`)
-      const data = await res.json() as { map?: MapData; error?: string }
+      const data = await res.json() as {
+        map?: MapData
+        lastExecution?: ExecutionRecord | null
+        error?: string
+      }
       if (!res.ok) { setError(data.error ?? 'Erro ao carregar mapa'); return }
       setMap(data.map ?? null)
+      // Show last completed execution on first load (don't overwrite a live result)
+      if (data.lastExecution && !execResult) {
+        const exec = data.lastExecution
+        if (exec.status === 'completed' || exec.status === 'error') {
+          setExecResult(exec)
+          setNodeResults(logsToResults(exec))
+          setNodeStatuses(logsToNodeStatuses(exec))
+        }
+      }
     } finally { setLoading(false) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   useEffect(() => { void load() }, [load])
