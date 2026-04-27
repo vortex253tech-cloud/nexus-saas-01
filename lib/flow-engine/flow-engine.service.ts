@@ -99,8 +99,8 @@ export class FlowEngineService {
     ctx:         ExecutionContext,
     executionId: string,
   ): Promise<void> {
-    const sorted         = this.topologicalSort(nodes, edges)
-    const branchDecisions = new Map<string, 'true' | 'false'>()
+    const sorted          = this.topologicalSort(nodes, edges)
+    const branchDecisions = new Map<string, string>()
 
     for (const node of sorted) {
       const skipped = this.shouldSkip(node, edges, branchDecisions)
@@ -128,6 +128,8 @@ export class FlowEngineService {
         // Propagate branch decision for DECISION nodes
         if (result.nextBranch) {
           branchDecisions.set(node.id, result.nextBranch)
+          // Stamp the chosen path onto the log message for traceability
+          log.message = result.message ?? `Decision → "${result.nextBranch}"`
         }
 
         // Non-DECISION failure halts the flow
@@ -223,20 +225,38 @@ export class FlowEngineService {
   }
 
   // ─── Branch skip logic ───────────────────────────────────────────────────────
-  // A node is skipped when ALL its conditional incoming edges point to the branch
-  // NOT taken by the upstream DECISION node.
+  // For each upstream DECISION node that has conditional edges to this node:
+  //   - Direct match:    edge.condition === decision taken  → keep node
+  //   - Default fallback: edge.condition === 'default'     → keep node (catch-all)
+  //   - No match at all:                                   → skip node
+  //
+  // Unconditional edges (no condition) are always traversed.
 
   private shouldSkip(
     node:            FlowNode,
     edges:           FlowEdge[],
-    branchDecisions: Map<string, 'true' | 'false'>,
+    branchDecisions: Map<string, string>,
   ): boolean {
-    const conditionalIncoming = edges.filter(e => e.target === node.id && e.condition)
+    const conditionalIncoming = edges.filter(e => e.target === node.id && e.condition != null)
+    if (conditionalIncoming.length === 0) return false
 
-    for (const edge of conditionalIncoming) {
-      const taken = branchDecisions.get(edge.source)
-      if (taken === undefined) continue          // source hasn't decided yet
-      if (edge.condition !== taken) return true  // wrong branch
+    // Group by source decision node
+    const sources = [...new Set(conditionalIncoming.map(e => e.source))]
+
+    for (const sourceId of sources) {
+      const decision = branchDecisions.get(sourceId)
+      if (decision === undefined) continue  // source hasn't run (shouldn't happen in toposort)
+
+      const edgesFromSource = conditionalIncoming.filter(e => e.source === sourceId)
+
+      // Direct match: this node has an edge for exactly the chosen condition
+      if (edgesFromSource.some(e => e.condition === decision)) continue
+
+      // Default fallback: this node has a catch-all edge from this source
+      if (edgesFromSource.some(e => e.condition === 'default')) continue
+
+      // Neither direct match nor default → this source blocks the node
+      return true
     }
 
     return false

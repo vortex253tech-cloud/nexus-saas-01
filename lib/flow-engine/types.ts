@@ -25,8 +25,13 @@ export interface FlowEdge {
   id:         string
   source:     string
   target:     string
-  /** Used by DECISION nodes to route branches */
-  condition?: 'true' | 'false'
+  /**
+   * Named condition set by the upstream DECISION node.
+   * e.g. 'high_value', 'low_value', 'default'
+   * Legacy values 'true'/'false' are still accepted.
+   * Edges without a condition are always traversed.
+   */
+  condition?: string
 }
 
 // ─── Execution context (shared across all handlers in a run) ─────────────────
@@ -48,8 +53,12 @@ export interface ExecutionContext {
 export interface NodeResult {
   success:     boolean
   output:      unknown
-  /** DECISION nodes set this to route downstream edges */
-  nextBranch?: 'true' | 'false'
+  /**
+   * Named condition chosen by a DECISION node.
+   * Downstream edges with matching condition are traversed;
+   * edges with condition='default' are traversed as fallback.
+   */
+  nextBranch?: string
   message?:    string
 }
 
