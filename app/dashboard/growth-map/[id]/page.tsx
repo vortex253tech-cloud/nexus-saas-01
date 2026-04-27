@@ -1,11 +1,14 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useParams, useRouter }             from 'next/navigation'
-import dynamic                              from 'next/dynamic'
-import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, Zap, List } from 'lucide-react'
-import type { GrowthNode, GrowthEdge }      from '@/lib/growth-map-types'
-import type { ExecutionRecord }             from '@/lib/flow-engine/types'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { useParams, useRouter }                      from 'next/navigation'
+import dynamic                                       from 'next/dynamic'
+import {
+  ArrowLeft, Loader2, CheckCircle2, AlertCircle, Zap, List,
+  TrendingUp, Mail, MessageCircle, Users,
+} from 'lucide-react'
+import type { GrowthNode, GrowthEdge, NodeResult } from '@/lib/growth-map-types'
+import type { ExecutionRecord }                     from '@/lib/flow-engine/types'
 
 // ─── Dynamic import — React Flow needs browser APIs ──────────────────────────
 
@@ -25,6 +28,29 @@ interface MapData {
   nodes: GrowthNode[]; edges: GrowthEdge[]
 }
 
+type NodeStatus = 'pending' | 'running' | 'success' | 'error' | 'skipped'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function logsToNodeStatuses(exec: ExecutionRecord): Record<string, NodeStatus> {
+  return exec.logs.reduce<Record<string, NodeStatus>>((acc, log) => {
+    acc[log.nodeId] = log.status as NodeStatus
+    return acc
+  }, {})
+}
+
+function logsToResults(exec: ExecutionRecord): Record<string, NodeResult> {
+  return exec.logs.reduce<Record<string, NodeResult>>((acc, log) => {
+    acc[log.nodeId] = {
+      success: log.status === 'success',
+      label:   log.message ?? (log.status === 'skipped' ? 'Pulado' : log.status === 'error' ? 'Erro' : 'Concluído'),
+      output:  (log.output as Record<string, unknown>) ?? {},
+      error:   log.status === 'error' ? (log.message ?? 'Erro') : undefined,
+    }
+    return acc
+  }, {})
+}
+
 // ─── Execution result panel ───────────────────────────────────────────────────
 
 function ExecutionPanel({
@@ -34,21 +60,29 @@ function ExecutionPanel({
   exec: ExecutionRecord
   onClose: () => void
 }) {
-  const out = exec.output as Record<string, unknown> | null
-  const steps   = (out?.stepsExecuted as number) ?? exec.logs.length
-  const actions = (out?.actionsExecuted as number) ?? 0
-  const emails  = (out?.emailsSent as number) ?? 0
-  const errors  = exec.logs.filter(l => l.status === 'error').length
+  const out  = exec.output as Record<string, unknown> | null
+  const steps    = (out?.stepsExecuted    as number) ?? exec.logs.length
+  const actions  = (out?.actionsExecuted  as number) ?? 0
+  const emails   = (out?.emailsSent       as number) ?? 0
+  const whatsapp = (out?.whatsappSent     as number) ?? 0
+  const clients  = (out?.clientsReached   as number) ?? (emails + whatsapp)
+  const revenue  = (out?.revenueImpact    as number) ?? 0
+  const errors   = exec.logs.filter(l => l.status === 'error').length
+  const insights = (out?.insights as string[] | undefined) ?? []
+
+  const fmtBRL = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4">
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-xl px-4">
       <div className={[
         'rounded-2xl border backdrop-blur-sm p-5 shadow-2xl',
         exec.status === 'completed'
           ? 'border-emerald-500/30 bg-zinc-900/95'
           : 'border-red-500/30 bg-zinc-900/95',
       ].join(' ')}>
-        <div className="flex items-start justify-between gap-3 mb-3">
+
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex items-center gap-2.5">
             {exec.status === 'completed'
               ? <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
@@ -61,16 +95,40 @@ function ExecutionPanel({
           <button onClick={onClose} className="text-zinc-500 hover:text-white text-lg leading-none">×</button>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 mb-3">
-          <Stat label="Passos" value={steps} />
-          <Stat label="Ações"  value={actions} />
-          <Stat label="Emails" value={emails} accent={emails > 0} />
+        {/* Metrics grid */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <Stat label="Passos"   value={String(steps)}   icon={<List size={10} />} />
+          <Stat label="Ações"    value={String(actions)}  icon={<Zap size={10} />} />
+          <Stat label="Emails"   value={String(emails)}   icon={<Mail size={10} />} accent={emails > 0} />
+          <Stat label="WhatsApp" value={String(whatsapp)} icon={<MessageCircle size={10} />} accent={whatsapp > 0} />
+          <Stat label="Alcance"  value={String(clients)}  icon={<Users size={10} />} />
+          {revenue > 0 && (
+            <Stat label="Potencial" value={fmtBRL(revenue)} icon={<TrendingUp size={10} />} accent />
+          )}
         </div>
 
         {errors > 0 && (
-          <p className="text-xs text-red-400 mb-2">{errors} passo(s) com erro — veja os logs</p>
+          <p className="text-xs text-red-400 mb-2">{errors} passo(s) com erro — veja os logs abaixo</p>
         )}
 
+        {/* AI Insights */}
+        {insights.length > 0 && (
+          <div className="mb-3 rounded-lg bg-violet-600/10 border border-violet-600/20 px-3 py-2">
+            <p className="text-[10px] font-bold text-violet-400 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+              <Zap size={9} /> Insights do fluxo
+            </p>
+            <ul className="space-y-0.5">
+              {insights.slice(0, 4).map((ins, i) => (
+                <li key={i} className="text-[11px] text-zinc-400 flex gap-1">
+                  <span className="text-violet-500 shrink-0">•</span>
+                  {ins}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Step logs */}
         {exec.logs.length > 0 && (
           <details className="text-[10px] text-zinc-500 mt-2">
             <summary className="cursor-pointer flex items-center gap-1 hover:text-zinc-400">
@@ -80,8 +138,8 @@ function ExecutionPanel({
               {exec.logs.map((log, i) => (
                 <div key={i} className={[
                   'flex gap-2 rounded px-2 py-1',
-                  log.status === 'error'   ? 'bg-red-500/10 text-red-400' :
-                  log.status === 'skipped' ? 'bg-zinc-800 text-zinc-600'  :
+                  log.status === 'error'   ? 'bg-red-500/10 text-red-400'   :
+                  log.status === 'skipped' ? 'bg-zinc-800 text-zinc-600'     :
                                              'bg-zinc-800/50 text-zinc-400',
                 ].join(' ')}>
                   <span className="shrink-0">
@@ -99,11 +157,15 @@ function ExecutionPanel({
   )
 }
 
-function Stat({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
+function Stat({
+  label, value, accent = false, icon,
+}: {
+  label: string; value: string; accent?: boolean; icon?: React.ReactNode
+}) {
   return (
     <div className="rounded-lg bg-zinc-800/60 px-3 py-2 text-center">
-      <p className={['text-lg font-bold', accent ? 'text-violet-400' : 'text-white'].join(' ')}>{value}</p>
-      <p className="text-[10px] text-zinc-500">{label}</p>
+      <p className={['text-sm font-bold', accent ? 'text-violet-400' : 'text-white'].join(' ')}>{value}</p>
+      <p className="text-[10px] text-zinc-500 flex items-center justify-center gap-0.5 mt-0.5">{icon}{label}</p>
     </div>
   )
 }
@@ -114,13 +176,24 @@ export default function GrowthMapDetailPage() {
   const { id }   = useParams<{ id: string }>()
   const router   = useRouter()
 
-  const [map,        setMap]        = useState<MapData | null>(null)
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState('')
-  const [saving,     setSaving]     = useState(false)
-  const [executing,  setExecuting]  = useState(false)
-  const [execResult, setExecResult] = useState<ExecutionRecord | null>(null)
-  const [execError,  setExecError]  = useState('')
+  const [map,          setMap]          = useState<MapData | null>(null)
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState('')
+  const [saving,       setSaving]       = useState(false)
+  const [executing,    setExecuting]    = useState(false)
+  const [execResult,   setExecResult]   = useState<ExecutionRecord | null>(null)
+  const [execError,    setExecError]    = useState('')
+  const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({})
+  const [nodeResults,  setNodeResults]  = useState<Record<string, NodeResult> | null>(null)
+
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const stopPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -133,6 +206,7 @@ export default function GrowthMapDetailPage() {
   }, [id])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => stopPolling, [])   // cleanup on unmount
 
   // ─── Save handler ────────────────────────────────────────────────────────────
 
@@ -154,9 +228,12 @@ export default function GrowthMapDetailPage() {
     setExecuting(true)
     setExecError('')
     setExecResult(null)
+    setNodeStatuses({})
+    setNodeResults(null)
+    stopPolling()
 
     try {
-      // 1. Enqueue + run
+      // 1. Start execution
       const execRes  = await fetch(`/api/growth-maps/${id}/execute`, { method: 'POST' })
       const execData = await execRes.json() as { executionId?: string; error?: string }
 
@@ -165,20 +242,40 @@ export default function GrowthMapDetailPage() {
         return
       }
 
-      // 2. Fetch the completed execution record (already done — no polling needed)
-      const statusRes  = await fetch(`/api/growth-maps/${id}/executions/${execData.executionId}`)
-      const statusData = await statusRes.json() as { execution?: ExecutionRecord }
+      const executionId = execData.executionId
 
-      if (statusData.execution) {
-        setExecResult(statusData.execution)
-        if (statusData.execution.status === 'error') {
-          const out = statusData.execution.output as Record<string, unknown> | null
-          setExecError((out?.error as string) ?? 'Erro na execução')
+      // 2. Poll every 800ms until completed/error
+      const poll = async () => {
+        const statusRes  = await fetch(`/api/growth-maps/${id}/executions/${executionId}`)
+        const statusData = await statusRes.json() as { execution?: ExecutionRecord }
+        const exec       = statusData.execution
+
+        if (!exec) return
+
+        // Live update node colors
+        setNodeStatuses(logsToNodeStatuses(exec))
+
+        if (exec.status === 'completed' || exec.status === 'error') {
+          stopPolling()
+          setExecResult(exec)
+          setNodeResults(logsToResults(exec))
+          if (exec.status === 'error') {
+            const out = exec.output as Record<string, unknown> | null
+            setExecError((out?.error as string) ?? 'Erro na execução')
+          }
+          void load()
         }
       }
 
-      void load()  // refresh last-executed timestamp in header
-    } finally { setExecuting(false) }
+      // Run first poll immediately, then interval
+      await poll()
+      pollingRef.current = setInterval(() => { void poll() }, 800)
+
+    } catch (err) {
+      setExecError(String(err))
+    } finally {
+      setExecuting(false)
+    }
   }
 
   // ─── Loading / Error states ───────────────────────────────────────────────
@@ -250,11 +347,19 @@ export default function GrowthMapDetailPage() {
           onExecute={handleExecute}
           executing={executing}
           saving={saving}
-          results={null}
+          results={nodeResults}
+          nodeStatuses={Object.keys(nodeStatuses).length > 0 ? nodeStatuses : undefined}
         />
 
         {execResult && (
-          <ExecutionPanel exec={execResult} onClose={() => setExecResult(null)} />
+          <ExecutionPanel
+            exec={execResult}
+            onClose={() => {
+              setExecResult(null)
+              setNodeStatuses({})
+              setNodeResults(null)
+            }}
+          />
         )}
       </div>
     </div>

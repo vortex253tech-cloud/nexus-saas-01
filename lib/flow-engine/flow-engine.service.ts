@@ -1,6 +1,8 @@
-import { FlowRepository } from './flow-repository'
-import { FlowNodeType }   from './types'
+import { FlowRepository }   from './flow-repository'
+import { FlowNodeType }     from './types'
 import type { FlowNode, FlowEdge, ExecutionContext, NodeResult, StepLog } from './types'
+import { buildFlowContext } from './context-builder'
+import { analyzeExecution } from './analyze-execution'
 
 import { handleTrigger }  from './handlers/trigger.handler'
 import { handleAnalysis } from './handlers/analysis.handler'
@@ -42,11 +44,14 @@ export class FlowEngineService {
       return
     }
 
+    // Build rich business context before execution
+    const flowContext = await buildFlowContext(companyId, flowId).catch(() => undefined)
+
     const ctx: ExecutionContext = {
       flowId,
       executionId,
       companyId,
-      variables:  {},
+      variables:  { flowContext },
       logs:       [],
       lastOutput: null,
     }
@@ -60,6 +65,9 @@ export class FlowEngineService {
         new Date().toISOString(),
       )
       await this.repo.updateLastExecuted(flowId)
+
+      // Post-execution auto-analysis (fire-and-forget)
+      analyzeExecution(executionId, flowId, companyId, ctx.logs, ctx.lastOutput).catch(() => undefined)
 
     } catch (err) {
       await this.repo.updateExecution(

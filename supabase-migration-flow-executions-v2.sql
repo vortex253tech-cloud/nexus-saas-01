@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS flow_executions (
 
 ALTER TABLE flow_executions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "service_role_bypass" ON flow_executions;
 CREATE POLICY "service_role_bypass" ON flow_executions
   TO service_role USING (true) WITH CHECK (true);
 

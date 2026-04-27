@@ -33,39 +33,85 @@ const NODE_META: Record<NodeType, { label: string; icon: string; color: string; 
   result:        { label: 'Resultado',         icon: '🎯', color: '#10b981', desc: 'Métricas e resumo do fluxo' },
 }
 
+// ─── Status config ────────────────────────────────────────────────────────────
+
+type NodeStatus = 'pending' | 'running' | 'success' | 'error' | 'skipped'
+
+const STATUS_META: Record<NodeStatus, { dot: string; label: string; ring: string }> = {
+  pending: { dot: '🟡', label: 'Aguardando', ring: 'ring-yellow-500/40' },
+  running: { dot: '🔵', label: 'Executando', ring: 'ring-blue-500/60'  },
+  success: { dot: '🟢', label: 'Concluído',  ring: 'ring-emerald-500/60' },
+  error:   { dot: '🔴', label: 'Erro',        ring: 'ring-red-500/60'   },
+  skipped: { dot: '⏭️', label: 'Pulado',      ring: 'ring-zinc-500/40'  },
+}
+
 // ─── Custom node component ────────────────────────────────────────────────────
 
-function GrowthNodeComponent({ data }: { data: { label: string; type: NodeType; config: unknown; result?: NodeResult } }) {
-  const meta = NODE_META[data.type]
-  const res  = data.result
+function GrowthNodeComponent({
+  data,
+}: {
+  data: {
+    label:   string
+    type:    NodeType
+    config:  unknown
+    result?: NodeResult
+    status?: NodeStatus
+  }
+}) {
+  const meta   = NODE_META[data.type] ?? NODE_META.result
+  const res    = data.result
+  const status = data.status
+  const sm     = status ? STATUS_META[status] : undefined
 
   return (
-    <div style={{ borderColor: meta.color }} className="rounded-2xl border-2 bg-zinc-900 min-w-[220px] max-w-[260px] overflow-hidden shadow-xl">
+    <div
+      style={{ borderColor: status === 'error' ? '#ef4444' : status === 'success' ? '#10b981' : meta.color }}
+      className={cn(
+        'rounded-2xl border-2 bg-zinc-900 min-w-[220px] max-w-[260px] overflow-hidden shadow-xl transition-all duration-300',
+        sm?.ring && `ring-2 ${sm.ring}`,
+      )}
+    >
       {/* Header */}
-      <div style={{ backgroundColor: `${meta.color}20` }} className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-800">
+      <div
+        style={{ backgroundColor: `${meta.color}20` }}
+        className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-800"
+      >
         <span className="text-lg">{meta.icon}</span>
         <div className="min-w-0">
           <p className="text-[11px] font-bold text-zinc-300 uppercase tracking-wide">{meta.label}</p>
           <p className="text-xs text-white font-medium truncate">{data.label}</p>
         </div>
-        {res && (
-          <span className={cn('ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold',
-            res.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+
+        {/* Status / result badge */}
+        {sm ? (
+          <span className={cn(
+            'ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap flex items-center gap-0.5',
+            status === 'success' ? 'bg-emerald-500/20 text-emerald-400' :
+            status === 'error'   ? 'bg-red-500/20 text-red-400'         :
+            status === 'running' ? 'bg-blue-500/20 text-blue-400'       :
+            status === 'skipped' ? 'bg-zinc-700 text-zinc-400'          :
+                                   'bg-yellow-500/20 text-yellow-400',
+          )}>
+            <span>{sm.dot}</span>
+            <span>{sm.label}</span>
+          </span>
+        ) : res ? (
+          <span className={cn(
+            'ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold',
+            res.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400',
           )}>
             {res.success ? '✓' : '✗'}
           </span>
-        )}
+        ) : null}
       </div>
 
-      {/* Result */}
-      {res && (
+      {/* Result / description body */}
+      {res ? (
         <div className="px-3 py-2 bg-zinc-800/50">
           <p className="text-[11px] text-zinc-300 leading-relaxed">{res.label}</p>
           {res.error && <p className="text-[10px] text-red-400 mt-1">{res.error}</p>}
         </div>
-      )}
-
-      {!res && (
+      ) : (
         <div className="px-3 py-2">
           <p className="text-[10px] text-zinc-600">{meta.desc}</p>
         </div>
@@ -82,23 +128,23 @@ function GrowthNodeComponent({ data }: { data: { label: string; type: NodeType; 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface CanvasProps {
-  mapId:      string
+  mapId:        string
   initialNodes: GrowthNode[]
   initialEdges: GrowthEdge[]
-  onSave:     (nodes: GrowthNode[], edges: GrowthEdge[]) => Promise<void>
-  onExecute:  () => Promise<void>
-  executing:  boolean
-  saving:     boolean
-  results:    Record<string, NodeResult> | null
+  onSave:       (nodes: GrowthNode[], edges: GrowthEdge[]) => Promise<void>
+  onExecute:    () => Promise<void>
+  executing:    boolean
+  saving:       boolean
+  results:      Record<string, NodeResult> | null
+  nodeStatuses?: Record<string, NodeStatus>
 }
 
 // ─── Canvas ───────────────────────────────────────────────────────────────────
 
 export default function GrowthCanvas({
-  initialNodes, initialEdges, onSave, onExecute, executing, saving, results,
+  initialNodes, initialEdges, onSave, onExecute, executing, saving, results, nodeStatuses,
 }: CanvasProps) {
 
-  // Merge results into node data
   const nodesWithResults = useMemo<Node[]>(() =>
     initialNodes.map(n => ({
       ...n,
@@ -106,9 +152,10 @@ export default function GrowthCanvas({
         ...n.data,
         type:   n.type,
         result: results?.[n.id] ?? n.data.result,
+        status: nodeStatuses?.[n.id],
       },
     })),
-    [initialNodes, results],
+    [initialNodes, results, nodeStatuses],
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(nodesWithResults)
@@ -128,7 +175,6 @@ export default function GrowthCanvas({
     result:        GrowthNodeComponent,
   }), [])
 
-  // Node palette for adding new blocks
   const NODE_TYPES = Object.entries(NODE_META) as [NodeType, (typeof NODE_META)[NodeType]][]
 
   function addNode(type: NodeType) {
@@ -137,11 +183,7 @@ export default function GrowthCanvas({
       id:       `n${Date.now()}`,
       type,
       position: { x: 200 + Math.random() * 300, y: 200 + Math.random() * 200 },
-      data: {
-        label:  meta.label,
-        type,
-        config: {},
-      },
+      data: { label: meta.label, type, config: {} },
     }
     setNodes(ns => [...ns, newNode])
   }
@@ -149,6 +191,9 @@ export default function GrowthCanvas({
   async function handleSave() {
     await onSave(nodes as unknown as GrowthNode[], edges as unknown as GrowthEdge[])
   }
+
+  // ── Legend (shown while executing or after execution) ─────────────────────
+  const showLegend = executing || (nodeStatuses && Object.keys(nodeStatuses).length > 0)
 
   return (
     <div className="h-full w-full relative">
@@ -172,7 +217,16 @@ export default function GrowthCanvas({
 
         {/* Top panel — actions */}
         <Panel position="top-right">
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {/* Execution status legend */}
+            {showLegend && (
+              <div className="flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-[10px] text-zinc-400">
+                {Object.entries(STATUS_META).map(([s, m]) => (
+                  <span key={s} className="flex items-center gap-0.5">{m.dot} {m.label}</span>
+                ))}
+              </div>
+            )}
+
             <button onClick={() => void handleSave()} disabled={saving}
               className="flex items-center gap-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 disabled:opacity-50 transition-colors">
               {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
