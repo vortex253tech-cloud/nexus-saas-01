@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence }           from 'framer-motion'
 import { useRouter }                         from 'next/navigation'
 import {
-  Map, Plus, Loader2, Zap, Clock, Trash2, ChevronRight, X, Play,
+  Map, Plus, Loader2, Zap, Clock, Trash2, ChevronRight, X, Play, Store, Sparkles,
 } from 'lucide-react'
 import { GROWTH_TEMPLATES } from '@/lib/growth-map-types'
 import { cn } from '@/lib/cn'
@@ -136,10 +136,16 @@ export default function GrowthMapPage() {
           </h1>
           <p className="text-zinc-400 text-sm mt-1">Automatize estratégias completas — a IA pensa, decide e executa</p>
         </div>
-        <button onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors">
-          <Plus size={16} /> Novo mapa
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => router.push('/dashboard/marketplace')}
+            className="flex items-center gap-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors">
+            <Store size={15} /> Marketplace
+          </button>
+          <button onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors">
+            <Plus size={16} /> Novo mapa
+          </button>
+        </div>
       </div>
 
       {/* Template preview strip */}

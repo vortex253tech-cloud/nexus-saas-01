@@ -5,7 +5,7 @@ import { useParams, useRouter }                      from 'next/navigation'
 import dynamic                                       from 'next/dynamic'
 import {
   ArrowLeft, Loader2, CheckCircle2, AlertCircle, Zap, List,
-  TrendingUp, Mail, MessageCircle, Users,
+  TrendingUp, Mail, MessageCircle, Users, Upload, X,
 } from 'lucide-react'
 import type { GrowthNode, GrowthEdge, NodeResult } from '@/lib/growth-map-types'
 import type { ExecutionRecord }                     from '@/lib/flow-engine/types'
@@ -183,8 +183,9 @@ export default function GrowthMapDetailPage() {
   const [executing,    setExecuting]    = useState(false)
   const [execResult,   setExecResult]   = useState<ExecutionRecord | null>(null)
   const [execError,    setExecError]    = useState('')
-  const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({})
-  const [nodeResults,  setNodeResults]  = useState<Record<string, NodeResult> | null>(null)
+  const [nodeStatuses,    setNodeStatuses]    = useState<Record<string, NodeStatus>>({})
+  const [nodeResults,     setNodeResults]     = useState<Record<string, NodeResult> | null>(null)
+  const [showSaveAsModal, setShowSaveAsModal] = useState(false)
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -326,6 +327,12 @@ export default function GrowthMapDetailPage() {
         ].join(' ')}>
           {map.status === 'active' ? '● Ativo' : '◯ Rascunho'}
         </span>
+        <button
+          onClick={() => setShowSaveAsModal(true)}
+          title="Salvar como template"
+          className="p-1.5 rounded-lg text-zinc-500 hover:text-violet-400 hover:bg-zinc-800 transition-colors">
+          <Upload size={14} />
+        </button>
       </div>
 
       {/* Exec error banner */}
@@ -360,6 +367,117 @@ export default function GrowthMapDetailPage() {
               setNodeResults(null)
             }}
           />
+        )}
+      </div>
+
+      {/* Save as Template modal */}
+      {showSaveAsModal && map && (
+        <SaveAsTemplateModal
+          map={map}
+          onClose={() => setShowSaveAsModal(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Save as Template Modal ───────────────────────────────────────────────────
+
+function SaveAsTemplateModal({
+  map,
+  onClose,
+}: {
+  map: { name: string; description: string; nodes: GrowthNode[]; edges: GrowthEdge[] }
+  onClose: () => void
+}) {
+  const CATEGORIES = [
+    { key: 'general',      label: 'Geral'       },
+    { key: 'recovery',     label: 'Recuperação' },
+    { key: 'reactivation', label: 'Reativação'  },
+    { key: 'upsell',       label: 'Upsell'      },
+    { key: 'sales',        label: 'Vendas'      },
+    { key: 'retention',    label: 'Retenção'    },
+    { key: 'onboarding',   label: 'Onboarding'  },
+  ]
+
+  const [name,     setName]     = useState(map.name)
+  const [desc,     setDesc]     = useState(map.description)
+  const [category, setCategory] = useState('general')
+  const [saving,   setSaving]   = useState(false)
+  const [saved,    setSaved]    = useState(false)
+  const [error,    setError]    = useState('')
+
+  async function handleSave() {
+    if (!name.trim()) { setError('Nome é obrigatório'); return }
+    setSaving(true); setError('')
+    const res = await fetch('/api/flow-templates', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name.trim(), description: desc.trim(), category,
+        nodes: map.nodes, edges: map.edges,
+      }),
+    })
+    const data = await res.json() as { error?: string }
+    setSaving(false)
+    if (!res.ok) { setError(data.error ?? 'Erro ao salvar'); return }
+    setSaved(true)
+    setTimeout(onClose, 1500)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2">
+            <Upload size={14} className="text-violet-400" />
+            <h2 className="text-base font-bold text-white">Salvar como template</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-zinc-500 hover:text-white rounded-lg hover:bg-zinc-800">
+            <X size={14} />
+          </button>
+        </div>
+
+        {saved ? (
+          <div className="flex flex-col items-center gap-3 py-6">
+            <CheckCircle2 size={32} className="text-emerald-400" />
+            <p className="text-white font-semibold">Template publicado!</p>
+            <p className="text-xs text-zinc-500">Disponível no marketplace da comunidade.</p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4 mb-5">
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Nome do template *</label>
+                <input value={name} onChange={e => setName(e.target.value)}
+                  className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Descrição</label>
+                <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2}
+                  className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500 resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Categoria</label>
+                <select value={category} onChange={e => setCategory(e.target.value)}
+                  className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500">
+                  {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+
+            <p className="text-[10px] text-zinc-500 mb-4">
+              Este template ficará visível publicamente no marketplace para outros usuários importarem.
+            </p>
+
+            <button onClick={() => void handleSave()} disabled={saving}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 transition-colors">
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+              {saving ? 'Publicando…' : 'Publicar no marketplace'}
+            </button>
+          </>
         )}
       </div>
     </div>

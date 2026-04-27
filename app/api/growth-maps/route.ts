@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json() as {
     name?: string; description?: string; templateKey?: string
+    nodes?: unknown[]; edges?: unknown[]
   }
   if (!body.name?.trim()) return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 })
 
@@ -37,8 +38,8 @@ export async function POST(req: NextRequest) {
     company_id:  ctx.company.id,
     name:        body.name.trim(),
     description: body.description ?? template?.description ?? '',
-    nodes:       template?.nodes ?? [],
-    edges:       template?.edges ?? [],
+    nodes:       body.nodes ?? template?.nodes ?? [],
+    edges:       body.edges ?? template?.edges ?? [],
   }).select('id').single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
