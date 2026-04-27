@@ -131,6 +131,43 @@ export class FlowRepository {
     })
   }
 
+  // ─── Cross-flow listing (for the global /flows/executions endpoint) ──────────
+
+  async listAllExecutions(
+    companyId: string,
+    limit    = 50,
+    flowId?  : string,
+    status?  : ExecutionStatus,
+  ): Promise<ExecutionRecord[]> {
+    let q = this.db
+      .from('flow_executions')
+      .select('id, flow_id, company_id, status, logs, output, started_at, finished_at, growth_maps(name)')
+      .eq('company_id', companyId)
+      .order('started_at', { ascending: false })
+      .limit(limit)
+
+    if (flowId) q = q.eq('flow_id', flowId)
+    if (status) q = q.eq('status', status)
+
+    const { data } = await q
+
+    return (data ?? []).map(d => {
+      const r = d as Record<string, unknown>
+      const gm = r.growth_maps as Record<string, unknown> | null
+      return {
+        id:          r.id as string,
+        flowId:      r.flow_id as string,
+        companyId:   r.company_id as string,
+        status:      r.status as ExecutionStatus,
+        logs:        (r.logs as StepLog[]) ?? [],
+        output:      r.output ?? null,
+        startedAt:   r.started_at as string,
+        finishedAt:  r.finished_at as string | undefined,
+        flowName:    gm?.name as string | undefined,
+      }
+    })
+  }
+
   async getPendingExecutions(): Promise<Array<{ id: string; flowId: string; companyId: string }>> {
     const { data } = await this.db
       .from('flow_executions')

@@ -89,4 +89,6 @@ export interface ExecutionRecord {
   output:      unknown
   startedAt:   string
   finishedAt?: string
+  /** Populated by cross-flow queries (joined from growth_maps.name) */
+  flowName?:   string
 }
