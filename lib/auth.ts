@@ -17,8 +17,24 @@ export interface AuthContext {
   trialDaysLeft: number | null
 }
 
+// ─── Lightweight: resolve the current auth user only ──────────
+// Use this when you only need to verify identity, not load company/plan.
+// Returns null if the request has no valid session.
+export async function getCurrentUser(): Promise<{ id: string; email: string } | null> {
+  try {
+    const supabase = await getSupabaseRouteClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+    return { id: user.id, email: user.email ?? '' }
+  } catch {
+    return null
+  }
+}
+
 // ─── Get authenticated user + company from session cookie ─────
-// Returns null if not authenticated or company not found.
+// Auto-upserts the users row on first login so stale accounts (created
+// before the DB trigger was added) always resolve correctly.
+// Returns null only when unauthenticated or no company found.
 export async function getAuthContext(): Promise<AuthContext | null> {
   try {
     const supabase = await getSupabaseRouteClient()
@@ -31,7 +47,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     const db = getSupabaseServerClient()
 
     // Find custom user by auth_id or email
-    const { data: user, error: userErr } = await db
+    let { data: user, error: userErr } = await db
       .from('users')
       .select('*')
       .or(`auth_id.eq.${authUser.id},email.eq.${authUser.email}`)
@@ -39,14 +55,31 @@ export async function getAuthContext(): Promise<AuthContext | null> {
       .maybeSingle()
 
     if (userErr) console.error('[auth] users query error:', userErr)
+
+    // Auto-upsert: create the row on first login if the DB trigger missed it
     if (!user) {
-      console.warn('[auth] no user record found for auth_id:', authUser.id)
-      return null
+      console.warn('[auth] no user record — upserting for auth_id:', authUser.id)
+      const { data: upserted, error: upsertErr } = await db
+        .from('users')
+        .upsert(
+          { auth_id: authUser.id, email: authUser.email ?? '', name: null, plan: 'free' },
+          { onConflict: 'email' },
+        )
+        .select()
+        .returns<DBUser[]>()
+        .single()
+
+      if (upsertErr) {
+        console.error('[auth] users upsert error:', upsertErr)
+        return null
+      }
+      user = upserted
     }
 
-    // If auth_id not set yet, update it
-    if (!('auth_id' in user) || (user as Record<string, unknown>).auth_id !== authUser.id) {
+    // Sync auth_id if it wasn't set (legacy rows created before the trigger)
+    if (user.auth_id !== authUser.id) {
       await db.from('users').update({ auth_id: authUser.id }).eq('id', user.id)
+      user = { ...user, auth_id: authUser.id }
     }
 
     const { data: company, error: compErr } = await db
