@@ -70,6 +70,27 @@ export class FlowEngineService {
     }
   }
 
+  // ─── Direct execution (no DB flow lookup) ───────────────────────────────────
+  // Used for tests and ad-hoc flows defined in code.
+
+  async executeFlowDirect(
+    nodes:     FlowNode[],
+    edges:     FlowEdge[],
+    companyId: string,
+    variables: Record<string, unknown> = {},
+  ): Promise<{ logs: StepLog[]; output: unknown }> {
+    const ctx: ExecutionContext = {
+      flowId:      'direct',
+      executionId: 'direct',
+      companyId,
+      variables,
+      logs:        [],
+      lastOutput:  null,
+    }
+    await this.runNodes(nodes, edges, ctx, 'direct')
+    return { logs: ctx.logs, output: ctx.lastOutput }
+  }
+
   // ─── Node runner ────────────────────────────────────────────────────────────
 
   private async runNodes(
