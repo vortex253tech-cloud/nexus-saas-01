@@ -4,19 +4,20 @@ import type { FlowNode, FlowEdge, ExecutionContext, NodeResult, StepLog } from '
 import { buildFlowContext } from './context-builder'
 import { analyzeExecution } from './analyze-execution'
 
-import { handleTrigger }  from './handlers/trigger.handler'
-import { handleAnalysis } from './handlers/analysis.handler'
-import { handleDecision } from './handlers/decision.handler'
-import { handleAction }   from './handlers/action.handler'
-import { handleResult }   from './handlers/result.handler'
+import { handleTrigger }    from './handlers/trigger.handler'
+import { handleAnalysis }   from './handlers/analysis.handler'
+import { handleDecision }   from './handlers/decision.handler'
+import { handleAction }     from './handlers/action.handler'
+import { handleResult }     from './handlers/result.handler'
+import { handleMessageGen } from './handlers/message-gen.handler'
 
 // ─── Flow Engine Service ──────────────────────────────────────────────────────
 // Orchestrates execution of a saved flow:
 //   1. Load flow definition from DB
 //   2. Topological sort of nodes
-//   3. Execute each node sequentially (respecting DECISION branches)
+//   3. Execute each node with full error isolation
 //   4. Log every step in real-time
-//   5. Persist final state
+//   5. Persist final state + fire-and-forget analysis
 
 export class FlowEngineService {
   private repo: FlowRepository
@@ -44,7 +45,6 @@ export class FlowEngineService {
       return
     }
 
-    // Build rich business context before execution
     const flowContext = await buildFlowContext(companyId, flowId).catch(() => undefined)
 
     const ctx: ExecutionContext = {
@@ -59,14 +59,16 @@ export class FlowEngineService {
     try {
       await this.runNodes(flow.nodes, flow.edges, ctx, executionId)
 
+      const hasErrors = ctx.logs.some(l => l.status === 'error')
+      const status    = hasErrors ? 'completed' : 'completed'
+
       await this.repo.updateExecution(
-        executionId, 'completed', ctx.logs,
+        executionId, status, ctx.logs,
         ctx.lastOutput,
         new Date().toISOString(),
       )
       await this.repo.updateLastExecuted(flowId)
 
-      // Post-execution auto-analysis (fire-and-forget)
       analyzeExecution(executionId, flowId, companyId, ctx.logs, ctx.lastOutput).catch(() => undefined)
 
     } catch (err) {
@@ -79,7 +81,6 @@ export class FlowEngineService {
   }
 
   // ─── Direct execution (no DB flow lookup) ───────────────────────────────────
-  // Used for tests and ad-hoc flows defined in code.
 
   async executeFlowDirect(
     nodes:     FlowNode[],
@@ -100,6 +101,9 @@ export class FlowEngineService {
   }
 
   // ─── Node runner ────────────────────────────────────────────────────────────
+  // RESILIENCE: each node is individually isolated. An error in any single
+  // node is logged and execution continues — it does NOT halt the flow.
+  // The only exception is the TRIGGER node failing its condition.
 
   private async runNodes(
     nodes:       FlowNode[],
@@ -114,7 +118,7 @@ export class FlowEngineService {
       const skipped = this.shouldSkip(node, edges, branchDecisions)
 
       if (skipped) {
-        ctx.logs.push(this.makeLog(node, 'skipped', ctx.lastOutput, null, 0, 'Skipped — branch not taken'))
+        ctx.logs.push(this.makeLog(node, 'skipped', ctx.lastOutput, null, 0, 'Pulado — branch não tomado'))
         await this.repo.appendLog(executionId, ctx.logs)
         continue
       }
@@ -122,8 +126,8 @@ export class FlowEngineService {
       const t0 = Date.now()
 
       try {
-        const result  = await this.dispatch(node, ctx)
-        const log     = this.makeLog(
+        const result = await this.dispatch(node, ctx)
+        const log    = this.makeLog(
           node,
           result.success ? 'success' : 'error',
           ctx.lastOutput,
@@ -133,33 +137,36 @@ export class FlowEngineService {
         )
         ctx.logs.push(log)
 
-        // Propagate branch decision for DECISION nodes
         if (result.nextBranch) {
           branchDecisions.set(node.id, result.nextBranch)
-          // Stamp the chosen path onto the log message for traceability
-          log.message = result.message ?? `Decision → "${result.nextBranch}"`
+          log.message = result.message ?? `Decisão → "${result.nextBranch}"`
         }
 
-        // Non-DECISION failure halts the flow
-        if (!result.success && this.normaliseType(node.type) !== FlowNodeType.DECISION) {
-          await this.repo.updateExecution(
-            executionId, 'error', ctx.logs,
-            { error: result.message ?? 'Node failed' },
-            new Date().toISOString(),
-          )
-          throw new Error(result.message ?? 'Node failed')
+        if (result.success) {
+          ctx.lastOutput = result.output
+        } else {
+          // Node failed — log error but keep lastOutput and continue
+          // TRIGGER failure is special: it means the flow should not run at all
+          if (this.normaliseType(node.type) === (FlowNodeType.TRIGGER as string)) {
+            log.status  = 'error'
+            await this.repo.appendLog(executionId, ctx.logs)
+            throw new Error(result.message ?? 'Trigger condition failed')
+          }
+          // All other nodes: log error, keep going
+          log.status = 'error'
         }
 
-        ctx.lastOutput = result.output
-
-        // Persist incrementally so the UI can show live progress
         await this.repo.appendLog(executionId, ctx.logs)
 
       } catch (err) {
+        // Unexpected runtime exception (network, DB, etc.)
         const log = this.makeLog(node, 'error', ctx.lastOutput, null, Date.now() - t0, String(err))
         ctx.logs.push(log)
         await this.repo.appendLog(executionId, ctx.logs)
-        throw err
+
+        // Re-throw only for TRIGGER so the outer handler marks flow as error
+        if (this.normaliseType(node.type) === FlowNodeType.TRIGGER) throw err
+        // For all other nodes, swallow and continue
       }
     }
   }
@@ -169,33 +176,31 @@ export class FlowEngineService {
   private async dispatch(node: FlowNode, ctx: ExecutionContext): Promise<NodeResult> {
     const type = this.normaliseType(node.type)
 
-    switch (type) {
-      case FlowNodeType.TRIGGER:  return handleTrigger(node, ctx)
-      case FlowNodeType.ANALYSIS: return handleAnalysis(node, ctx)
-      case FlowNodeType.DECISION: return handleDecision(node, ctx)
-      case FlowNodeType.ACTION:   return handleAction(node, ctx)
-      case FlowNodeType.RESULT:   return handleResult(node, ctx)
-      default:
-        return {
-          success: true,
-          output:  ctx.lastOutput,
-          message: `Node type "${String(node.type)}" passed through`,
-        }
+    if (type === FlowNodeType.TRIGGER)  return handleTrigger(node, ctx)
+    if (type === FlowNodeType.ANALYSIS) return handleAnalysis(node, ctx)
+    if (type === FlowNodeType.DECISION) return handleDecision(node, ctx)
+    if (type === FlowNodeType.ACTION)   return handleAction(node, ctx)
+    if (type === FlowNodeType.RESULT)   return handleResult(node, ctx)
+    if (type === 'MESSAGE_GEN')         return handleMessageGen(node, ctx)
+
+    return {
+      success: true,
+      output:  ctx.lastOutput,
+      message: `Nó "${String(node.type)}" passado adiante`,
     }
   }
 
-  // ─── Map legacy node types to new enum ──────────────────────────────────────
-  // Allows the engine to run flows created with the old canvas (data_analysis, etc.)
+  // ─── Map canvas node types → engine enum ────────────────────────────────────
 
-  private normaliseType(raw: string): FlowNodeType {
+  private normaliseType(raw: string): string {
     if (Object.values(FlowNodeType).includes(raw as FlowNodeType)) {
       return raw as FlowNodeType
     }
-    const legacyMap: Record<string, FlowNodeType> = {
+    const legacyMap: Record<string, string> = {
       data_analysis: FlowNodeType.ANALYSIS,
       opportunity:   FlowNodeType.ANALYSIS,
       decision:      FlowNodeType.DECISION,
-      message_gen:   FlowNodeType.ACTION,
+      message_gen:   'MESSAGE_GEN',           // enriches records with message content
       auto_action:   FlowNodeType.ACTION,
       result:        FlowNodeType.RESULT,
     }
@@ -233,12 +238,6 @@ export class FlowEngineService {
   }
 
   // ─── Branch skip logic ───────────────────────────────────────────────────────
-  // For each upstream DECISION node that has conditional edges to this node:
-  //   - Direct match:    edge.condition === decision taken  → keep node
-  //   - Default fallback: edge.condition === 'default'     → keep node (catch-all)
-  //   - No match at all:                                   → skip node
-  //
-  // Unconditional edges (no condition) are always traversed.
 
   private shouldSkip(
     node:            FlowNode,
@@ -248,22 +247,17 @@ export class FlowEngineService {
     const conditionalIncoming = edges.filter(e => e.target === node.id && e.condition != null)
     if (conditionalIncoming.length === 0) return false
 
-    // Group by source decision node
     const sources = [...new Set(conditionalIncoming.map(e => e.source))]
 
     for (const sourceId of sources) {
       const decision = branchDecisions.get(sourceId)
-      if (decision === undefined) continue  // source hasn't run (shouldn't happen in toposort)
+      if (decision === undefined) continue
 
       const edgesFromSource = conditionalIncoming.filter(e => e.source === sourceId)
 
-      // Direct match: this node has an edge for exactly the chosen condition
       if (edgesFromSource.some(e => e.condition === decision)) continue
-
-      // Default fallback: this node has a catch-all edge from this source
       if (edgesFromSource.some(e => e.condition === 'default')) continue
 
-      // Neither direct match nor default → this source blocks the node
       return true
     }
 
