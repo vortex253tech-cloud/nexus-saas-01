@@ -20,7 +20,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { Loader2, Play, Save, Zap } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import type { GrowthNode, GrowthEdge, NodeResult, NodeType } from '@/lib/growth-map-engine'
+import type { GrowthNode, GrowthEdge, NodeResult, NodeType } from '@/lib/growth-map-types'
 
 // ─── Node appearance config ───────────────────────────────────────────────────
 

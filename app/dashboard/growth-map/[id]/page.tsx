@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter }             from 'next/navigation'
 import dynamic                              from 'next/dynamic'
 import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, Zap, List } from 'lucide-react'
-import type { GrowthNode, GrowthEdge }      from '@/lib/growth-map-engine'
+import type { GrowthNode, GrowthEdge }      from '@/lib/growth-map-types'
 import type { ExecutionRecord }             from '@/lib/flow-engine/types'
 
 // ─── Dynamic import — React Flow needs browser APIs ──────────────────────────

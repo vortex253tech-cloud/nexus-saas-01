@@ -1,5 +1,5 @@
 import { getSupabaseServerClient } from '@/lib/supabase'
-import { sendWhatsApp }           from '@/lib/email'
+import { sendWhatsApp }           from '@/lib/whatsapp'
 import {
   extractRecords, renderTemplate, emptyResult,
   type ActionContext, type ActionResult,
@@ -45,7 +45,7 @@ export async function execute(
     if (!phone) continue
 
     const body   = renderTemplate(template, record)
-    const result = await sendWhatsApp({ to: phone, body })
+    const result = await sendWhatsApp({ phone, message: body })
 
     if (result.success) {
       succeeded++
@@ -58,7 +58,7 @@ export async function execute(
           recipient:   phone,
           content:     body,
           status:      result.simulated ? 'simulated' : 'sent',
-          metadata:    { messageId: result.id, template: cfg.message },
+          metadata:    { messageId: result.messageId, template: cfg.message },
         })
       }
     } else {

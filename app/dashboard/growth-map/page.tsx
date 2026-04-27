@@ -6,7 +6,7 @@ import { useRouter }                         from 'next/navigation'
 import {
   Map, Plus, Loader2, Zap, Clock, Trash2, ChevronRight, X, Play,
 } from 'lucide-react'
-import { GROWTH_TEMPLATES } from '@/lib/growth-map-engine'
+import { GROWTH_TEMPLATES } from '@/lib/growth-map-types'
 import { cn } from '@/lib/cn'
 
 interface GrowthMap {
