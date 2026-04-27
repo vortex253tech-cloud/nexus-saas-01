@@ -3,12 +3,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter }             from 'next/navigation'
 import dynamic                              from 'next/dynamic'
-import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, Zap } from 'lucide-react'
-import type { GrowthNode, GrowthEdge, NodeResult } from '@/lib/growth-map-engine'
+import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, Zap, List } from 'lucide-react'
+import type { GrowthNode, GrowthEdge }      from '@/lib/growth-map-engine'
+import type { ExecutionRecord }             from '@/lib/flow-engine/types'
 
 // ─── Dynamic import — React Flow needs browser APIs ──────────────────────────
 
-const GrowthCanvas = dynamic(() => import('./canvas'), { ssr: false,
+const GrowthCanvas = dynamic(() => import('./canvas'), {
+  ssr:     false,
   loading: () => (
     <div className="flex h-full items-center justify-center">
       <Loader2 size={28} className="animate-spin text-violet-400" />
@@ -23,36 +25,85 @@ interface MapData {
   nodes: GrowthNode[]; edges: GrowthEdge[]
 }
 
-interface LastExecution {
-  id: string; summary: string; actions_taken: number; created_at: string
-  results: Record<string, NodeResult>
-}
-
 // ─── Execution result panel ───────────────────────────────────────────────────
 
 function ExecutionPanel({
   exec,
   onClose,
 }: {
-  exec: { summary: string; actionsTaken: number; results: Record<string, NodeResult> }
+  exec: ExecutionRecord
   onClose: () => void
 }) {
+  const out = exec.output as Record<string, unknown> | null
+  const steps   = (out?.stepsExecuted as number) ?? exec.logs.length
+  const actions = (out?.actionsExecuted as number) ?? 0
+  const emails  = (out?.emailsSent as number) ?? 0
+  const errors  = exec.logs.filter(l => l.status === 'error').length
+
   return (
     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4">
-      <div className="rounded-2xl border border-emerald-500/30 bg-zinc-900/95 backdrop-blur-sm p-5 shadow-2xl">
+      <div className={[
+        'rounded-2xl border backdrop-blur-sm p-5 shadow-2xl',
+        exec.status === 'completed'
+          ? 'border-emerald-500/30 bg-zinc-900/95'
+          : 'border-red-500/30 bg-zinc-900/95',
+      ].join(' ')}>
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-2.5">
-            <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
-            <p className="font-semibold text-white text-sm">Fluxo executado com sucesso</p>
+            {exec.status === 'completed'
+              ? <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+              : <AlertCircle  size={18} className="text-red-400 shrink-0" />
+            }
+            <p className="font-semibold text-white text-sm">
+              {exec.status === 'completed' ? 'Fluxo executado com sucesso' : 'Fluxo finalizado com erros'}
+            </p>
           </div>
           <button onClick={onClose} className="text-zinc-500 hover:text-white text-lg leading-none">×</button>
         </div>
-        <p className="text-xs text-zinc-400 mb-3 leading-relaxed">{exec.summary}</p>
-        <div className="flex items-center gap-2">
-          <Zap size={12} className="text-violet-400" />
-          <span className="text-xs text-violet-300 font-medium">{exec.actionsTaken} ação(ões) disparada(s)</span>
+
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <Stat label="Passos" value={steps} />
+          <Stat label="Ações"  value={actions} />
+          <Stat label="Emails" value={emails} accent={emails > 0} />
         </div>
+
+        {errors > 0 && (
+          <p className="text-xs text-red-400 mb-2">{errors} passo(s) com erro — veja os logs</p>
+        )}
+
+        {exec.logs.length > 0 && (
+          <details className="text-[10px] text-zinc-500 mt-2">
+            <summary className="cursor-pointer flex items-center gap-1 hover:text-zinc-400">
+              <List size={10} /> Ver log detalhado ({exec.logs.length} passos)
+            </summary>
+            <div className="mt-2 space-y-1 max-h-48 overflow-y-auto pr-1">
+              {exec.logs.map((log, i) => (
+                <div key={i} className={[
+                  'flex gap-2 rounded px-2 py-1',
+                  log.status === 'error'   ? 'bg-red-500/10 text-red-400' :
+                  log.status === 'skipped' ? 'bg-zinc-800 text-zinc-600'  :
+                                             'bg-zinc-800/50 text-zinc-400',
+                ].join(' ')}>
+                  <span className="shrink-0">
+                    {log.status === 'error' ? '✗' : log.status === 'skipped' ? '⤸' : '✓'}
+                  </span>
+                  <span className="truncate">[{log.nodeType}] {log.message}</span>
+                  <span className="ml-auto shrink-0">{log.durationMs}ms</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
       </div>
+    </div>
+  )
+}
+
+function Stat({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
+  return (
+    <div className="rounded-lg bg-zinc-800/60 px-3 py-2 text-center">
+      <p className={['text-lg font-bold', accent ? 'text-violet-400' : 'text-white'].join(' ')}>{value}</p>
+      <p className="text-[10px] text-zinc-500">{label}</p>
     </div>
   )
 }
@@ -63,69 +114,70 @@ export default function GrowthMapDetailPage() {
   const { id }   = useParams<{ id: string }>()
   const router   = useRouter()
 
-  const [map,       setMap]       = useState<MapData | null>(null)
-  const [lastExec,  setLastExec]  = useState<LastExecution | null>(null)
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState('')
-
-  const [saving,    setSaving]    = useState(false)
-  const [executing, setExecuting] = useState(false)
-  const [execResult, setExecResult] = useState<{
-    summary: string; actionsTaken: number; results: Record<string, NodeResult>
-  } | null>(null)
+  const [map,        setMap]        = useState<MapData | null>(null)
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState('')
+  const [saving,     setSaving]     = useState(false)
+  const [executing,  setExecuting]  = useState(false)
+  const [execResult, setExecResult] = useState<ExecutionRecord | null>(null)
   const [execError,  setExecError]  = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const res  = await fetch(`/api/growth-maps/${id}`)
-      const data = await res.json() as {
-        map?: MapData; lastExecution?: LastExecution; error?: string
-      }
+      const data = await res.json() as { map?: MapData; error?: string }
       if (!res.ok) { setError(data.error ?? 'Erro ao carregar mapa'); return }
       setMap(data.map ?? null)
-      setLastExec(data.lastExecution ?? null)
     } finally { setLoading(false) }
   }, [id])
 
   useEffect(() => { void load() }, [load])
 
+  // ─── Save handler ────────────────────────────────────────────────────────────
+
   async function handleSave(nodes: GrowthNode[], edges: GrowthEdge[]) {
     setSaving(true)
     try {
       await fetch(`/api/growth-maps/${id}`, {
-        method: 'PATCH',
+        method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nodes, edges }),
+        body:    JSON.stringify({ nodes, edges }),
       })
-      // update local map
       setMap(prev => prev ? { ...prev, nodes, edges } : prev)
     } finally { setSaving(false) }
   }
+
+  // ─── Execute handler ─────────────────────────────────────────────────────────
 
   async function handleExecute() {
     setExecuting(true)
     setExecError('')
     setExecResult(null)
+
     try {
-      const res  = await fetch(`/api/growth-maps/${id}/execute`, { method: 'POST' })
-      const data = await res.json() as {
-        results?: Record<string, NodeResult>
-        summary?: string
-        actionsTaken?: number
-        error?: string
-      }
-      if (!res.ok) {
-        setExecError(data.error ?? 'Erro ao executar fluxo')
+      // 1. Enqueue + run
+      const execRes  = await fetch(`/api/growth-maps/${id}/execute`, { method: 'POST' })
+      const execData = await execRes.json() as { executionId?: string; error?: string }
+
+      if (!execRes.ok || !execData.executionId) {
+        setExecError(execData.error ?? 'Erro ao executar fluxo')
         return
       }
-      setExecResult({
-        results:      data.results ?? {},
-        summary:      data.summary ?? 'Fluxo concluído.',
-        actionsTaken: data.actionsTaken ?? 0,
-      })
-      // refresh last exec header badge
-      void load()
+
+      // 2. Fetch the completed execution record (already done — no polling needed)
+      const statusRes  = await fetch(`/api/growth-maps/${id}/executions/${execData.executionId}`)
+      const statusData = await statusRes.json() as { execution?: ExecutionRecord }
+
+      if (statusData.execution) {
+        setExecResult(statusData.execution)
+        if (statusData.execution.status === 'error') {
+          const out = statusData.execution.output as Record<string, unknown> | null
+          setExecError((out?.error as string) ?? 'Erro na execução')
+        }
+      }
+
+      void load()  // refresh last-executed timestamp in header
     } finally { setExecuting(false) }
   }
 
@@ -163,17 +215,12 @@ export default function GrowthMapDetailPage() {
           className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors">
           <ArrowLeft size={16} />
         </button>
-
         <div className="flex-1 min-w-0">
           <h1 className="font-semibold text-white truncate">{map.name}</h1>
-          {lastExec && (
-            <p className="text-[10px] text-zinc-500">
-              Última execução: {new Date(lastExec.created_at).toLocaleString('pt-BR')}
-              {' · '}{lastExec.actions_taken} ação(ões) disparada(s)
-            </p>
-          )}
+          <p className="text-[10px] text-zinc-500">
+            {map.nodes.length} blocos · {map.edges.length} conexões
+          </p>
         </div>
-
         <span className={[
           'text-[10px] px-2 py-0.5 rounded-full font-medium',
           map.status === 'active'
@@ -193,7 +240,7 @@ export default function GrowthMapDetailPage() {
         </div>
       )}
 
-      {/* Canvas area */}
+      {/* Canvas */}
       <div className="flex-1 relative overflow-hidden">
         <GrowthCanvas
           mapId={id}
@@ -203,14 +250,11 @@ export default function GrowthMapDetailPage() {
           onExecute={handleExecute}
           executing={executing}
           saving={saving}
-          results={execResult?.results ?? (lastExec?.results ?? null)}
+          results={null}
         />
 
         {execResult && (
-          <ExecutionPanel
-            exec={execResult}
-            onClose={() => setExecResult(null)}
-          />
+          <ExecutionPanel exec={execResult} onClose={() => setExecResult(null)} />
         )}
       </div>
     </div>
