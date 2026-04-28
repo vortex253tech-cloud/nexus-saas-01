@@ -230,8 +230,9 @@ export default function HistoryPage() {
                       key={item.id}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                      className="rounded-xl border border-zinc-800 bg-zinc-900/60 overflow-hidden"
+                      whileHover={{ y: -2 }}
+                      transition={{ delay: i * 0.03, type: 'spring', stiffness: 380, damping: 28 }}
+                      className="rounded-xl border border-zinc-800 bg-zinc-900/60 overflow-hidden hover:border-zinc-700/60 transition-colors"
                     >
                       <button
                         onClick={() => setExpanded(expanded === item.id ? null : item.id)}
@@ -239,7 +240,12 @@ export default function HistoryPage() {
                       >
                         <span className="shrink-0">{typeIcon(item.execution_type)}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-white truncate">{item.titulo}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-white truncate">{item.titulo}</p>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-violet-600/15 border border-violet-600/25 px-1.5 py-0.5 text-[9px] font-semibold text-violet-400 uppercase tracking-wide">
+                              <Sparkles size={7} /> IA
+                            </span>
+                          </div>
                           <div className="flex items-center gap-3 mt-0.5">
                             <span className="text-[11px] text-zinc-500">{typeLabel(item.execution_type)}</span>
                             <span className="text-[11px] text-zinc-600">
@@ -247,7 +253,10 @@ export default function HistoryPage() {
                             </span>
                           </div>
                         </div>
-                        <span className="shrink-0 text-sm font-bold text-emerald-400">
+                        <span
+                          className="shrink-0 text-sm font-bold text-emerald-400"
+                          style={{ textShadow: '0 0 10px rgba(52,211,153,0.5)' }}
+                        >
                           + {fmtBRL(item.ganho_realizado)}
                         </span>
                       </button>

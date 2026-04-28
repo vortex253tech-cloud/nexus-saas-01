@@ -8,8 +8,10 @@ import {
   Trash2, FileText, History, Zap, Sparkles,
   CheckCircle2, AlertCircle, Clock, Users, Settings2,
   Copy, ArrowRight, Edit2, X, Wand2, MessageSquare,
-  ChevronDown,
+  ChevronDown, DollarSign, RefreshCw,
+  Gift, Calendar, Lightbulb,
 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -81,7 +83,7 @@ const VARIABLES = [
 const RECOMMENDED = [
   {
     id: 'rec-cobranca',
-    icon: '💸',
+    icon: <DollarSign size={18} />,
     name: 'Cobrança Automática',
     description: '3 e-mails escalonados para clientes inadimplentes (D+1, D+3, D+7)',
     trigger: 'client_overdue' as const,
@@ -95,7 +97,7 @@ const RECOMMENDED = [
   },
   {
     id: 'rec-boas-vindas',
-    icon: '👋',
+    icon: <Users size={18} />,
     name: 'Sequência de Boas-Vindas',
     description: 'Recepciona novos clientes com mensagens calorosas (D+0, D+3)',
     trigger: 'new_client' as const,
@@ -108,7 +110,7 @@ const RECOMMENDED = [
   },
   {
     id: 'rec-reativacao',
-    icon: '🔄',
+    icon: <RefreshCw size={18} />,
     name: 'Reativação de Clientes',
     description: 'Recupera clientes inativos com 2 mensagens estratégicas',
     trigger: 'manual' as const,
@@ -121,7 +123,7 @@ const RECOMMENDED = [
   },
   {
     id: 'rec-pos-compra',
-    icon: '🎉',
+    icon: <Gift size={18} />,
     name: 'Sequência Pós-Compra',
     description: 'Agradece e nutre o cliente logo após uma compra (D+0, D+7)',
     trigger: 'new_client' as const,
@@ -134,7 +136,7 @@ const RECOMMENDED = [
   },
   {
     id: 'rec-vencimento',
-    icon: '📅',
+    icon: <Calendar size={18} />,
     name: 'Lembrete de Vencimento',
     description: 'Avisa clientes sobre pagamentos próximos ao vencimento (D-3, D-1)',
     trigger: 'manual' as const,
@@ -147,7 +149,7 @@ const RECOMMENDED = [
   },
   {
     id: 'rec-nutricao',
-    icon: '💡',
+    icon: <Lightbulb size={18} />,
     name: 'Nutrição de Lead',
     description: 'Educa e engaja leads em potencial com conteúdo de valor (D+0, D+5, D+12)',
     trigger: 'new_client' as const,
@@ -168,10 +170,10 @@ const TRIGGER_INFO: Record<string, { label: string; color: string }> = {
 }
 
 const CATEGORY_INFO = {
-  financial:    { label: '💰 Financeiro',     color: 'text-amber-400  bg-amber-500/10  border-amber-500/30' },
-  sales:        { label: '🛒 Vendas',         color: 'text-violet-400 bg-violet-500/10 border-violet-500/30' },
-  relationship: { label: '❤️ Relacionamento', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
-  custom:       { label: '✏️ Personalizado',  color: 'text-zinc-400   bg-zinc-800      border-zinc-700' },
+  financial:    { label: 'Financeiro',    color: 'text-amber-400  bg-amber-500/10  border-amber-500/30' },
+  sales:        { label: 'Vendas',        color: 'text-violet-400 bg-violet-500/10 border-violet-500/30' },
+  relationship: { label: 'Relacionamento',color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
+  custom:       { label: 'Personalizado', color: 'text-zinc-400   bg-zinc-800      border-zinc-700' },
 } as const
 
 // ─── Template modal ───────────────────────────────────────────────────────────
@@ -784,10 +786,14 @@ export default function MessagesPage() {
             const alreadyExists = flows.some(f => f.name === rec.name)
             return (
               <motion.div key={rec.id} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
-                className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 flex flex-col gap-4 hover:border-zinc-700 transition-colors">
+                whileHover={{ y: -2 }}
+                transition={{ type: 'spring', stiffness: 360, damping: 26 }}
+                className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 flex flex-col gap-4 nexus-card">
                 <div>
                   <div className="flex items-start justify-between mb-3">
-                    <span className="text-3xl">{rec.icon}</span>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/15 border border-violet-600/20 text-violet-400">
+                      {rec.icon}
+                    </div>
                     <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-bold', rec.tagColor)}>
                       {rec.tag}
                     </span>

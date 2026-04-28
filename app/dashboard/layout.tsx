@@ -177,8 +177,17 @@ function Sidebar({
           })}
         </nav>
 
+        {/* AI Active Indicator */}
+        <div className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-emerald-400 ai-pulse shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">IA Ativa</p>
+            <p className="truncate text-[10px] text-zinc-500">Monitorando continuamente</p>
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="px-4 py-4 border-t border-zinc-800/60 space-y-2">
+        <div className="px-4 py-3 border-t border-zinc-800/60 space-y-2">
           {userEmail && (
             <p className="text-[10px] text-zinc-600 px-2 truncate">{userEmail}</p>
           )}

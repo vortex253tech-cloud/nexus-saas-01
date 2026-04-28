@@ -115,12 +115,74 @@ main,
   text-shadow: 0 0 8px var(--nexus-primary);
 }
 
+/* ── Background grid (subtle, AI feel) ─────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* ── Ambient glow from primary color ────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed;
+  top: -20%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 70vw;
+  height: 60vh;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--nexus-primary) 8%, transparent) 0%, transparent 70%);
+  transition: background 0.5s ease;
+}
+
+/* Ensure page content sits above the decorative layers */
+body > * { position: relative; z-index: 1; }
+
 /* ── Gradient text ──────────────────────────────────────────────── */
 .gradient-text {
   background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 50%, #6d28d9 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* ── Glow card hover utility ────────────────────────────────────── */
+.nexus-card {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+.nexus-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px color-mix(in srgb, var(--nexus-primary) 15%, transparent);
+}
+
+/* ── AI pulsing dot ──────────────────────────────────────────────── */
+@keyframes ai-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--nexus-secondary) 60%, transparent); }
+  50%       { opacity: 0.7; box-shadow: 0 0 0 4px color-mix(in srgb, var(--nexus-secondary) 0%, transparent); }
+}
+.ai-pulse { animation: ai-pulse 2.4s ease-in-out infinite; }
+
+/* ── Gradient border utility ─────────────────────────────────────── */
+.nexus-gradient-border {
+  background: linear-gradient(var(--nexus-card), var(--nexus-card)) padding-box,
+    linear-gradient(135deg, color-mix(in srgb, var(--nexus-primary) 50%, transparent), color-mix(in srgb, var(--nexus-secondary) 30%, transparent)) border-box;
+  border: 1px solid transparent;
+}
+
+/* ── Glow text utility ───────────────────────────────────────────── */
+.nexus-glow-text {
+  text-shadow: 0 0 12px color-mix(in srgb, var(--nexus-secondary) 70%, transparent);
 }
 
 /* ── Focus ring ─────────────────────────────────────────────────── */

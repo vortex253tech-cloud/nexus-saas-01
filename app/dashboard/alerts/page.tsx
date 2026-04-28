@@ -100,6 +100,8 @@ function AlertCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: 40 }}
+      whileHover={!alert.lido ? { y: -2 } : {}}
+      transition={{ type: 'spring', stiffness: 380, damping: 28 }}
       onClick={() => !alert.lido && onRead(alert.id)}
       className={cn(
         'relative rounded-xl border p-5 transition-all cursor-pointer',
@@ -287,12 +289,31 @@ export default function AlertsPage() {
           <Loader2 size={28} className="animate-spin text-violet-400" />
         </div>
       ) : filteredAlerts.length === 0 ? (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 py-16 text-center">
-          <CheckCircle2 size={36} className="mx-auto mb-3 text-zinc-700" />
-          <p className="text-zinc-500 text-sm">
-            {filter === 'todos' ? 'Nenhum alerta ativo. Tudo em ordem!' : `Nenhum alerta do tipo "${filter}".`}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 py-16 text-center"
+        >
+          <div className="relative mx-auto mb-5 flex h-16 w-16 items-center justify-center">
+            <motion.div
+              animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.15, 0.4] }}
+              transition={{ repeat: Infinity, duration: 2.8, ease: 'easeInOut' }}
+              className="absolute inset-0 rounded-full bg-emerald-500/20"
+            />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15">
+              <CheckCircle2 size={24} className="text-emerald-400" />
+            </div>
+          </div>
+          <p className="text-sm font-semibold text-emerald-400 mb-1">
+            {filter === 'todos' ? 'Tudo sob controle.' : `Nenhum alerta do tipo "${filter}".`}
           </p>
-        </div>
+          {filter === 'todos' && (
+            <p className="text-xs text-zinc-500 flex items-center justify-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 ai-pulse inline-block" />
+              IA monitorando continuamente
+            </p>
+          )}
+        </motion.div>
       ) : (
         <div className="space-y-3">
           <AnimatePresence mode="popLayout">

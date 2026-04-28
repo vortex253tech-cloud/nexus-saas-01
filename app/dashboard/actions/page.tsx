@@ -5,11 +5,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Zap, CheckCircle2, Loader2, Clock, Mail, MessageSquare,
   Megaphone, ClipboardList, LineChart, RefreshCw, AlertCircle,
-  DollarSign, Play, Filter,
+  DollarSign, Play, Filter, Flame,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { getBoolean, getString, isRecord } from '@/lib/unknown'
 import { resolveCompanyId } from '@/lib/get-company-id'
+import { AIStatus } from '@/components/ui/ai-status'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -129,13 +130,15 @@ function ActionCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
+      whileHover={!isDone ? { y: -2 } : {}}
+      transition={{ type: 'spring', stiffness: 380, damping: 28 }}
       className={cn(
-        'rounded-xl border p-5 transition-colors',
+        'rounded-xl border p-5 transition-all',
         isDone
           ? 'border-zinc-800/40 bg-zinc-900/40'
           : isRunning
           ? 'border-violet-500/40 bg-violet-500/5'
-          : 'border-zinc-800 bg-zinc-900/80 hover:border-zinc-700',
+          : 'border-zinc-800 bg-zinc-900/80 hover:border-zinc-700/60 nexus-card',
       )}
     >
       <div className="flex items-start gap-4">
@@ -164,9 +167,13 @@ function ActionCard({
               {executionLabel(action.execution_type)}
             </span>
             {action.urgencia === 'alta' && !isDone && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 border border-red-500/20 px-2 py-0.5 text-[11px] text-red-400">
-                🔥 Urgente
-              </span>
+              <motion.span
+                animate={{ opacity: [1, 0.7, 1] }}
+                transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+                className="inline-flex items-center gap-1 rounded-full bg-red-500/10 border border-red-500/30 px-2 py-0.5 text-[11px] text-red-400"
+              >
+                <Flame size={9} className="text-red-400" /> Urgente
+              </motion.span>
             )}
           </div>
 
@@ -179,7 +186,10 @@ function ActionCard({
           )}
 
           <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold text-emerald-400">
+            <span
+              className="text-xs font-semibold text-emerald-400"
+              style={isDone ? { textShadow: '0 0 10px rgba(52,211,153,0.5)' } : undefined}
+            >
               {isDone ? `+ ${fmtBRL(action.ganho_realizado)} recuperado` : `≈ ${fmtBRL(action.impacto_estimado)}/mês`}
             </span>
             {action.prazo && !isDone && (
@@ -202,22 +212,25 @@ function ActionCard({
 
         {/* Execute button */}
         {!isDone && (
-          <button
+          <motion.button
             onClick={() => onExecute(action.id)}
             disabled={isRunning}
+            whileHover={!isRunning ? { scale: 1.04 } : {}}
+            whileTap={!isRunning ? { scale: 0.96 } : {}}
             className={cn(
-              'shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all',
+              'shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all',
               isRunning
                 ? 'cursor-not-allowed bg-zinc-800 text-zinc-500'
-                : 'bg-violet-600 text-white hover:bg-violet-500 active:scale-95',
+                : 'bg-violet-600 text-white hover:bg-violet-500',
             )}
+            style={!isRunning ? { boxShadow: '0 0 16px rgba(124,58,237,0.35)' } : undefined}
           >
             {isRunning ? (
               <><Loader2 size={12} className="animate-spin" /> Executando</>
             ) : (
               <><Play size={12} /> Executar</>
             )}
-          </button>
+          </motion.button>
         )}
       </div>
     </motion.div>
@@ -369,6 +382,10 @@ export default function ActionsPage() {
         <div className="flex items-center gap-3 mb-1">
           <Zap size={22} className="text-violet-400" />
           <h1 className="text-2xl font-bold text-white">Central de Ações</h1>
+          <AIStatus
+            state={loading ? 'analyzing' : executingIds.size > 0 ? 'executing' : 'idle'}
+            label={loading ? 'IA carregando' : executingIds.size > 0 ? 'IA executando' : undefined}
+          />
         </div>
         <p className="text-zinc-500 text-sm">Execute ações de alto impacto geradas pela IA — email, WhatsApp e mais.</p>
       </div>
@@ -379,12 +396,22 @@ export default function ActionsPage() {
           { label: 'Pendentes', value: pendingCount, color: 'text-yellow-400' },
           { label: 'Concluídas', value: doneCount, color: 'text-emerald-400' },
           { label: 'Potencial', value: fmtBRL(totalPotential) + '/mês', color: 'text-violet-400' },
-          { label: 'Ganho Real', value: fmtBRL(totalGanho), color: 'text-emerald-400' },
+          { label: 'Ganho Real', value: fmtBRL(totalGanho), color: 'text-emerald-400', glow: true },
         ].map(c => (
-          <div key={c.label} className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+          <motion.div
+            key={c.label}
+            whileHover={{ y: -2 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+            className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 cursor-default"
+          >
             <p className="text-xs text-zinc-500 mb-1">{c.label}</p>
-            <p className={cn('text-lg font-bold', c.color)}>{c.value}</p>
-          </div>
+            <p
+              className={cn('text-lg font-bold', c.color)}
+              style={'glow' in c && c.glow ? { textShadow: '0 0 14px rgba(52,211,153,0.5)' } : undefined}
+            >
+              {c.value}
+            </p>
+          </motion.div>
         ))}
       </div>
 

@@ -450,14 +450,20 @@ export default function ClientsPage() {
           <p className="text-zinc-500 text-sm">Gerencie clientes, rastreie vencimentos e envie cobranças via WhatsApp e Email.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.97 }}
             onClick={() => void handleRecover()}
             disabled={recovering}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-bold text-white hover:from-violet-500 hover:to-purple-500 disabled:opacity-50 transition-all shadow-lg shadow-violet-900/40"
+            className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-50 transition-all"
+            style={{
+              background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+              boxShadow: recovering ? 'none' : '0 0 20px rgba(124,58,237,0.35)',
+            }}
           >
             {recovering ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-            {recovering ? 'Recuperando...' : '💰 Recuperar agora'}
-          </button>
+            {recovering ? 'Recuperando...' : 'Recuperar agora'}
+          </motion.button>
           {overdueClients.some(c => c.email) && (
             <button
               onClick={() => void handleChargeAllEmail()}
@@ -485,13 +491,25 @@ export default function ClientsPage() {
           {[
             { label: 'Total de Clientes',  value: meta.total,                    color: 'text-white' },
             { label: 'Faturamento Total',  value: fmtBRL(meta.totalRevenue),      color: 'text-violet-400' },
-            { label: `Top ${meta.top20Count} Clientes`, value: fmtBRL(meta.top20Revenue), color: 'text-emerald-400' },
+            { label: `Top ${meta.top20Count} Clientes`, value: fmtBRL(meta.top20Revenue), color: 'text-emerald-400', glow: true },
             { label: 'Concentração 80/20', value: `${meta.top20Pct}% da receita`, color: 'text-amber-400' },
-          ].map(card => (
-            <div key={card.label} className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+          ].map((card, i) => (
+            <motion.div
+              key={card.label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+              whileHover={{ y: -2 }}
+              className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 nexus-card"
+            >
               <p className="text-xs text-zinc-500 mb-1">{card.label}</p>
-              <p className={cn('text-lg font-bold', card.color)}>{card.value}</p>
-            </div>
+              <p
+                className={cn('text-lg font-bold', card.color)}
+                style={'glow' in card && card.glow ? { textShadow: '0 0 12px rgba(52,211,153,0.5)' } : {}}
+              >
+                {card.value}
+              </p>
+            </motion.div>
           ))}
         </div>
       )}
@@ -499,38 +517,31 @@ export default function ClientsPage() {
       {/* Recovery metrics */}
       {metrics && (
         <div className="mb-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 flex items-start gap-3">
-            <AlertTriangle size={18} className="text-red-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-xs text-zinc-500">Inadimplentes</p>
-              <p className="text-lg font-bold text-red-400">{metrics.overdueCount} clientes</p>
-              <p className="text-xs text-zinc-600 mt-0.5">{fmtBRL(metrics.overdueValue)} em aberto</p>
-            </div>
-          </div>
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
-            <MessageSquare size={18} className="text-amber-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-xs text-zinc-500">Cobrados (WhatsApp)</p>
-              <p className="text-lg font-bold text-amber-400">{metrics.chargedCount - metrics.emailChargedCount}</p>
-              <p className="text-xs text-zinc-600 mt-0.5">mensagens enviadas</p>
-            </div>
-          </div>
-          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 flex items-start gap-3">
-            <Mail size={18} className="text-blue-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-xs text-zinc-500">Cobrados por Email</p>
-              <p className="text-lg font-bold text-blue-400">{metrics.emailChargedCount}</p>
-              <p className="text-xs text-zinc-600 mt-0.5">emails enviados</p>
-            </div>
-          </div>
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 flex items-start gap-3">
-            <DollarSign size={18} className="text-emerald-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-xs text-zinc-500">Recuperado</p>
-              <p className="text-lg font-bold text-emerald-400">{fmtBRL(metrics.recoveredValue)}</p>
-              <p className="text-xs text-zinc-600 mt-0.5">taxa: {metrics.recoveryRate}%</p>
-            </div>
-          </div>
+          {([
+            { icon: <AlertTriangle size={18} className="text-red-400 mt-0.5 shrink-0" />,     border: 'border-red-500/20',     bg: 'bg-red-500/5',     label: 'Inadimplentes',       main: `${metrics.overdueCount} clientes`,               sub: `${fmtBRL(metrics.overdueValue)} em aberto` },
+            { icon: <MessageSquare size={18} className="text-amber-400 mt-0.5 shrink-0" />,   border: 'border-amber-500/20',   bg: 'bg-amber-500/5',   label: 'Cobrados (WhatsApp)', main: String(metrics.chargedCount - metrics.emailChargedCount), sub: 'mensagens enviadas' },
+            { icon: <Mail size={18} className="text-blue-400 mt-0.5 shrink-0" />,             border: 'border-blue-500/20',    bg: 'bg-blue-500/5',    label: 'Cobrados por Email',  main: String(metrics.emailChargedCount),                sub: 'emails enviados' },
+            { icon: <DollarSign size={18} className="text-emerald-400 mt-0.5 shrink-0" />,   border: 'border-emerald-500/20', bg: 'bg-emerald-500/5', label: 'Recuperado',          main: fmtBRL(metrics.recoveredValue),                   sub: `taxa: ${metrics.recoveryRate}%`, glow: true },
+          ] as const).map((card, i) => (
+            <motion.div
+              key={card.label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 + i * 0.05 }}
+              whileHover={{ y: -2 }}
+              className={cn('rounded-xl border px-4 py-3 flex items-start gap-3 nexus-card', card.border, card.bg)}
+            >
+              {card.icon}
+              <div>
+                <p className="text-xs text-zinc-500">{card.label}</p>
+                <p className={cn('text-lg font-bold', i === 0 ? 'text-red-400' : i === 1 ? 'text-amber-400' : i === 2 ? 'text-blue-400' : 'text-emerald-400')}
+                  style={'glow' in card && card.glow ? { textShadow: '0 0 12px rgba(52,211,153,0.5)' } : {}}>
+                  {card.main}
+                </p>
+                <p className="text-xs text-zinc-600 mt-0.5">{card.sub}</p>
+              </div>
+            </motion.div>
+          ))}
         </div>
       )}
 

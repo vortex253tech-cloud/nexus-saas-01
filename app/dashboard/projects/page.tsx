@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import {
   FolderOpen, Plus, TrendingUp, TrendingDown, DollarSign,
   Loader2, ChevronRight, BarChart3, Trash2, X,
+  Package, Wrench, ShoppingCart, Monitor,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -23,13 +24,18 @@ interface Project {
   profit:        number
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  product:   '📦 Produto',
-  service:   '🛠️ Serviço',
-  ecommerce: '🛒 E-commerce',
-  saas:      '💻 SaaS',
-  other:     '📁 Outro',
+const TYPE_META: Record<string, { label: string; icon: ReactNode; color: string }> = {
+  product:   { label: 'Produto',    icon: <Package size={16} />,      color: 'text-violet-400 bg-violet-600/15 border-violet-600/20' },
+  service:   { label: 'Serviço',   icon: <Wrench size={16} />,       color: 'text-blue-400 bg-blue-600/15 border-blue-600/20' },
+  ecommerce: { label: 'E-commerce', icon: <ShoppingCart size={16} />, color: 'text-emerald-400 bg-emerald-600/15 border-emerald-600/20' },
+  saas:      { label: 'SaaS',      icon: <Monitor size={16} />,      color: 'text-cyan-400 bg-cyan-600/15 border-cyan-600/20' },
+  other:     { label: 'Outro',     icon: <FolderOpen size={16} />,   color: 'text-zinc-400 bg-zinc-700/40 border-zinc-700/40' },
 }
+
+// legacy compat
+const TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(TYPE_META).map(([k, v]) => [k, v.label])
+)
 
 const FORM_DEFAULTS = { name: '', type: 'product', description: '', goal: '' }
 
@@ -239,8 +245,9 @@ export default function ProjectsPage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ delay: i * 0.04 }}
-                className="group relative bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-violet-600/40 transition-all cursor-pointer"
+                whileHover={{ y: -3 }}
+                transition={{ delay: i * 0.04, type: 'spring', stiffness: 360, damping: 26 }}
+                className="group relative bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-violet-600/40 nexus-card cursor-pointer"
                 onClick={() => router.push(`/dashboard/projects/${p.id}`)}
               >
                 {/* Delete btn */}
@@ -253,17 +260,23 @@ export default function ProjectsPage() {
                 </button>
 
                 <div className="flex items-start gap-3 mb-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600/15 border border-violet-600/20 text-lg">
-                    {TYPE_LABELS[p.type]?.split(' ')[0] ?? '📁'}
+                  <div className={cn(
+                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border',
+                    TYPE_META[p.type]?.color ?? 'text-zinc-400 bg-zinc-700/40 border-zinc-700/40',
+                  )}>
+                    {TYPE_META[p.type]?.icon ?? <FolderOpen size={16} />}
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-semibold text-white truncate">{p.name}</h3>
-                    <p className="text-xs text-zinc-500 mt-0.5">{TYPE_LABELS[p.type] ?? p.type}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">{TYPE_META[p.type]?.label ?? p.type}</p>
                   </div>
                 </div>
 
                 {p.goal && (
-                  <p className="text-xs text-zinc-500 mb-4 line-clamp-1">🎯 {p.goal}</p>
+                  <p className="text-xs text-zinc-500 mb-4 line-clamp-1 flex items-center gap-1">
+                    <TrendingUp size={10} className="text-violet-400 shrink-0" />
+                    {p.goal}
+                  </p>
                 )}
 
                 {/* Metrics */}
@@ -291,6 +304,24 @@ export default function ProjectsPage() {
                     </p>
                   </div>
                 </div>
+
+                {/* Profit bar */}
+                {p.totalRevenue > 0 && (
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between text-[10px] text-zinc-600 mb-1">
+                      <span>Margem</span>
+                      <span>{Math.round((p.profit / p.totalRevenue) * 100)}%</span>
+                    </div>
+                    <div className="h-1 w-full rounded-full bg-zinc-800 overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.max(0, Math.min(100, (p.profit / p.totalRevenue) * 100))}%` }}
+                        transition={{ duration: 0.8, ease: 'easeOut', delay: i * 0.05 }}
+                        className={cn('h-full rounded-full', p.profit >= 0 ? 'bg-emerald-500' : 'bg-red-500')}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-zinc-600">

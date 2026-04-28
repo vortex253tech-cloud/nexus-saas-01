@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { DBFinancialData } from '@/lib/db'
+import { AIStatus } from '@/components/ui/ai-status'
 
 // ─── Month options ─────────────────────────────────────────────
 
@@ -198,8 +199,11 @@ export default function DadosPage() {
         </div>
 
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-          <h1 className="text-2xl font-bold text-white">Dados Financeiros</h1>
-          <p className="mt-1 text-sm text-zinc-400">
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-white">Dados Financeiros</h1>
+            <AIStatus state={saving ? 'processing' : loading ? 'analyzing' : 'idle'} label={saving ? 'Salvando' : loading ? 'Carregando' : undefined} />
+          </div>
+          <p className="text-sm text-zinc-400">
             Insira seus dados mensais para que a IA gere diagnósticos baseados em dados reais.
           </p>
         </motion.div>

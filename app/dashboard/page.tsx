@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import {
@@ -13,6 +13,7 @@ import {
   Flame, Clock, TrendingUp as Impact,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { AIStatus } from '@/components/ui/ai-status'
 import { gerarDiagnostico } from '@/lib/diagnostico'
 import { gerarInsights } from '@/lib/insights'
 import { gerarAlertas } from '@/lib/alertas'
@@ -489,16 +490,16 @@ function PrioridadeBadge({ p }: { p: string }) {
 }
 
 // Phase 10: badges based on urgency + effort + impact
-function getInsightBadges(insight: UnifiedInsight): { icon: string; label: string; className: string }[] {
-  const badges = []
+function getInsightBadges(insight: UnifiedInsight): { icon: ReactNode; label: string; className: string }[] {
+  const badges: { icon: ReactNode; label: string; className: string }[] = []
   if (insight.urgencia === 'alta' || insight.prioridade === 'critica') {
-    badges.push({ icon: '🔥', label: 'Dinheiro perdido agora', className: 'border-red-700/40 bg-red-950/30 text-red-300' })
+    badges.push({ icon: <Flame size={10} />, label: 'Dinheiro perdido agora', className: 'border-red-700/40 bg-red-950/30 text-red-300' })
   }
   if (insight.effort_level === 'low') {
-    badges.push({ icon: '⚡', label: 'Rápido de implementar', className: 'border-amber-700/40 bg-amber-950/30 text-amber-300' })
+    badges.push({ icon: <Zap size={10} />, label: 'Rápido de implementar', className: 'border-amber-700/40 bg-amber-950/30 text-amber-300' })
   }
   if (insight.impacto_estimado >= 3000) {
-    badges.push({ icon: '💰', label: 'Alto impacto', className: 'border-emerald-700/40 bg-emerald-950/30 text-emerald-300' })
+    badges.push({ icon: <DollarSign size={10} />, label: 'Alto impacto', className: 'border-emerald-700/40 bg-emerald-950/30 text-emerald-300' })
   }
   return badges
 }
@@ -620,7 +621,7 @@ function InsightCard({ insight, index, plan, isFirst, onStatusChange, onPaywallT
               'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg',
               isConcluido ? 'bg-emerald-500/15' : isFirst ? 'bg-violet-600/20' : 'bg-zinc-800',
             )}>
-              {isConcluido ? '✅' : insight.icone}
+              {isConcluido ? <CheckCircle2 size={18} className="text-emerald-400" /> : insight.icone}
             </div>
             <div className="min-w-0">
               <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
@@ -910,6 +911,7 @@ function AIGenerateBar({ onGenerate, generating, hasApiKey, plan, lastGenerated 
         </div>
       </div>
       <div className="flex items-center gap-2">
+        {generating && <AIStatus state="analyzing" label="IA analisando" />}
         <Link href="/dashboard/dados" className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-white">
           <Database className="h-3 w-3" /> Dados
         </Link>
@@ -1396,8 +1398,9 @@ export default function DashboardPage() {
                     icon: BarChart3, color: 'text-blue-400', highlight: false, link: null,
                   },
                 ].map((kpi, i) => (
-                  <motion.div key={kpi.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 * i }}
-                    className={cn('rounded-2xl border p-5 transition-colors', kpi.highlight ? 'border-emerald-800/50 bg-emerald-950/20' : 'border-zinc-800 bg-zinc-900/60', kpi.link && 'cursor-pointer hover:border-zinc-700')}
+                  <motion.div key={kpi.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 * i, type: 'spring', stiffness: 360, damping: 26 }}
+                    whileHover={{ y: -2 }}
+                    className={cn('rounded-2xl border p-5 transition-colors nexus-card', kpi.highlight ? 'border-emerald-800/50 bg-emerald-950/20' : 'border-zinc-800 bg-zinc-900/60', kpi.link && 'cursor-pointer hover:border-zinc-700')}
                     onClick={() => kpi.link && (window.location.href = kpi.link)}
                   >
                     <div className="mb-3 flex items-center justify-between">

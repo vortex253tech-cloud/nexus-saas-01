@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence }           from 'framer-motion'
 import { useRouter }                         from 'next/navigation'
 import {
   Map, Plus, Loader2, Zap, Clock, Trash2, ChevronRight, X, Play, Store, Sparkles,
+  RefreshCw, Users, TrendingUp, ShoppingBag,
 } from 'lucide-react'
 import { GROWTH_TEMPLATES } from '@/lib/growth-map-types'
 import { cn } from '@/lib/cn'
@@ -14,11 +15,18 @@ interface GrowthMap {
   last_executed_at: string | null; updated_at: string
 }
 
-const COLOR: Record<string, string> = {
-  red:    'bg-red-500/10 border-red-500/30 text-red-400',
-  emerald:'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
-  blue:   'bg-blue-500/10 border-blue-500/30 text-blue-400',
-  violet: 'bg-violet-500/10 border-violet-500/30 text-violet-400',
+const COLOR: Record<string, { card: string; icon: string; glow: string }> = {
+  red:    { card: 'bg-red-500/10 border-red-500/30', icon: 'text-red-400', glow: 'rgba(239,68,68,0.2)' },
+  emerald:{ card: 'bg-emerald-500/10 border-emerald-500/30', icon: 'text-emerald-400', glow: 'rgba(16,185,129,0.2)' },
+  blue:   { card: 'bg-blue-500/10 border-blue-500/30', icon: 'text-blue-400', glow: 'rgba(59,130,246,0.2)' },
+  violet: { card: 'bg-violet-500/10 border-violet-500/30', icon: 'text-violet-400', glow: 'rgba(124,58,237,0.2)' },
+}
+
+const TEMPLATE_ICONS: Record<string, React.ReactNode> = {
+  recovery:      <RefreshCw size={20} />,
+  growth:        <TrendingUp size={20} />,
+  retention:     <Users size={20} />,
+  upsell:        <ShoppingBag size={20} />,
 }
 
 // ─── Create modal ─────────────────────────────────────────────────────────────
@@ -65,19 +73,26 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         <div className="mb-5">
           <p className="text-xs font-medium text-zinc-400 mb-3">Começar com um template (opcional)</p>
           <div className="grid grid-cols-2 gap-3">
-            {Object.entries(GROWTH_TEMPLATES).map(([key, tpl]) => (
-              <button key={key} onClick={() => { setTemplateKey(templateKey === key ? null : key); if (!name) setName(tpl.name) }}
-                className={cn(
-                  'text-left rounded-xl border p-3.5 transition-all',
-                  templateKey === key
-                    ? 'border-violet-500 bg-violet-600/15'
-                    : 'border-zinc-700 hover:border-zinc-600 bg-zinc-800/40',
-                )}>
-                <div className="text-xl mb-1.5">{tpl.icon}</div>
-                <p className="text-sm font-semibold text-white mb-1">{tpl.name}</p>
-                <p className="text-xs text-zinc-500 line-clamp-2">{tpl.description}</p>
-              </button>
-            ))}
+            {Object.entries(GROWTH_TEMPLATES).map(([key, tpl]) => {
+              const col = COLOR[tpl.color] ?? COLOR.violet
+              const selected = templateKey === key
+              return (
+                <button key={key}
+                  onClick={() => { setTemplateKey(selected ? null : key); if (!name) setName(tpl.name) }}
+                  className={cn(
+                    'text-left rounded-xl border p-3.5 transition-all',
+                    selected
+                      ? 'border-violet-500 bg-violet-600/15'
+                      : 'border-zinc-700 hover:border-zinc-600 bg-zinc-800/40',
+                  )}>
+                  <div className={cn('mb-1.5', col.icon)}>
+                    {TEMPLATE_ICONS[key] ?? <Sparkles size={18} />}
+                  </div>
+                  <p className="text-sm font-semibold text-white mb-1">{tpl.name}</p>
+                  <p className="text-xs text-zinc-500 line-clamp-2">{tpl.description}</p>
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -150,14 +165,25 @@ export default function GrowthMapPage() {
 
       {/* Template preview strip */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-10">
-        {Object.entries(GROWTH_TEMPLATES).map(([key, tpl]) => (
-          <button key={key} onClick={() => setShowModal(true)}
-            className={cn('text-left rounded-2xl border p-4 transition-all hover:scale-[1.02]', COLOR[tpl.color])}>
-            <div className="text-2xl mb-2">{tpl.icon}</div>
-            <p className="text-sm font-semibold text-white mb-1">{tpl.name}</p>
-            <p className="text-xs opacity-70 line-clamp-2">{tpl.description}</p>
-          </button>
-        ))}
+        {Object.entries(GROWTH_TEMPLATES).map(([key, tpl]) => {
+          const col = COLOR[tpl.color] ?? COLOR.violet
+          return (
+            <motion.button
+              key={key}
+              whileHover={{ y: -3, scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 26 }}
+              onClick={() => setShowModal(true)}
+              className={cn('text-left rounded-2xl border p-4 transition-all nexus-card', col.card)}
+            >
+              <div className={cn('mb-2.5', col.icon)}>
+                {TEMPLATE_ICONS[key] ?? <Sparkles size={20} />}
+              </div>
+              <p className="text-sm font-semibold text-white mb-1">{tpl.name}</p>
+              <p className={cn('text-xs opacity-70 line-clamp-2', col.icon)}>{tpl.description}</p>
+            </motion.button>
+          )
+        })}
       </div>
 
       {/* Maps list */}
@@ -188,8 +214,10 @@ export default function GrowthMapPage() {
               {maps.map((m, i) => (
                 <motion.div key={m.id}
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.04 }}
-                  className="group relative bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-violet-600/40 transition-all cursor-pointer"
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  whileHover={{ y: -3 }}
+                  transition={{ delay: i * 0.04, type: 'spring', stiffness: 360, damping: 26 }}
+                  className="group relative bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-violet-600/40 nexus-card cursor-pointer"
                   onClick={() => router.push(`/dashboard/growth-map/${m.id}`)}>
 
                   <button onClick={e => { e.stopPropagation(); void handleDelete(m.id) }}
@@ -199,12 +227,23 @@ export default function GrowthMapPage() {
                   </button>
 
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/15 border border-violet-600/20 text-lg">🗺</div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/15 border border-violet-600/20 text-violet-400">
+                      <Map size={18} />
+                    </div>
                     <div className="min-w-0">
                       <h3 className="font-semibold text-white truncate">{m.name}</h3>
-                      <span className={cn('text-xs px-2 py-0.5 rounded-full',
-                        m.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-zinc-700 text-zinc-400'
-                      )}>{m.status === 'active' ? '● Ativo' : '◯ Rascunho'}</span>
+                      <span className={cn(
+                        'inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full',
+                        m.status === 'active'
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : 'bg-zinc-700 text-zinc-400',
+                      )}>
+                        <span className={cn(
+                          'h-1.5 w-1.5 rounded-full',
+                          m.status === 'active' ? 'bg-emerald-400 ai-pulse' : 'bg-zinc-500',
+                        )} />
+                        {m.status === 'active' ? 'Ativo' : 'Rascunho'}
+                      </span>
                     </div>
                   </div>
 

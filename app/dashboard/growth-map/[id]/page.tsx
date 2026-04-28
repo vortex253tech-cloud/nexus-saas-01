@@ -5,7 +5,7 @@ import { useParams, useRouter }                      from 'next/navigation'
 import dynamic                                       from 'next/dynamic'
 import {
   ArrowLeft, Loader2, CheckCircle2, AlertCircle, Zap, List,
-  TrendingUp, Mail, MessageCircle, Users, Upload, X,
+  TrendingUp, Mail, MessageCircle, Users, Upload, X, Check, CornerDownRight,
 } from 'lucide-react'
 import type { GrowthNode, GrowthEdge, NodeResult } from '@/lib/growth-map-types'
 import type { ExecutionRecord }                     from '@/lib/flow-engine/types'
@@ -143,7 +143,7 @@ function ExecutionPanel({
                                              'bg-zinc-800/50 text-zinc-400',
                 ].join(' ')}>
                   <span className="shrink-0">
-                    {log.status === 'error' ? '✗' : log.status === 'skipped' ? '⤸' : '✓'}
+                    {log.status === 'error' ? <X size={12} /> : log.status === 'skipped' ? <CornerDownRight size={12} /> : <Check size={12} />}
                   </span>
                   <span className="truncate">[{log.nodeType}] {log.message}</span>
                   <span className="ml-auto shrink-0">{log.durationMs}ms</span>

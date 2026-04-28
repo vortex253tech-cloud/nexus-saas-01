@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import type { ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import {
   Send, Plus, Zap, Mail, Users, Play,
   Loader2, ArrowRight, Clock, CheckCircle2,
   Trash2, ToggleLeft, ToggleRight, AlertCircle,
-  Star, Sparkles, X,
+  Star, Sparkles, X, DollarSign, UserPlus, RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -50,10 +51,14 @@ interface Automation {
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
-const TEMPLATES = [
+const TEMPLATES: Array<{
+  id: string; icon: ReactNode; name: string; description: string
+  trigger_type: 'manual' | 'new_client' | 'client_overdue'; channel: string
+  steps: Array<{ subject: string; body_html: string; delay_days: number }>
+}> = [
   {
     id: 'cobranca',
-    icon: '💰',
+    icon: <DollarSign size={20} className="text-amber-400" />,
     name: 'Recuperação de Cobrança',
     description: 'Envie lembretes automáticos para clientes com pagamentos em atraso. Sequência de 3 emails: D+1, D+3 e D+7.',
     trigger_type: 'client_overdue' as const,
@@ -78,7 +83,7 @@ const TEMPLATES = [
   },
   {
     id: 'boas-vindas',
-    icon: '👋',
+    icon: <UserPlus size={20} className="text-emerald-400" />,
     name: 'Boas-vindas ao cliente',
     description: 'Envie uma mensagem de boas-vindas quando um novo cliente for adicionado ao sistema.',
     trigger_type: 'new_client' as const,
@@ -98,7 +103,7 @@ const TEMPLATES = [
   },
   {
     id: 'reativacao',
-    icon: '🔄',
+    icon: <RefreshCw size={20} className="text-violet-400" />,
     name: 'Reativação de clientes',
     description: 'Reconquiste clientes que não interagem há tempo. Ative manualmente para a lista que desejar.',
     trigger_type: 'manual' as const,
@@ -169,8 +174,8 @@ export default function AutomationsPage() {
         showToast(
           'success',
           data.created
-            ? 'Automações inteligentes ativadas com sucesso 🚀'
-            : 'Automações já estavam ativas ✅',
+            ? 'Automações inteligentes ativadas com sucesso'
+            : 'Automações já estavam ativas',
         )
         await load()
       } else {
@@ -425,7 +430,9 @@ export default function AutomationsPage() {
                     layout
                     initial={{ opacity: 0, scale: 0.97 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="rounded-2xl bg-zinc-900 border border-zinc-800 p-5 flex flex-col gap-4 hover:border-zinc-700 transition-colors"
+                    whileHover={{ y: -2 }}
+                    transition={{ type: 'spring', stiffness: 360, damping: 26 }}
+                    className="rounded-2xl bg-zinc-900 border border-zinc-800 p-5 flex flex-col gap-4 nexus-card"
                   >
                     {/* Status + trigger */}
                     <div className="flex items-center justify-between gap-2">
@@ -543,14 +550,18 @@ export default function AutomationsPage() {
               Escolha um modelo pronto e comece a enviar e-mails automaticamente em segundos.
             </p>
             <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {TEMPLATES.map(tpl => (
-                <div
+              {TEMPLATES.map((tpl, i) => (
+                <motion.div
                   key={tpl.id}
-                  className="rounded-2xl bg-zinc-900 border border-zinc-800 p-5 flex flex-col gap-4 hover:border-zinc-700 transition-colors"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05, type: 'spring', stiffness: 360, damping: 26 }}
+                  whileHover={{ y: -2 }}
+                  className="rounded-2xl bg-zinc-900 border border-zinc-800 p-5 flex flex-col gap-4 nexus-card"
                 >
                   {/* Icon + channel */}
                   <div className="flex items-start justify-between">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-800 text-2xl">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-800 border border-zinc-700/60">
                       {tpl.icon}
                     </div>
                     <div className="flex items-center gap-1.5 rounded-full bg-violet-600/15 border border-violet-600/30 px-2.5 py-1">
@@ -609,7 +620,7 @@ export default function AutomationsPage() {
                     )}
                     {creatingId === tpl.id ? 'Criando...' : 'Usar modelo'}
                   </button>
-                </div>
+                </motion.div>
               ))}
             </div>
           </motion.div>

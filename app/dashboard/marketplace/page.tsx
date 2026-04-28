@@ -6,7 +6,9 @@ import {
   Store, Search, Loader2, Star, Download, Zap, ChevronRight,
   TrendingUp, X, Sparkles, CheckCircle2,
 } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { cn } from '@/lib/cn'
+import { AIStatus } from '@/components/ui/ai-status'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -163,7 +165,11 @@ function TemplateCard({
   const accent = COLOR_ACCENT[template.color] ?? COLOR_ACCENT.violet
 
   return (
-    <div className={cn('rounded-2xl border p-5 flex flex-col gap-3 hover:border-zinc-600 transition-colors', accent)}>
+    <motion.div
+      whileHover={{ y: -2 }}
+      transition={{ type: 'spring', stiffness: 360, damping: 26 }}
+      className={cn('rounded-2xl border p-5 flex flex-col gap-3 nexus-card', accent)}
+    >
       <div className="flex items-start justify-between gap-2">
         <span className="text-3xl">{template.icon}</span>
         <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', TIER_BADGE[template.tier] ?? TIER_BADGE.free)}>
@@ -197,7 +203,7 @@ function TemplateCard({
         <Download size={11} />
         Usar template
       </button>
-    </div>
+    </motion.div>
   )
 }
 
@@ -252,7 +258,10 @@ export default function MarketplacePage() {
             <Store size={20} className="text-violet-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white">Marketplace de Fluxos</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-white">Marketplace de Fluxos</h1>
+              <AIStatus state={loading ? 'analyzing' : showAI ? 'processing' : 'idle'} />
+            </div>
             <p className="text-xs text-zinc-500">Templates prontos para automatizar seu negócio</p>
           </div>
         </div>

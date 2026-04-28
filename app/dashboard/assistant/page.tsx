@@ -9,6 +9,7 @@ import {
 import { cn } from '@/lib/cn'
 import { resolveCompanyId } from '@/lib/get-company-id'
 import { useChatStore, type ChatMessage } from '@/lib/store/chat-store'
+import { AIStatus } from '@/components/ui/ai-status'
 
 // ─── Suggestions ─────────────────────────────────────────────────
 
@@ -300,10 +301,14 @@ export default function AssistantPage() {
           )}>
             <span className={cn(
               'h-1.5 w-1.5 rounded-full',
-              ready ? 'bg-emerald-400' : 'animate-pulse bg-amber-400',
+              ready ? 'bg-emerald-400 ai-pulse' : 'animate-pulse bg-amber-400',
             )} />
             {ready ? 'Conectado' : 'Conectando'}
           </div>
+          <AIStatus
+            state={loading ? 'processing' : messages.length > 0 ? 'analyzing' : 'idle'}
+            label={loading ? 'IA respondendo' : undefined}
+          />
           <button
             onClick={clearMessages}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-white"
@@ -337,16 +342,21 @@ export default function AssistantPage() {
             className="shrink-0 px-4 pb-2"
           >
             <div className="mx-auto max-w-2xl flex flex-wrap gap-2">
-              {SUGGESTIONS.map(({ icon: Icon, text }) => (
-                <button
+              {SUGGESTIONS.map(({ icon: Icon, text }, i) => (
+                <motion.button
                   key={text}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05, type: 'spring', stiffness: 360, damping: 26 }}
+                  whileHover={{ y: -1, scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
                   onClick={() => handleSend(text)}
                   disabled={!ready}
                   className="flex items-center gap-1.5 rounded-full border border-zinc-700/50 bg-zinc-800/50 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Icon size={11} />
                   {text}
-                </button>
+                </motion.button>
               ))}
             </div>
           </motion.div>

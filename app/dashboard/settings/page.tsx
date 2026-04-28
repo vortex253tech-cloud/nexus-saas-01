@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   Palette, User, Bell, Shield,
-  Lightbulb, Brain, Zap, Star, Sparkles, Clock,
+  Lightbulb, Brain, Zap, Star, Sparkles, Clock, Wrench,
 } from 'lucide-react'
 import ThemeSelector from '@/components/ui/theme-selector'
 import LiveDashboardPreview from '@/components/ui/live-dashboard-preview'
@@ -29,7 +29,7 @@ function ComingSoon({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
-        <span className="text-xl">🚧</span>
+        <Wrench size={20} className="text-zinc-500" />
       </div>
       <p className="font-medium text-white">{label}</p>
       <p className="text-sm text-zinc-500">Esta seção estará disponível em breve.</p>
@@ -106,7 +106,7 @@ function AIRecommendation() {
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm"
           style={{ background: `${rec.colors.primary}20`, border: `1px solid ${rec.colors.primary}30` }}
         >
-          ✦
+          <Sparkles size={14} style={{ color: rec.colors.primary }} />
         </div>
         <div>
           <div className="flex items-center gap-2">
@@ -150,7 +150,7 @@ function AparenciaTab() {
     <div className="space-y-8">
       {/* Tip banner */}
       <div className="flex items-center gap-2.5 rounded-xl border border-violet-600/20 bg-violet-600/8 px-4 py-3">
-        <span className="text-base">💡</span>
+        <Lightbulb size={15} className="shrink-0 text-amber-400" />
         <p className="text-xs text-zinc-300">
           <span className="font-semibold text-violet-300">Dica:</span>{' '}
           Passe o mouse sobre um tema para pré-visualizar a aparência completa do NEXUS antes de aplicar.

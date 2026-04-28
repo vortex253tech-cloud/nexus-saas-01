@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation'
 import {
   ArrowLeft, Plus, Trash2, Loader2, TrendingUp, TrendingDown,
   DollarSign, ShoppingBag, BarChart3, Sparkles, X, RefreshCw,
-  AlertTriangle, Lightbulb, Target, Package,
+  AlertTriangle, Lightbulb, Target, Package, ArrowRight,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -585,7 +585,7 @@ export default function ProjectDetailPage() {
                     <ul className="space-y-2.5">
                       {analysis.insights.map((ins, i) => (
                         <li key={i} className="flex gap-3 text-sm text-zinc-300">
-                          <span className="text-yellow-400 mt-0.5 shrink-0">•</span>
+                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-400" />
                           {ins}
                         </li>
                       ))}
@@ -602,7 +602,7 @@ export default function ProjectDetailPage() {
                     <ul className="space-y-2.5">
                       {analysis.alerts.map((a, i) => (
                         <li key={i} className="flex gap-3 text-sm text-zinc-300">
-                          <span className="text-red-400 mt-0.5 shrink-0">⚠</span>
+                          <AlertTriangle size={13} className="text-red-400 mt-0.5 shrink-0" />
                           {a}
                         </li>
                       ))}
@@ -619,7 +619,7 @@ export default function ProjectDetailPage() {
                     <ul className="space-y-2.5">
                       {analysis.opportunities.map((o, i) => (
                         <li key={i} className="flex gap-3 text-sm text-zinc-300">
-                          <span className="text-emerald-400 mt-0.5 shrink-0">→</span>
+                          <ArrowRight size={13} className="text-emerald-400 mt-0.5 shrink-0" />
                           {o}
                         </li>
                       ))}
