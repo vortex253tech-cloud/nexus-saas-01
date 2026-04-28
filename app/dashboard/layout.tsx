@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Database, Zap, Bell, History,
   CreditCard, Menu, X, Building2, ChevronRight,
   DollarSign, MessageSquare, LogOut, Users, Clock,
-  ArrowRight, Mail, FolderOpen, Map,
+  ArrowRight, Mail, FolderOpen, Map, Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -25,6 +25,7 @@ const NAV = [
   { href: '/dashboard/alerts',     label: 'Alertas',       icon: Bell },
   { href: '/dashboard/history',    label: 'Histórico',     icon: History },
   { href: '/dashboard/billing',    label: 'Plano',         icon: CreditCard },
+  { href: '/dashboard/settings',  label: 'Configurações', icon: Settings },
 ]
 
 // ─── Trial Banner ──────────────────────────────────────────────

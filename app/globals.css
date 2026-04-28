@@ -14,21 +14,108 @@
   --radius-2xl: 1.25rem;
 }
 
+/* ── NEXUS Theme CSS Variables (default = aiCore) ──────────────── */
 :root {
   color-scheme: dark;
+
+  --nexus-bg:           #05070D;
+  --nexus-card:         #0B0F1A;
+  --nexus-cardHover:    #0F1525;
+  --nexus-primary:      #6C5CE7;
+  --nexus-primaryFg:    #FFFFFF;
+  --nexus-secondary:    #00F5D4;
+  --nexus-accent:       #FF2E63;
+  --nexus-text:         #EAEAF0;
+  --nexus-textMuted:    #6B7280;
+  --nexus-border:       rgba(255,255,255,0.07);
+  --nexus-borderStrong: rgba(255,255,255,0.14);
+  --nexus-sidebar:      #080B14;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
+/* ── Body — uses theme vars so it changes with every theme ─────── */
 body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-geist-sans, system-ui, sans-serif);
+  background-color: var(--nexus-bg);
+  color:            var(--nexus-text);
+  font-family:      var(--font-geist-sans, system-ui, sans-serif);
+  transition:
+    background-color 0.35s ease,
+    color            0.35s ease;
 }
 
-/* Gradient text utility */
+/* ── Smooth transition on key surfaces ─────────────────────────── */
+aside,
+header,
+main,
+[class*="bg-zinc"] {
+  transition:
+    background-color 0.35s ease,
+    border-color     0.2s ease,
+    color            0.2s ease;
+}
+
+/* ── Glass Light — override dark Tailwind surfaces ─────────────── */
+[data-theme="glassLight"] body {
+  background-color: var(--nexus-bg) !important;
+  color:            var(--nexus-text) !important;
+}
+[data-theme="glassLight"] aside {
+  background-color: var(--nexus-sidebar) !important;
+  border-color:     var(--nexus-border) !important;
+}
+[data-theme="glassLight"] header {
+  background-color: var(--nexus-sidebar) !important;
+  border-color:     var(--nexus-border) !important;
+}
+[data-theme="glassLight"] .bg-zinc-950 { background-color: var(--nexus-bg)      !important; }
+[data-theme="glassLight"] .bg-zinc-900 { background-color: var(--nexus-card)     !important; }
+[data-theme="glassLight"] .bg-zinc-800 { background-color: var(--nexus-cardHover)!important; }
+[data-theme="glassLight"] .text-white  { color: var(--nexus-text) !important; }
+[data-theme="glassLight"] .text-zinc-400 { color: var(--nexus-textMuted) !important; }
+[data-theme="glassLight"] .text-zinc-500 { color: var(--nexus-textMuted) !important; }
+[data-theme="glassLight"] .border-zinc-800 { border-color: var(--nexus-border) !important; }
+[data-theme="glassLight"] .border-zinc-700 { border-color: var(--nexus-borderStrong) !important; }
+[data-theme="glassLight"] .hover\:bg-zinc-800:hover { background-color: var(--nexus-cardHover) !important; }
+[data-theme="glassLight"] .bg-violet-600  { background-color: var(--nexus-primary) !important; }
+[data-theme="glassLight"] .hover\:bg-violet-500:hover { background-color: color-mix(in srgb, var(--nexus-primary) 80%, white) !important; }
+[data-theme="glassLight"] .text-violet-400 { color: var(--nexus-primary) !important; }
+[data-theme="glassLight"] .border-violet-600,
+[data-theme="glassLight"] .border-violet-800 { border-color: var(--nexus-primary) !important; }
+[data-theme="glassLight"] .bg-violet-600\/20 { background-color: color-mix(in srgb, var(--nexus-primary) 15%, transparent) !important; }
+
+/* backdrop blur for glass cards */
+[data-theme="glassLight"] [class*="rounded"] {
+  backdrop-filter: blur(12px);
+}
+
+/* ── Cyberpunk — neon overrides on top of existing dark ─────────── */
+[data-theme="cyberpunk"] body {
+  background-color: var(--nexus-bg) !important;
+}
+[data-theme="cyberpunk"] aside {
+  background-color: var(--nexus-sidebar) !important;
+  border-color:     var(--nexus-border) !important;
+}
+[data-theme="cyberpunk"] .bg-zinc-950 { background-color: var(--nexus-bg)   !important; }
+[data-theme="cyberpunk"] .bg-zinc-900 { background-color: var(--nexus-card)  !important; }
+[data-theme="cyberpunk"] .bg-violet-600  { background-color: var(--nexus-primary) !important; color: var(--nexus-primaryFg) !important; }
+[data-theme="cyberpunk"] .hover\:bg-violet-500:hover { background-color: color-mix(in srgb, var(--nexus-primary) 80%, white) !important; }
+[data-theme="cyberpunk"] .text-violet-400 { color: var(--nexus-primary) !important; }
+[data-theme="cyberpunk"] .border-violet-600 { border-color: var(--nexus-primary) !important; }
+[data-theme="cyberpunk"] .bg-violet-600\/20 { background-color: color-mix(in srgb, var(--nexus-primary) 15%, transparent) !important; }
+[data-theme="cyberpunk"] .border-zinc-800 { border-color: var(--nexus-border) !important; }
+
+/* Neon glow effects when neon=true */
+[data-neon="true"] .bg-violet-600,
+[data-neon="true"] [class*="bg-violet"] {
+  box-shadow: 0 0 20px color-mix(in srgb, var(--nexus-primary) 50%, transparent);
+}
+[data-neon="true"] .text-violet-400 {
+  text-shadow: 0 0 8px var(--nexus-primary);
+}
+
+/* ── Gradient text ──────────────────────────────────────────────── */
 .gradient-text {
   background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 50%, #6d28d9 100%);
   -webkit-background-clip: text;
@@ -36,14 +123,14 @@ body {
   background-clip: text;
 }
 
-/* Smooth focus ring */
+/* ── Focus ring ─────────────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid #7c3aed;
+  outline: 2px solid var(--nexus-primary);
   outline-offset: 2px;
   border-radius: 6px;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
+/* ── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--nexus-border); border-radius: 3px; }
