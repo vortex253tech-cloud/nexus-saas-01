@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, useInView, AnimatePresence } from 'framer-motion'
 import {
@@ -18,19 +19,49 @@ import {
   Eye,
   DollarSign,
   Activity,
+  Loader2,
 } from 'lucide-react'
+import { getSupabaseClient } from '@/lib/supabase'
 
 // ─── Login Modal ───────────────────────────────────────────────
 
 function LoginModal({ onClose }: { onClose: () => void }) {
-  const [email, setEmail] = useState('')
+  const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
+
+  async function handleLogin() {
+    if (!email || !password) {
+      setError('Preencha e-mail e senha.')
+      return
+    }
+    setLoading(true)
+    setError(null)
+
+    const supabase = getSupabaseClient()
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (authError) {
+      setLoading(false)
+      setError('E-mail ou senha inválidos. Tente novamente.')
+      return
+    }
+
+    // Session is persisted in cookies by @supabase/ssr — just navigate
+    router.push('/dashboard')
+  }
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') handleLogin()
+  }
 
   return (
     <AnimatePresence>
@@ -76,7 +107,9 @@ function LoginModal({ onClose }: { onClose: () => void }) {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={onKeyDown}
                 placeholder="voce@empresa.com"
+                autoFocus
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-violet-500 focus:ring-1 focus:ring-violet-500/40"
               />
             </div>
@@ -86,13 +119,34 @@ function LoginModal({ onClose }: { onClose: () => void }) {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={onKeyDown}
                 placeholder="••••••••"
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-violet-500 focus:ring-1 focus:ring-violet-500/40"
               />
             </div>
-            <button className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3 text-sm font-medium text-white transition hover:bg-violet-500 active:scale-[0.98]">
-              Entrar
-              <ArrowRight className="h-4 w-4" />
+
+            {error && (
+              <p className="rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2 text-xs text-red-400">
+                {error}
+              </p>
+            )}
+
+            <button
+              onClick={handleLogin}
+              disabled={loading}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3 text-sm font-medium text-white transition hover:bg-violet-500 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Entrando…
+                </>
+              ) : (
+                <>
+                  Entrar
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
             </button>
           </div>
 
