@@ -24,19 +24,21 @@ interface ThemeCtx {
   /** Restore the committed theme after a preview */
   clearPreview:   () => void
   /** White-label / custom override support */
-  customOverrides:   CustomColorOverrides
-  setCustomOverride: (k: keyof CustomColorOverrides, v: string) => void
+  customOverrides:    CustomColorOverrides
+  setCustomOverride:  (k: keyof CustomColorOverrides, v: string) => void
+  clearCustomOverrides: () => void
 }
 
 const ThemeContext = createContext<ThemeCtx>({
-  themeKey:          DEFAULT_THEME,
-  theme:             THEMES[DEFAULT_THEME],
-  previewKey:        null,
-  setTheme:          () => {},
-  previewTheme:      () => {},
-  clearPreview:      () => {},
-  customOverrides:   {},
-  setCustomOverride: () => {},
+  themeKey:             DEFAULT_THEME,
+  theme:                THEMES[DEFAULT_THEME],
+  previewKey:           null,
+  setTheme:             () => {},
+  previewTheme:         () => {},
+  clearPreview:         () => {},
+  customOverrides:      {},
+  setCustomOverride:    () => {},
+  clearCustomOverrides: () => {},
 })
 
 // ─── Low-level CSS applier (client-only) ─────────────────────────
@@ -122,6 +124,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const clearCustomOverrides = useCallback(() => {
+    setOverrides({})
+    applyCSSVars(committedKey.current, {})
+  }, [])
+
   return (
     <ThemeContext.Provider value={{
       themeKey,
@@ -132,6 +139,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       clearPreview,
       customOverrides,
       setCustomOverride,
+      clearCustomOverrides,
     }}>
       {children}
     </ThemeContext.Provider>
