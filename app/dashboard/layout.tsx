@@ -11,7 +11,7 @@ import {
   ArrowRight, Mail, FolderOpen, Map, Settings,
   TrendingUp, AlertTriangle, Loader2, RefreshCw,
   CheckCircle2, AlertCircle, ExternalLink, Activity,
-  Moon, Sun, Palette,
+  Moon,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -587,59 +587,6 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
 
 // ─── Quick Drawer Overlay ───────────────────────────────────────
 
-const QUICK_BUTTONS: Array<{
-  id: DrawerType
-  icon: React.ElementType
-  label: string
-  activeColor: string
-  glowColor: string
-}> = [
-  { id: 'growth',        icon: TrendingUp,    label: 'Crescimento', activeColor: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30', glowColor: 'hover:shadow-emerald-500/25' },
-  { id: 'alerts',        icon: AlertTriangle, label: 'Alertas',     activeColor: 'text-amber-400 bg-amber-500/15 border-amber-500/30',       glowColor: 'hover:shadow-amber-500/25' },
-  { id: 'financial',     icon: DollarSign,    label: 'Financeiro',  activeColor: 'text-violet-400 bg-violet-500/15 border-violet-500/30',     glowColor: 'hover:shadow-violet-500/25' },
-  { id: 'notifications', icon: Bell,          label: 'Eventos',     activeColor: 'text-blue-400 bg-blue-500/15 border-blue-500/30',           glowColor: 'hover:shadow-blue-500/25' },
-  { id: 'settings',      icon: Settings,      label: 'Config',      activeColor: 'text-zinc-200 bg-zinc-700/60 border-zinc-600/50',           glowColor: 'hover:shadow-zinc-500/20' },
-]
-
-function QuickAccessBar({
-  active,
-  onSelect,
-}: {
-  active: DrawerType | null
-  onSelect: (id: DrawerType) => void
-}) {
-  return (
-    <div className="mx-3 mb-2">
-      <p className="mb-1.5 px-1 text-[9px] font-semibold uppercase tracking-widest text-zinc-700">Acesso rápido</p>
-      <div className="flex items-center justify-between gap-1">
-        {QUICK_BUTTONS.map(btn => {
-          const isActive = active === btn.id
-          return (
-            <motion.button
-              key={btn.id}
-              onClick={() => onSelect(btn.id)}
-              whileHover={{ y: -1, scale: 1.06 }}
-              whileTap={{ scale: 0.93 }}
-              title={btn.label}
-              className={cn(
-                'flex flex-1 flex-col items-center gap-1 rounded-xl border py-2 transition-all duration-200',
-                'shadow-sm hover:shadow-md',
-                btn.glowColor,
-                isActive
-                  ? btn.activeColor
-                  : 'border-zinc-800 bg-zinc-900/50 text-zinc-600 hover:border-zinc-700 hover:text-zinc-300',
-              )}
-            >
-              <btn.icon size={13} />
-              <span className="text-[8px] font-medium leading-none">{btn.label}</span>
-            </motion.button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 function QuickDrawerOverlay({
   type,
   companyId,
@@ -742,14 +689,10 @@ function Sidebar({
   open,
   onClose,
   trial,
-  activeDrawer,
-  onDrawerSelect,
 }: {
   open: boolean
   onClose: () => void
   trial: TrialInfo
-  activeDrawer: DrawerType | null
-  onDrawerSelect: (id: DrawerType) => void
 }) {
   const pathname = usePathname()
   const { user, signOut } = useAuth()
@@ -844,9 +787,6 @@ function Sidebar({
           })}
         </nav>
 
-        {/* Quick Access Bar */}
-        <QuickAccessBar active={activeDrawer} onSelect={onDrawerSelect} />
-
         {/* AI Active Indicator */}
         <div className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-3 py-2">
           <span className="h-2 w-2 rounded-full bg-emerald-400 ai-pulse shrink-0" />
@@ -914,6 +854,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .catch(() => { /* ok */ })
   }, [])
 
+  // Listen for drawer events dispatched by icon rail in page.tsx
+  useEffect(() => {
+    function onDrawerEvent(e: Event) {
+      const type = (e as CustomEvent<string>).detail as DrawerType
+      setActiveDrawer(prev => prev === type ? null : type)
+    }
+    window.addEventListener('nexus:drawer', onDrawerEvent)
+    return () => window.removeEventListener('nexus:drawer', onDrawerEvent)
+  }, [])
+
   // Close drawer on Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -923,18 +873,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  function handleDrawerSelect(id: DrawerType) {
-    setActiveDrawer(prev => prev === id ? null : id)
-  }
-
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         trial={trial}
-        activeDrawer={activeDrawer}
-        onDrawerSelect={handleDrawerSelect}
       />
 
       <QuickDrawerOverlay

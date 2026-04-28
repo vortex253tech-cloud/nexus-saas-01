@@ -1295,24 +1295,54 @@ export default function DashboardPage() {
       />
 
       <div className="flex min-h-screen">
-        {/* Sidebar */}
+        {/* Icon Rail — cada botão abre drawer lateral via nexus:drawer */}
         <aside className="hidden w-16 flex-col items-center gap-6 border-r border-zinc-800 bg-zinc-950 py-6 md:flex">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 shadow-[0_0_16px_rgba(124,58,237,0.4)]">
             <Activity className="h-4 w-4 text-white" />
           </div>
           <nav className="flex flex-col items-center gap-4">
-            {[BarChart3, TrendingUp, AlertTriangle, DollarSign].map((Icon, i) => (
-              <button key={i} className={cn('rounded-xl p-2.5 transition', i === 0 ? 'bg-violet-600/20 text-violet-400' : 'text-zinc-600 hover:text-zinc-400')}>
+            {([
+              { Icon: BarChart3,    type: 'growth',    title: 'Crescimento', hover: 'hover:text-emerald-400 hover:bg-emerald-500/10 hover:shadow-emerald-500/20' },
+              { Icon: TrendingUp,   type: 'growth',    title: 'Crescimento', hover: 'hover:text-emerald-400 hover:bg-emerald-500/10 hover:shadow-emerald-500/20' },
+              { Icon: AlertTriangle,type: 'alerts',    title: 'Alertas',     hover: 'hover:text-amber-400   hover:bg-amber-500/10   hover:shadow-amber-500/20' },
+              { Icon: DollarSign,   type: 'financial', title: 'Financeiro',  hover: 'hover:text-violet-400  hover:bg-violet-500/10  hover:shadow-violet-500/20' },
+            ] as const).map(({ Icon, type, title, hover }) => (
+              <motion.button
+                key={title + type}
+                whileHover={{ y: -1, scale: 1.08 }}
+                whileTap={{ scale: 0.92 }}
+                title={title}
+                onClick={() => window.dispatchEvent(new CustomEvent('nexus:drawer', { detail: type }))}
+                className={cn('rounded-xl p-2.5 text-zinc-600 transition shadow-sm hover:shadow-md', hover)}
+              >
                 <Icon className="h-5 w-5" />
-              </button>
+              </motion.button>
             ))}
           </nav>
           <div className="mt-auto flex flex-col items-center gap-4">
-            <button className="relative rounded-xl p-2.5 text-zinc-600 transition hover:text-zinc-400">
+            <motion.button
+              whileHover={{ y: -1, scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
+              title="Eventos recentes"
+              onClick={() => window.dispatchEvent(new CustomEvent('nexus:drawer', { detail: 'notifications' }))}
+              className="relative rounded-xl p-2.5 text-zinc-600 transition hover:bg-blue-500/10 hover:text-blue-400 hover:shadow-md hover:shadow-blue-500/20"
+            >
               <Bell className="h-5 w-5" />
-              {alertasNaoLidos > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{alertasNaoLidos}</span>}
-            </button>
-            <button className="rounded-xl p-2.5 text-zinc-600 transition hover:text-zinc-400"><Settings className="h-5 w-5" /></button>
+              {alertasNaoLidos > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                  {alertasNaoLidos}
+                </span>
+              )}
+            </motion.button>
+            <motion.button
+              whileHover={{ y: -1, scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
+              title="Configurações rápidas"
+              onClick={() => window.dispatchEvent(new CustomEvent('nexus:drawer', { detail: 'settings' }))}
+              className="rounded-xl p-2.5 text-zinc-600 transition hover:bg-zinc-700/50 hover:text-zinc-200 hover:shadow-md"
+            >
+              <Settings className="h-5 w-5" />
+            </motion.button>
           </div>
         </aside>
 
