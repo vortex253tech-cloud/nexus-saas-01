@@ -6,8 +6,9 @@ import {
   Users, Plus, Download, TrendingUp, Crown, Loader2,
   RefreshCw, Trash2, X, AlertCircle, Lock, CheckCircle2,
   ChevronDown, ChevronUp, MessageSquare, DollarSign,
-  Clock, AlertTriangle, Mail, Zap,
+  Clock, AlertTriangle, Mail, Zap, Upload,
 } from 'lucide-react'
+import { ConnectDataModal } from '@/components/connect-data-modal'
 import { cn } from '@/lib/cn'
 import { resolveCompanyId } from '@/lib/get-company-id'
 
@@ -41,12 +42,23 @@ interface ClientsMeta {
 }
 
 interface CollectionMetrics {
+  // Legacy fields (kept for backwards compat)
   overdueCount: number
   overdueValue: number
   recoveredValue: number
   recoveryRate: number
   chargedCount: number
   emailChargedCount: number
+  // Revenue engine fields
+  recoveredAmount?: number
+  totalClients?: number
+  overdueClients?: number
+  paidClients?: number
+  totalSent?: number
+  totalDelivered?: number
+  totalPaid?: number
+  conversionRate?: number
+  actionsByType?: Record<string, number>
 }
 
 interface TrialInfo {
@@ -261,6 +273,7 @@ export default function ClientsPage() {
   const [metrics, setMetrics]           = useState<CollectionMetrics | null>(null)
   const [loading, setLoading]           = useState(true)
   const [showAdd, setShowAdd]           = useState(false)
+  const [showImport, setShowImport]     = useState(false)
   const [exporting, setExporting]       = useState(false)
   const [chargingAllEmail, setChargingAllEmail] = useState(false)
   const [chargingEmail, setChargingEmail]     = useState<Set<string>>(new Set())
@@ -293,8 +306,8 @@ export default function ClientsPage() {
 
   const canExport = trial.isTrialActive || trial.effectivePlan === 'pro' || trial.effectivePlan === 'enterprise'
 
-  const fetchMetrics = useCallback(async (cid: string) => {
-    const res = await fetch(`/api/collections/metrics?company_id=${cid}`)
+  const fetchMetrics = useCallback(async () => {
+    const res = await fetch('/api/revenue/metrics')
     if (res.ok) {
       const m = await res.json() as CollectionMetrics
       setMetrics(m)
@@ -311,7 +324,7 @@ export default function ClientsPage() {
         setClients(json.data ?? [])
         setMeta(json.meta ?? null)
       }
-      await fetchMetrics(companyId)
+      await fetchMetrics()
     } catch { /* ok */ } finally { setLoading(false) }
   }, [companyId, fetchMetrics])
 
@@ -366,9 +379,21 @@ export default function ClientsPage() {
   async function handleRecover() {
     setRecovering(true)
     try {
-      const res  = await fetch('/api/recover', { method: 'POST' })
-      const json = await res.json() as { summary?: string; engine?: { actionsGenerated: number } }
-      showToast(json.summary ?? `${json.engine?.actionsGenerated ?? 0} ações geradas`)
+      const res  = await fetch('/api/revenue/run', { method: 'POST' })
+      const json = await res.json() as {
+        processed?: number
+        messagesSent?: number
+        paymentLinksGenerated?: number
+        errors?: string[]
+        error?: string
+      }
+      if (json.error) {
+        showToast(json.error, 'err')
+      } else {
+        showToast(
+          `${json.messagesSent ?? 0} msg enviadas · ${json.paymentLinksGenerated ?? 0} links gerados (${json.processed ?? 0} clientes)`
+        )
+      }
       await fetchClients()
     } catch { showToast('Erro ao recuperar', 'err') }
     finally { setRecovering(false) }
@@ -478,6 +503,10 @@ export default function ClientsPage() {
             className="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-400 hover:text-white transition-colors">
             <RefreshCw size={12} /> Atualizar
           </button>
+          <button onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-700 transition-colors">
+            <Upload size={15} /> Importar
+          </button>
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 transition-colors">
             <Plus size={15} /> Adicionar
@@ -518,10 +547,10 @@ export default function ClientsPage() {
       {metrics && (
         <div className="mb-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
           {([
-            { icon: <AlertTriangle size={18} className="text-red-400 mt-0.5 shrink-0" />,     border: 'border-red-500/20',     bg: 'bg-red-500/5',     label: 'Inadimplentes',       main: `${metrics.overdueCount} clientes`,               sub: `${fmtBRL(metrics.overdueValue)} em aberto` },
-            { icon: <MessageSquare size={18} className="text-amber-400 mt-0.5 shrink-0" />,   border: 'border-amber-500/20',   bg: 'bg-amber-500/5',   label: 'Cobrados (WhatsApp)', main: String(metrics.chargedCount - metrics.emailChargedCount), sub: 'mensagens enviadas' },
-            { icon: <Mail size={18} className="text-blue-400 mt-0.5 shrink-0" />,             border: 'border-blue-500/20',    bg: 'bg-blue-500/5',    label: 'Cobrados por Email',  main: String(metrics.emailChargedCount),                sub: 'emails enviados' },
-            { icon: <DollarSign size={18} className="text-emerald-400 mt-0.5 shrink-0" />,   border: 'border-emerald-500/20', bg: 'bg-emerald-500/5', label: 'Recuperado',          main: fmtBRL(metrics.recoveredValue),                   sub: `taxa: ${metrics.recoveryRate}%`, glow: true },
+            { icon: <AlertTriangle size={18} className="text-red-400 mt-0.5 shrink-0" />,   border: 'border-red-500/20',     bg: 'bg-red-500/5',     label: 'Inadimplentes',    main: `${metrics.overdueClients ?? metrics.overdueCount} clientes`,           sub: `${fmtBRL(metrics.overdueValue)} em aberto` },
+            { icon: <MessageSquare size={18} className="text-amber-400 mt-0.5 shrink-0" />, border: 'border-amber-500/20',   bg: 'bg-amber-500/5',   label: 'Ações Enviadas',   main: String(metrics.totalSent ?? metrics.chargedCount),                       sub: `${metrics.totalDelivered ?? 0} entregues` },
+            { icon: <Zap size={18} className="text-blue-400 mt-0.5 shrink-0" />,            border: 'border-blue-500/20',    bg: 'bg-blue-500/5',    label: 'Conversão',        main: `${metrics.conversionRate ?? metrics.recoveryRate ?? 0}%`,               sub: `${metrics.totalPaid ?? 0} pagamentos` },
+            { icon: <DollarSign size={18} className="text-emerald-400 mt-0.5 shrink-0" />,  border: 'border-emerald-500/20', bg: 'bg-emerald-500/5', label: 'Recuperado',       main: fmtBRL(metrics.recoveredAmount ?? metrics.recoveredValue),               sub: 'receita confirmada', glow: true },
           ] as const).map((card, i) => (
             <motion.div
               key={card.label}
@@ -809,6 +838,19 @@ export default function ClientsPage() {
       {/* Add modal */}
       {showAdd && companyId && (
         <AddClientModal companyId={companyId} onAdded={fetchClients} onClose={() => setShowAdd(false)} />
+      )}
+
+      {/* Import modal */}
+      {showImport && companyId && (
+        <ConnectDataModal
+          companyId={companyId}
+          onImported={(count) => {
+            setShowImport(false)
+            void fetchClients()
+            setToast({ msg: `${count} cliente${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} com sucesso`, type: 'ok' })
+          }}
+          onClose={() => setShowImport(false)}
+        />
       )}
     </div>
   )

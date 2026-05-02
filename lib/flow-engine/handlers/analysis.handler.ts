@@ -5,8 +5,10 @@ type SupabaseClient = ReturnType<typeof getSupabaseServerClient>
 
 interface AnalysisConfig {
   dataSource?: 'clients' | 'invoices' | 'overdue' | 'financial' | 'all_clients'
+             | 'leads' | 'new_leads' | 'at_risk_clients'
   filters?:    Record<string, unknown>
   limit?:      number
+  inactiveDays?: number
 }
 
 interface AnalysisOutput {
@@ -28,8 +30,10 @@ export async function handleAnalysis(
   const source = config.dataSource ?? 'clients'
   const limit  = config.limit ?? 100
 
+  const inactiveDays = config.inactiveDays ?? 30
+
   try {
-    const output = await fetchData(db, ctx.companyId, source, limit, config.filters)
+    const output = await fetchData(db, ctx.companyId, source, limit, config.filters, inactiveDays)
 
     return {
       success: true,
@@ -48,19 +52,23 @@ export async function handleAnalysis(
 // ─── Data fetchers ────────────────────────────────────────────────────────────
 
 async function fetchData(
-  db:        SupabaseClient,
-  companyId: string,
-  source:    string,
-  limit:     number,
-  _filters?: Record<string, unknown>,
+  db:           SupabaseClient,
+  companyId:    string,
+  source:       string,
+  limit:        number,
+  _filters?:    Record<string, unknown>,
+  inactiveDays?: number,
 ): Promise<AnalysisOutput> {
   switch (source) {
-    case 'overdue':     return fetchOverdue(db, companyId, limit)
-    case 'invoices':    return fetchInvoices(db, companyId, limit)
-    case 'financial':   return fetchFinancial(db, companyId, limit)
-    case 'inactive':    return fetchInactiveClients(db, companyId, limit)
-    case 'all_clients': return fetchClients(db, companyId, limit)
-    default:            return fetchClients(db, companyId, limit)
+    case 'overdue':         return fetchOverdue(db, companyId, limit)
+    case 'invoices':        return fetchInvoices(db, companyId, limit)
+    case 'financial':       return fetchFinancial(db, companyId, limit)
+    case 'inactive':        return fetchInactiveClients(db, companyId, limit)
+    case 'all_clients':     return fetchClients(db, companyId, limit)
+    case 'leads':           return fetchLeads(db, companyId, limit, _filters)
+    case 'new_leads':       return fetchLeads(db, companyId, limit, { ..._filters, status: 'new' })
+    case 'at_risk_clients': return fetchAtRiskClients(db, companyId, limit, inactiveDays ?? 30)
+    default:                return fetchClients(db, companyId, limit)
   }
 }
 
@@ -159,5 +167,115 @@ async function fetchClients(db: SupabaseClient, companyId: string, limit: number
     records,
     summary: { total: records.length, active, inactive: records.length - active },
     source:  'clients',
+  }
+}
+
+async function fetchLeads(
+  db:        SupabaseClient,
+  companyId: string,
+  limit:     number,
+  filters?:  Record<string, unknown>,
+): Promise<AnalysisOutput> {
+  let q = db
+    .from('leads')
+    .select('id, name, email, phone, status, source, notes, created_at')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  // Allow filtering by status via filters map
+  const statusFilter = filters?.status as string | undefined
+  if (statusFilter) q = q.eq('status', statusFilter)
+
+  const { data } = await q
+  const records  = data ?? []
+
+  const newCount  = records.filter(r => (r as { status?: string }).status === 'new').length
+  const contacted = records.filter(r => (r as { status?: string }).status === 'contacted').length
+  const converted = records.filter(r => (r as { status?: string }).status === 'converted').length
+
+  return {
+    count:   records.length,
+    records,
+    summary: {
+      total:           records.length,
+      new:             newCount,
+      contacted,
+      converted,
+      conversion_rate: records.length > 0 ? Math.round((converted / records.length) * 100) : 0,
+    },
+    source: statusFilter ? `leads_${statusFilter}` : 'leads',
+  }
+}
+
+async function fetchAtRiskClients(
+  db:           SupabaseClient,
+  companyId:    string,
+  limit:        number,
+  inactiveDays: number,
+): Promise<AnalysisOutput> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - inactiveDays)
+  const cutoffISO = cutoff.toISOString()
+
+  // Clients with no paid invoice in the last N days OR with overdue invoices
+  const { data: clients } = await db
+    .from('clients')
+    .select('id, name, email, phone, status, created_at')
+    .eq('company_id', companyId)
+    .limit(limit * 3) // over-fetch to filter
+
+  const allClients = (clients ?? []) as Array<{
+    id: string; name: string; email: string | null
+    phone: string | null; status: string; created_at: string
+  }>
+
+  // Fetch overdue invoice client ids
+  const { data: overdueInvoices } = await db
+    .from('invoices')
+    .select('customer_id')
+    .eq('company_id', companyId)
+    .eq('status', 'overdue')
+
+  const overdueClientIds = new Set((overdueInvoices ?? []).map(i => (i as { customer_id: string }).customer_id))
+
+  // Fetch client ids that had any invoice activity recently
+  const { data: recentInvoices } = await db
+    .from('invoices')
+    .select('customer_id')
+    .eq('company_id', companyId)
+    .gte('created_at', cutoffISO)
+
+  const recentClientIds = new Set((recentInvoices ?? []).map(i => (i as { customer_id: string }).customer_id))
+
+  // A client is "at risk" if:
+  // 1. Has an overdue invoice, OR
+  // 2. Has no invoice activity in the last N days (and account is older than N days)
+  const atRisk = allClients
+    .filter(c => {
+      const hasOverdue    = overdueClientIds.has(c.id)
+      const isInactive    = !recentClientIds.has(c.id)
+      const accountOldEnough = new Date(c.created_at) < cutoff
+      return hasOverdue || (isInactive && accountOldEnough)
+    })
+    .map(c => ({
+      ...c,
+      risk_reason: overdueClientIds.has(c.id) ? 'overdue_invoice' : 'inactive',
+    }))
+    .slice(0, limit)
+
+  const overdueCount  = atRisk.filter(c => c.risk_reason === 'overdue_invoice').length
+  const inactiveCount = atRisk.filter(c => c.risk_reason === 'inactive').length
+
+  return {
+    count:   atRisk.length,
+    records: atRisk,
+    summary: {
+      total:           atRisk.length,
+      overdue_invoice: overdueCount,
+      inactive:        inactiveCount,
+      inactive_days:   inactiveDays,
+    },
+    source: 'at_risk_clients',
   }
 }

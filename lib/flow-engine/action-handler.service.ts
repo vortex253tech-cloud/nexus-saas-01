@@ -7,6 +7,9 @@ import * as sendEmailAction      from './actions/send-email.action'
 import * as sendWhatsAppAction   from './actions/send-whatsapp.action'
 import * as updateClientAction   from './actions/update-client.action'
 import * as updateFinancialAction from './actions/update-financial.action'
+import * as createLeadAction          from './actions/create-lead.action'
+import * as updateLeadAction          from './actions/update-lead.action'
+import * as createPaymentLinkAction   from './actions/create-payment-link.action'
 
 // ─── Action Registry ──────────────────────────────────────────────────────────
 // Maps action type strings → handler functions.
@@ -14,16 +17,22 @@ import * as updateFinancialAction from './actions/update-financial.action'
 
 const REGISTRY: Record<string, ActionFn> = {
   // ── New named types ────────────────────────────────────────────────────────
-  SEND_EMAIL:       sendEmailAction.execute,
-  SEND_WHATSAPP:    sendWhatsAppAction.execute,
-  UPDATE_CLIENT:    updateClientAction.execute,
-  UPDATE_FINANCIAL: updateFinancialAction.execute,
+  SEND_EMAIL:         sendEmailAction.execute,
+  SEND_WHATSAPP:      sendWhatsAppAction.execute,
+  UPDATE_CLIENT:      updateClientAction.execute,
+  UPDATE_FINANCIAL:   updateFinancialAction.execute,
+  CREATE_LEAD:           createLeadAction.execute,
+  UPDATE_LEAD_STATUS:    updateLeadAction.execute,
+  CREATE_PAYMENT_LINK:   createPaymentLinkAction.execute,
 
   // ── Legacy aliases (backward compat with existing canvas flows) ───────────
-  send_email:       sendEmailAction.execute,
-  send_whatsapp:    sendWhatsAppAction.execute,
-  update_client:    updateClientAction.execute,
-  update_financial: updateFinancialAction.execute,
+  send_email:            sendEmailAction.execute,
+  send_whatsapp:         sendWhatsAppAction.execute,
+  update_client:         updateClientAction.execute,
+  update_financial:      updateFinancialAction.execute,
+  create_lead:           createLeadAction.execute,
+  update_lead_status:    updateLeadAction.execute,
+  create_payment_link:   createPaymentLinkAction.execute,
   update_record:    updateRecordLegacy,
   webhook:          webhookLegacy,
   create_log:       createLogLegacy,

@@ -66,8 +66,8 @@ export default function SignupPage() {
         console.log('[signup] COMPANY CREATED:', json.company?.id)
       }
 
-      // 3. Redirect to dashboard (middleware will verify session)
-      router.push('/dashboard')
+      // 3. Redirect to onboarding demo (first-time experience)
+      router.push('/onboarding/demo')
     } catch (err) {
       console.error('[signup]', err)
       setError('Erro de conexão. Tente novamente.')

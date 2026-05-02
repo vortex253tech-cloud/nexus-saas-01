@@ -11,7 +11,7 @@ import {
   ArrowRight, Mail, FolderOpen, Map, Settings,
   TrendingUp, AlertTriangle, Loader2, RefreshCw,
   CheckCircle2, AlertCircle, ExternalLink, Activity,
-  Moon,
+  Moon, Brain, UserPlus, BarChart3,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -27,6 +27,9 @@ const NAV = [
   { href: '/dashboard/projects',   label: 'Projetos',           icon: FolderOpen },
   { href: '/dashboard/growth-map', label: 'Mapa de Crescimento',icon: Map },
   { href: '/dashboard/assistant',  label: 'Assistente IA',      icon: MessageSquare },
+  { href: '/dashboard/revenue',    label: 'Receita',             icon: BarChart3 },
+  { href: '/dashboard/advisor',    label: 'Consultor IA',        icon: Brain },
+  { href: '/dashboard/leads',      label: 'Leads',              icon: UserPlus },
   { href: '/dashboard/dados',      label: 'Dados',              icon: Database },
   { href: '/dashboard/actions',    label: 'Ações',              icon: Zap },
   { href: '/dashboard/alerts',     label: 'Alertas',            icon: Bell },
@@ -689,10 +692,14 @@ function Sidebar({
   open,
   onClose,
   trial,
+  brandName,
+  logoUrl,
 }: {
   open: boolean
   onClose: () => void
   trial: TrialInfo
+  brandName: string
+  logoUrl: string | null
 }) {
   const pathname = usePathname()
   const { user, signOut } = useAuth()
@@ -743,9 +750,16 @@ function Sidebar({
         {/* Logo */}
         <div className="flex items-center justify-between px-5 py-5 border-b border-zinc-800/60">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white font-bold text-sm">N</div>
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt={brandName} className="h-8 w-8 rounded-lg object-contain" />
+            ) : (
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white font-bold text-sm">
+                {brandName.charAt(0).toUpperCase()}
+              </div>
+            )}
             <div>
-              <p className="text-xs font-bold text-white tracking-wide">NEXUS</p>
+              <p className="text-xs font-bold text-white tracking-wide">{brandName}</p>
               <p className="text-[10px] text-zinc-500 truncate max-w-[100px]">{nomeEmpresa}</p>
             </div>
           </div>
@@ -824,6 +838,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen,  setSidebarOpen]  = useState(false)
   const [activeDrawer, setActiveDrawer] = useState<DrawerType | null>(null)
   const [companyId,    setCompanyId]    = useState<string | null>(null)
+  const [brandName,    setBrandName]    = useState('NEXUS')
+  const [logoUrl,      setLogoUrl]      = useState<string | null>(null)
   const [trial, setTrial] = useState<TrialInfo>({
     isTrialActive: false,
     trialDaysLeft: null,
@@ -844,12 +860,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           isTrialActive?: boolean
           trialDaysLeft?: number | null
           user?: { effectivePlan?: string }
+          company?: { brand_name?: string | null; logo_url?: string | null }
         }
         setTrial({
           isTrialActive: d.isTrialActive ?? false,
           trialDaysLeft: d.trialDaysLeft ?? null,
           effectivePlan: d.user?.effectivePlan ?? 'free',
         })
+        if (d.company?.brand_name) setBrandName(d.company.brand_name)
+        if (d.company?.logo_url)   setLogoUrl(d.company.logo_url)
       })
       .catch(() => { /* ok */ })
   }, [])
@@ -879,6 +898,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         trial={trial}
+        brandName={brandName}
+        logoUrl={logoUrl}
       />
 
       <QuickDrawerOverlay
@@ -894,8 +915,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Menu size={18} />
           </button>
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-violet-600 text-white font-bold text-[10px]">N</div>
-            <span className="text-sm font-semibold text-white">NEXUS</span>
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt={brandName} className="h-6 w-6 rounded object-contain" />
+            ) : (
+              <div className="flex h-6 w-6 items-center justify-center rounded bg-violet-600 text-white font-bold text-[10px]">
+                {brandName.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span className="text-sm font-semibold text-white">{brandName}</span>
           </div>
         </header>
         <main>{children}</main>

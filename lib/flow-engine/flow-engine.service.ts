@@ -3,6 +3,8 @@ import { FlowNodeType }     from './types'
 import type { FlowNode, FlowEdge, ExecutionContext, NodeResult, StepLog } from './types'
 import { buildFlowContext } from './context-builder'
 import { analyzeExecution } from './analyze-execution'
+import { validateNodeConfig } from './validators/node-config.validator'
+import { logFlowError }      from '@/lib/errors/flow-error-logger'
 
 import { handleTrigger }    from './handlers/trigger.handler'
 import { handleAnalysis }   from './handlers/analysis.handler'
@@ -69,9 +71,19 @@ export class FlowEngineService {
       analyzeExecution(executionId, flowId, companyId, ctx.logs, ctx.lastOutput).catch(() => undefined)
 
     } catch (err) {
+      const msg = String(err)
+      logFlowError({
+        companyId:   companyId,
+        flowId:      flowId,
+        executionId: executionId,
+        message:     msg,
+        stack:       err instanceof Error ? err.stack : undefined,
+        errorCode:   'FLOW_EXECUTION_ERROR',
+      }).catch(() => undefined)
+
       await this.repo.updateExecution(
         executionId, 'error', ctx.logs,
-        { error: String(err) },
+        { error: msg },
         new Date().toISOString(),
       )
     }
@@ -144,6 +156,20 @@ export class FlowEngineService {
         continue
       }
 
+      // Validate node config before execution — log warnings, don't halt
+      const configErrors = validateNodeConfig(node)
+      if (configErrors.length > 0) {
+        const warnMsg = configErrors.map(e => `${e.field}: ${e.message}`).join('; ')
+        ctx.logs.push(this.makeLog(node, 'error', ctx.lastOutput, null, 0,
+          `Config inválida — ${warnMsg}`))
+        await this.repo.appendLog(executionId, ctx.logs)
+        // TRIGGER config errors are fatal; other nodes skip gracefully
+        if (this.normaliseType(node.type) === (FlowNodeType.TRIGGER as string)) {
+          throw new Error(`Trigger config inválida: ${warnMsg}`)
+        }
+        continue
+      }
+
       const t0 = Date.now()
 
       try {
@@ -178,9 +204,23 @@ export class FlowEngineService {
         await this.repo.appendLog(executionId, ctx.logs)
 
       } catch (err) {
-        const log = this.makeLog(node, 'error', ctx.lastOutput, null, Date.now() - t0, String(err))
+        const errMsg = String(err)
+        const log = this.makeLog(node, 'error', ctx.lastOutput, null, Date.now() - t0, errMsg)
         ctx.logs.push(log)
         await this.repo.appendLog(executionId, ctx.logs)
+
+        // Persist node-level errors to the error dashboard
+        logFlowError({
+          companyId:   ctx.companyId,
+          flowId:      ctx.flowId,
+          executionId: ctx.executionId,
+          nodeId:      node.id,
+          nodeType:    node.type,
+          message:     errMsg,
+          stack:       err instanceof Error ? err.stack : undefined,
+          errorCode:   'NODE_EXECUTION_ERROR',
+          context:     { config: node.config },
+        }).catch(() => undefined)
 
         if (this.normaliseType(node.type) === FlowNodeType.TRIGGER) throw err
         // All other nodes: swallow and continue

@@ -216,7 +216,7 @@ export default function PlanosPage() {
 
               {/* CTA */}
               <Link
-                href={plano.id === 'enterprise' ? '/start' : '/dashboard'}
+                href={plano.id === 'enterprise' ? '/start' : '/signup'}
                 className={cn(
                   'group flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-all active:scale-[0.98]',
                   plano.destaque

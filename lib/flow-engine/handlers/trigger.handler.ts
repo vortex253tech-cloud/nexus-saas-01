@@ -1,7 +1,7 @@
 import type { FlowNode, ExecutionContext, NodeResult } from '../types'
 
 interface TriggerConfig {
-  triggerType?: 'manual' | 'scheduled' | 'webhook' | 'condition'
+  triggerType?: 'manual' | 'scheduled' | 'webhook' | 'condition' | 'client_at_risk'
   condition?:   string   // e.g. "variable=value"
 }
 
@@ -25,10 +25,16 @@ export async function handleTrigger(
     }
   }
 
+  // CLIENT_AT_RISK: pass through the at-risk client data from variables
+  const atRiskData = config.triggerType === 'client_at_risk'
+    ? { client: ctx.variables.client ?? null, risk_reason: ctx.variables.risk_reason ?? null }
+    : {}
+
   const output = {
     triggeredAt: new Date().toISOString(),
     triggerType: config.triggerType ?? 'manual',
     companyId:   ctx.companyId,
+    ...atRiskData,
   }
 
   return {

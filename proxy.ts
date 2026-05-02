@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 const PUBLIC_PATHS = ['/', '/start', '/onboarding', '/resultado', '/planos', '/login', '/signup']
 const PUBLIC_PREFIXES = ['/api/auth', '/api/leads', '/api/company', '/api/webhook', '/api/check-config', '/_next', '/favicon']
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   // Allow public paths
@@ -27,8 +27,6 @@ export async function middleware(req: NextRequest) {
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: (cookiesToSet) => {
-          // Set all cookies on the request first, then create ONE new response
-          // with all cookies — creating a response per cookie loses previous ones.
           cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value))
           res = NextResponse.next({ request: req })
           cookiesToSet.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
