@@ -7,10 +7,24 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-provider'
 import {
-  Activity, ArrowRight, Loader2, CheckCircle, CheckCircle2, TrendingUp, Zap, Shield, Sparkles, AlertTriangle,
+  Activity, ArrowRight, Loader2, CheckCircle, CheckCircle2,
+  TrendingUp, Zap, Shield, Sparkles, AlertTriangle,
 } from 'lucide-react'
 
-// ─── Onboarding success screen ────────────────────────────────────────────
+// ─── Google icon ──────────────────────────────────────────────────────────────
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+  )
+}
+
+// ─── Onboarding success screen ────────────────────────────────────────────────
 
 function OnboardingScreen({ onEnter }: { onEnter: () => void }) {
   useEffect(() => {
@@ -73,7 +87,7 @@ function OnboardingScreen({ onEnter }: { onEnter: () => void }) {
   )
 }
 
-// ─── Login form ───────────────────────────────────────────────────────────
+// ─── Login form ───────────────────────────────────────────────────────────────
 
 function LoginForm() {
   const router       = useRouter()
@@ -84,21 +98,48 @@ function LoginForm() {
 
   const { user, loading: authLoading } = useAuth()
 
-  const [email,    setEmail]    = useState('')
-  const [password, setPassword] = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState<string | null>(() => {
+  const [email,         setEmail]         = useState('')
+  const [password,      setPassword]      = useState('')
+  const [loading,       setLoading]       = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [error,         setError]         = useState<string | null>(() => {
     if (errorParam === 'link_expired')       return 'Link expirado ou já utilizado. Faça login normalmente.'
     if (errorParam === 'confirmation_failed') return 'Não foi possível confirmar. Tente entrar com e-mail e senha.'
     if (errorParam === 'unexpected')          return 'Ocorreu um erro inesperado. Tente novamente.'
     return null
   })
-  const [success,  setSuccess]  = useState(false)
+  const [success, setSuccess] = useState(false)
 
+  // Already authenticated → go to dashboard
   useEffect(() => {
     if (!authLoading && user) router.replace(redirect)
   }, [user, authLoading, redirect, router])
 
+  // ── Google OAuth ────────────────────────────────────────────────────────────
+  async function handleGoogleLogin() {
+    setError(null)
+    setGoogleLoading(true)
+    try {
+      const supabase = getSupabaseClient()
+      const appUrl   = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin
+      const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${appUrl}/auth/callback?next=${encodeURIComponent(redirect)}`,
+        },
+      })
+      if (oauthErr) {
+        setError('Não foi possível entrar com Google. Tente novamente.')
+        setGoogleLoading(false)
+      }
+      // On success the browser is redirected — nothing more to do here
+    } catch {
+      setError('Erro ao conectar com Google. Tente novamente.')
+      setGoogleLoading(false)
+    }
+  }
+
+  // ── Email / Password ────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -109,25 +150,35 @@ function LoginForm() {
       const { error: authErr } = await supabase.auth.signInWithPassword({ email, password })
 
       if (authErr) {
-        setError('E-mail ou senha incorretos. Verifique e tente novamente.')
+        if (
+          authErr.message.toLowerCase().includes('rate limit') ||
+          authErr.message.toLowerCase().includes('too many')
+        ) {
+          setError('Muitas tentativas detectadas. Aguarde alguns segundos e tente novamente.')
+        } else if (authErr.message.toLowerCase().includes('email not confirmed')) {
+          setError('E-mail ainda não confirmado. Verifique sua caixa de entrada.')
+        } else {
+          setError('E-mail ou senha incorretos. Verifique e tente novamente.')
+        }
         return
       }
 
       setSuccess(true)
       setTimeout(() => router.push(redirect), 3400)
-    } catch (err) {
-      console.error('[login]', err)
+    } catch {
       setError('Erro de conexão. Tente novamente.')
     } finally {
       if (!success) setLoading(false)
     }
   }
 
+  const busy = loading || googleLoading
+
   const TRUST_POINTS = [
-    { icon: TrendingUp,   text: 'Seu negócio crescendo em autopiloto' },
-    { icon: Zap,          text: 'IA trabalhando por você 24h' },
-    { icon: Shield,       text: 'Seus dados com segurança total' },
-    { icon: CheckCircle,  text: 'Resultados mensuráveis em dias' },
+    { icon: TrendingUp,  text: 'Seu negócio crescendo em autopiloto' },
+    { icon: Zap,         text: 'IA trabalhando por você 24h' },
+    { icon: Shield,      text: 'Seus dados com segurança total' },
+    { icon: CheckCircle, text: 'Resultados mensuráveis em dias' },
   ]
 
   return (
@@ -136,18 +187,20 @@ function LoginForm() {
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-48 -top-48 h-[500px] w-[500px] rounded-full bg-violet-700/12 blur-[100px]" />
         <div className="absolute -bottom-32 -right-32 h-[400px] w-[400px] rounded-full bg-violet-900/8 blur-[80px]" />
-        <div className="absolute inset-0 opacity-[0.02]"
+        <div
+          className="absolute inset-0 opacity-[0.02]"
           style={{
-            backgroundImage: 'linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)',
+            backgroundImage:
+              'linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)',
             backgroundSize: '56px 56px',
-          }} />
+          }}
+        />
       </div>
 
       <div className="relative z-10 flex min-h-screen">
 
-        {/* ── Left panel ────────────────────────────────────────────── */}
+        {/* ── Left panel ─────────────────────────────────────────────────────── */}
         <div className="hidden flex-col justify-between p-12 lg:flex lg:w-[45%] xl:w-[40%]">
-          {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 shadow-[0_0_20px_rgba(124,58,237,0.4)]">
               <Activity className="h-5 w-5 text-white" />
@@ -157,7 +210,6 @@ function LoginForm() {
             </span>
           </Link>
 
-          {/* Main message */}
           <div>
             <motion.div
               initial={{ opacity: 0, y: 24 }}
@@ -171,12 +223,14 @@ function LoginForm() {
 
               <h1 className="mb-4 text-4xl font-extrabold leading-[1.15] tracking-tight text-white xl:text-5xl">
                 Você está entrando no seu{' '}
-                <span style={{
-                  background: 'linear-gradient(135deg, #c4b5fd 0%, #7c3aed 60%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}>
+                <span
+                  style={{
+                    background: 'linear-gradient(135deg, #c4b5fd 0%, #7c3aed 60%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                  }}
+                >
                   sistema de crescimento
                 </span>
               </h1>
@@ -187,7 +241,8 @@ function LoginForm() {
 
               <ul className="space-y-4">
                 {TRUST_POINTS.map((pt, i) => (
-                  <motion.li key={pt.text}
+                  <motion.li
+                    key={pt.text}
                     initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.3 + i * 0.1, duration: 0.4 }}
@@ -203,13 +258,12 @@ function LoginForm() {
             </motion.div>
           </div>
 
-          {/* Bottom note */}
           <p className="text-xs text-zinc-600">
             © {new Date().getFullYear()} NEXUS — COO de IA para negócios
           </p>
         </div>
 
-        {/* ── Right panel (form) ────────────────────────────────────── */}
+        {/* ── Right panel (form) ─────────────────────────────────────────────── */}
         <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 lg:px-16">
 
           {/* Mobile logo */}
@@ -217,7 +271,9 @@ function LoginForm() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600">
               <Activity className="h-4 w-4 text-white" />
             </div>
-            <span className="text-lg font-bold"><span className="text-violet-400">N</span>EXUS</span>
+            <span className="text-lg font-bold">
+              <span className="text-violet-400">N</span>EXUS
+            </span>
           </div>
 
           <AnimatePresence mode="wait">
@@ -235,7 +291,7 @@ function LoginForm() {
                 {/* Top glow line */}
                 <div className="pointer-events-none mb-8 h-px w-full bg-gradient-to-r from-transparent via-violet-500/30 to-transparent" />
 
-                <div className="mb-8">
+                <div className="mb-6">
                   <h2 className="text-2xl font-bold text-white">Entrar na sua conta</h2>
                   <p className="mt-1.5 text-sm text-zinc-400">Continue de onde você parou</p>
                 </div>
@@ -247,28 +303,54 @@ function LoginForm() {
                     animate={{ opacity: 1, y: 0 }}
                     className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-700/40 bg-emerald-950/40 px-4 py-3"
                   >
-                    <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                    <p className="text-sm text-emerald-300">E-mail confirmado! Faça login para acessar o NEXUS.</p>
+                    <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+                    <p className="text-sm text-emerald-300">
+                      E-mail confirmado! Faça login para acessar o NEXUS.
+                    </p>
                   </motion.div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  <AnimatePresence>
-                    {error && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-3"
-                      >
-                        <div className="flex items-start gap-2">
-                          <AlertTriangle size={14} className="text-red-400 mt-0.5 shrink-0" />
-                          <p className="text-sm text-red-300">{error}</p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                {/* Error banner */}
+                <AnimatePresence>
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mb-4 overflow-hidden rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-3"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle size={14} className="mt-0.5 shrink-0 text-red-400" />
+                        <p className="text-sm text-red-300">{error}</p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
+                {/* ── Google button ────────────────────────────────────────────── */}
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={busy}
+                  className="group mb-4 flex w-full items-center justify-center gap-3 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3.5 text-sm font-medium text-white transition hover:border-zinc-600 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {googleLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <GoogleIcon className="h-4 w-4 shrink-0" />
+                  )}
+                  {googleLoading ? 'Conectando…' : 'Entrar com Google'}
+                </button>
+
+                {/* Divider */}
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-zinc-800" />
+                  <span className="text-xs text-zinc-600">ou continue com e-mail</span>
+                  <div className="h-px flex-1 bg-zinc-800" />
+                </div>
+
+                {/* ── Email / Password form ─────────────────────────────────── */}
+                <form onSubmit={handleSubmit} className="space-y-5">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-zinc-300">E-mail</label>
                     <input
@@ -278,14 +360,20 @@ function LoginForm() {
                       onChange={e => setEmail(e.target.value)}
                       placeholder="seu@email.com"
                       autoFocus
-                      className="w-full rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-4 py-3.5 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
+                      disabled={busy}
+                      className="w-full rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-4 py-3.5 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 disabled:opacity-60"
                     />
                   </div>
 
                   <div>
                     <div className="mb-2 flex items-center justify-between">
                       <label className="text-sm font-medium text-zinc-300">Senha</label>
-                      <a href="#" className="text-xs text-zinc-500 transition hover:text-violet-400">Esqueci minha senha</a>
+                      <Link
+                        href="/start"
+                        className="text-xs text-zinc-500 transition hover:text-violet-400"
+                      >
+                        Esqueci minha senha
+                      </Link>
                     </div>
                     <input
                       type="password"
@@ -293,13 +381,14 @@ function LoginForm() {
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-4 py-3.5 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
+                      disabled={busy}
+                      className="w-full rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-4 py-3.5 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 disabled:opacity-60"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={busy}
                     className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-all hover:bg-violet-500 hover:shadow-[0_0_32px_rgba(124,58,237,0.4)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {loading ? (
@@ -318,7 +407,7 @@ function LoginForm() {
                   <div className="h-px w-full bg-zinc-800" />
                   <p className="text-sm text-zinc-500">
                     Não tem conta?{' '}
-                    <Link href="/start" className="font-medium text-violet-400 transition hover:text-violet-300">
+                    <Link href="/signup" className="font-medium text-violet-400 transition hover:text-violet-300">
                       Criar conta gratuita
                     </Link>
                   </p>
