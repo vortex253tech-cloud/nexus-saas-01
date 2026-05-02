@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-provider'
 import {
-  Activity, ArrowRight, Loader2, CheckCircle, TrendingUp, Zap, Shield, Sparkles,
+  Activity, ArrowRight, Loader2, CheckCircle, CheckCircle2, TrendingUp, Zap, Shield, Sparkles, AlertTriangle,
 } from 'lucide-react'
 
 // ─── Onboarding success screen ────────────────────────────────────────────
@@ -79,13 +79,20 @@ function LoginForm() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const redirect     = searchParams.get('redirect') ?? '/dashboard'
+  const errorParam   = searchParams.get('error')
+  const confirmed    = searchParams.get('confirmed') === '1'
 
   const { user, loading: authLoading } = useAuth()
 
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
+  const [error,    setError]    = useState<string | null>(() => {
+    if (errorParam === 'link_expired')       return 'Link expirado ou já utilizado. Faça login normalmente.'
+    if (errorParam === 'confirmation_failed') return 'Não foi possível confirmar. Tente entrar com e-mail e senha.'
+    if (errorParam === 'unexpected')          return 'Ocorreu um erro inesperado. Tente novamente.'
+    return null
+  })
   const [success,  setSuccess]  = useState(false)
 
   useEffect(() => {
@@ -233,6 +240,18 @@ function LoginForm() {
                   <p className="mt-1.5 text-sm text-zinc-400">Continue de onde você parou</p>
                 </div>
 
+                {/* Email confirmed banner */}
+                {confirmed && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-700/40 bg-emerald-950/40 px-4 py-3"
+                  >
+                    <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                    <p className="text-sm text-emerald-300">E-mail confirmado! Faça login para acessar o NEXUS.</p>
+                  </motion.div>
+                )}
+
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <AnimatePresence>
                     {error && (
@@ -242,7 +261,10 @@ function LoginForm() {
                         exit={{ opacity: 0, height: 0 }}
                         className="overflow-hidden rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-3"
                       >
-                        <p className="text-sm text-red-300">{error}</p>
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle size={14} className="text-red-400 mt-0.5 shrink-0" />
+                          <p className="text-sm text-red-300">{error}</p>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
