@@ -127,7 +127,7 @@ export interface CompanyRow {
 export async function fetchBusinessData(companyId: string): Promise<RawBusinessData> {
   const db = getSupabaseServerClient()
 
-  const [finRes, clientRes, msgRes, execRes, compRes] = await Promise.all([
+  const [finRes, clientRes, msgRes, execRes, compRes] = await Promise.allSettled([
     db.from('financial_data')
       .select('period_label, period_date, revenue, costs, profit')
       .eq('company_id', companyId)
@@ -159,11 +159,11 @@ export async function fetchBusinessData(companyId: string): Promise<RawBusinessD
   ])
 
   return {
-    financial:  (finRes.data  ?? [])  as FinancialRow[],
-    clients:    (clientRes.data ?? []) as ClientRow[],
-    messages:   (msgRes.data   ?? []) as MessageRow[],
-    executions: (execRes.data  ?? []) as ExecutionRow[],
-    company:    compRes.data as CompanyRow | null,
+    financial:  finRes.status   === 'fulfilled' ? (finRes.value.data   ?? []) as FinancialRow[]  : [],
+    clients:    clientRes.status === 'fulfilled' ? (clientRes.value.data ?? []) as ClientRow[]   : [],
+    messages:   msgRes.status   === 'fulfilled' ? (msgRes.value.data   ?? []) as MessageRow[]   : [],
+    executions: execRes.status  === 'fulfilled' ? (execRes.value.data  ?? []) as ExecutionRow[] : [],
+    company:    compRes.status  === 'fulfilled' ? compRes.value.data as CompanyRow | null       : null,
   }
 }
 

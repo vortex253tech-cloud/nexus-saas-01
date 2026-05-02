@@ -14,7 +14,8 @@ import {
   type BusinessAnalysis,
 } from '@/lib/services/business-advisor'
 
-export const dynamic = 'force-dynamic'
+export const dynamic    = 'force-dynamic'
+export const maxDuration = 60   // Vercel Pro — LLM calls can take 20-40s
 
 // ─── Company resolver (same pattern as /api/ai/chat) ──────────────────────
 
@@ -133,60 +134,70 @@ export async function POST(req: NextRequest) {
     // 3. Stub mode when no API key
     if (!process.env.ANTHROPIC_API_KEY) {
       console.log('[business-analysis] no API key — returning stub analysis')
-      const stub = buildStubAnalysis(data)
-      return NextResponse.json(stub)
+      return NextResponse.json(buildStubAnalysis(data))
     }
 
     // 4. Build context for Claude
     const context = buildAnalysisContext(data)
 
-    // 5. Call Claude Sonnet for deep analysis
-    const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-    const aiRes = await ai.messages.create({
-      model:      'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system:     buildSystemPrompt(),
-      messages: [{
-        role:    'user',
-        content: `Analise os dados desta empresa e retorne o JSON estruturado conforme as instruções.\n\n${context}`,
-      }],
-    })
-
-    const raw = aiRes.content[0]?.type === 'text' ? aiRes.content[0].text.trim() : null
-    if (!raw) throw new Error('Empty AI response')
-
-    // 6. Strip markdown fences and parse JSON
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/,          '')
-      .trim()
-
-    let analysis: BusinessAnalysis
+    // 5. Call Claude — any failure → stub (never 500)
     try {
-      const parsed = JSON.parse(cleaned)
-      analysis = {
-        ...parsed,
-        analyzed_at: new Date().toISOString(),
-        data_coverage: {
-          financial:  data.financial.length  > 0,
-          clients:    data.clients.length    > 0,
-          messages:   data.messages.length   > 0,
-          executions: data.executions.length > 0,
-        },
-      } as BusinessAnalysis
-    } catch {
-      console.error('[business-analysis] JSON parse failed — falling back to stub')
-      const stub = buildStubAnalysis(data)
-      return NextResponse.json(stub)
+      const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+      const aiRes = await ai.messages.create({
+        model:      'claude-haiku-4-5-20251001',  // faster + cheaper for dashboards
+        max_tokens: 2048,
+        system:     buildSystemPrompt(),
+        messages: [{
+          role:    'user',
+          content: `Analise os dados desta empresa e retorne o JSON estruturado conforme as instruções.\n\n${context}`,
+        }],
+      })
+
+      const raw = aiRes.content[0]?.type === 'text' ? aiRes.content[0].text.trim() : null
+
+      if (raw) {
+        const cleaned = raw
+          .replace(/^```(?:json)?\s*/i, '')
+          .replace(/\s*```$/, '')
+          .trim()
+
+        try {
+          const parsed  = JSON.parse(cleaned)
+          const analysis: BusinessAnalysis = {
+            ...parsed,
+            analyzed_at: new Date().toISOString(),
+            data_coverage: {
+              financial:  data.financial.length  > 0,
+              clients:    data.clients.length    > 0,
+              messages:   data.messages.length   > 0,
+              executions: data.executions.length > 0,
+            },
+          }
+          console.log('[business-analysis] ✅ AI score:', analysis.score)
+          return NextResponse.json(analysis)
+        } catch {
+          console.warn('[business-analysis] JSON parse failed — stub fallback')
+        }
+      }
+    } catch (aiErr) {
+      console.warn('[business-analysis] AI call failed — stub fallback:', aiErr instanceof Error ? aiErr.message : aiErr)
     }
 
-    console.log('[business-analysis] ✅ score:', analysis.score, '| insights:', analysis.insights?.length)
-    return NextResponse.json(analysis)
+    // 6. Fallback: always return stub, never 500
+    return NextResponse.json(buildStubAnalysis(data))
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error('[business-analysis] ERROR:', msg)
-    return NextResponse.json({ error: 'Analysis failed. Try again.' }, { status: 500 })
+    console.error('[business-analysis] fatal error:', msg)
+    // Return minimal stub rather than 500
+    return NextResponse.json({
+      score: 50,
+      summary: 'Não foi possível carregar a análise. Verifique sua conexão e tente novamente.',
+      score_breakdown: { collections: 50, cashflow: 50, growth: 50, operations: 50 },
+      insights: [], risks: [], opportunities: [], recommended_actions: [],
+      analyzed_at: new Date().toISOString(),
+      data_coverage: { financial: false, clients: false, messages: false, executions: false },
+    })
   }
 }
