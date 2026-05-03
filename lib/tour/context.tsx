@@ -77,10 +77,11 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         if (!data) { setState(s => ({ ...s, loaded: true })); return }
         const step      = data.step      ?? 0
         const completed = data.completed ?? false
-        // Resume if not completed and tour was started (step > 0)
-        const stepIndex = Math.max(0, Math.min(step - 1, TOTAL_STEPS - 1))
+        // Active for any user who hasn't completed: step=0 → fresh start,
+        // step>0 → resume from where they left off.
+        const stepIndex = Math.max(0, Math.min(Math.max(0, step - 1), TOTAL_STEPS - 1))
         setState({
-          active: !completed && step > 0,
+          active: !completed,
           currentStepIndex: stepIndex,
           completed,
           loaded: true,
