@@ -16,22 +16,24 @@ import {
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
 import { resolveCompanyId } from '@/lib/get-company-id'
+import { TourProvider } from '@/lib/tour/context'
+import { TourEngine } from '@/components/tour/TourEngine'
 
 // ─── Nav ───────────────────────────────────────────────────────
 
 const NAV = [
-  { href: '/dashboard',            label: 'Dashboard',          icon: LayoutDashboard, exact: true },
+  { href: '/dashboard',            label: 'Dashboard',          icon: LayoutDashboard, exact: true, tourId: 'nav-dashboard' },
   { href: '/dashboard/financeiro', label: 'Financeiro',         icon: DollarSign },
-  { href: '/dashboard/clients',    label: 'Clientes',           icon: Users },
+  { href: '/dashboard/clients',    label: 'Clientes',           icon: Users,           tourId: 'nav-clients' },
   { href: '/dashboard/messages',   label: 'Mensagens',          icon: Mail },
   { href: '/dashboard/projects',   label: 'Projetos',           icon: FolderOpen },
-  { href: '/dashboard/growth-map', label: 'Mapa de Crescimento',icon: Map },
+  { href: '/dashboard/growth-map', label: 'Mapa de Crescimento',icon: Map,             tourId: 'nav-growth-map' },
   { href: '/dashboard/assistant',  label: 'Assistente IA',      icon: MessageSquare },
-  { href: '/dashboard/revenue',    label: 'Receita',             icon: BarChart3 },
-  { href: '/dashboard/advisor',    label: 'Consultor IA',        icon: Brain },
+  { href: '/dashboard/revenue',    label: 'Receita',            icon: BarChart3,       tourId: 'nav-revenue' },
+  { href: '/dashboard/advisor',    label: 'Consultor IA',       icon: Brain },
   { href: '/dashboard/leads',      label: 'Leads',              icon: UserPlus },
-  { href: '/dashboard/dados',      label: 'Dados',              icon: Database },
-  { href: '/dashboard/actions',    label: 'Ações',              icon: Zap },
+  { href: '/dashboard/dados',      label: 'Dados',              icon: Database,        tourId: 'nav-dados' },
+  { href: '/dashboard/actions',    label: 'Ações',              icon: Zap,             tourId: 'nav-actions' },
   { href: '/dashboard/alerts',     label: 'Alertas',            icon: Bell },
   { href: '/dashboard/history',    label: 'Histórico',          icon: History },
   { href: '/dashboard/billing',    label: 'Plano',              icon: CreditCard },
@@ -787,6 +789,7 @@ function Sidebar({
             const active = isActive(item)
             return (
               <Link key={item.href} href={item.href} onClick={onClose}
+                {...(item.tourId ? { 'data-tour': item.tourId } : {})}
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                   active
@@ -893,41 +896,46 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [])
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <Sidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        trial={trial}
-        brandName={brandName}
-        logoUrl={logoUrl}
-      />
+    <TourProvider>
+      <div className="min-h-screen bg-zinc-950 text-white">
+        <Sidebar
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          trial={trial}
+          brandName={brandName}
+          logoUrl={logoUrl}
+        />
 
-      <QuickDrawerOverlay
-        type={activeDrawer}
-        companyId={companyId}
-        onClose={() => setActiveDrawer(null)}
-      />
+        <QuickDrawerOverlay
+          type={activeDrawer}
+          companyId={companyId}
+          onClose={() => setActiveDrawer(null)}
+        />
 
-      <div className="lg:pl-60">
-        <TrialBanner trial={trial} />
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-zinc-800/60 bg-zinc-950/95 px-4 py-3 backdrop-blur lg:hidden">
-          <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white">
-            <Menu size={18} />
-          </button>
-          <div className="flex items-center gap-2">
-            {logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt={brandName} className="h-6 w-6 rounded object-contain" />
-            ) : (
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-violet-600 text-white font-bold text-[10px]">
-                {brandName.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <span className="text-sm font-semibold text-white">{brandName}</span>
-          </div>
-        </header>
-        <main>{children}</main>
+        <div className="lg:pl-60">
+          <TrialBanner trial={trial} />
+          <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-zinc-800/60 bg-zinc-950/95 px-4 py-3 backdrop-blur lg:hidden">
+            <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white">
+              <Menu size={18} />
+            </button>
+            <div className="flex items-center gap-2">
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt={brandName} className="h-6 w-6 rounded object-contain" />
+              ) : (
+                <div className="flex h-6 w-6 items-center justify-center rounded bg-violet-600 text-white font-bold text-[10px]">
+                  {brandName.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className="text-sm font-semibold text-white">{brandName}</span>
+            </div>
+          </header>
+          <main>{children}</main>
+        </div>
+
+        {/* Interactive product tour — renders as a portal over everything */}
+        <TourEngine />
       </div>
-    </div>
+    </TourProvider>
   )
 }

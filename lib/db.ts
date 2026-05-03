@@ -6,6 +6,8 @@ export interface DBUser {
   email: string
   name: string | null
   plan: Plan
+  onboarding_step: number
+  onboarding_completed: boolean
   created_at: string
   updated_at: string
 }

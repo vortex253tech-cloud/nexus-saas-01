@@ -459,13 +459,14 @@ export default function ActionsPage() {
       ) : (
         <div className="space-y-3">
           <AnimatePresence mode="popLayout">
-            {filtered.map(action => (
-              <ActionCard
-                key={action.id}
-                action={action}
-                executing={executingIds.has(action.id)}
-                onExecute={handleExecute}
-              />
+            {filtered.map((action, idx) => (
+              <div key={action.id} {...(idx === 0 ? { 'data-tour': 'actions-first-card' } : {})}>
+                <ActionCard
+                  action={action}
+                  executing={executingIds.has(action.id)}
+                  onExecute={handleExecute}
+                />
+              </div>
             ))}
           </AnimatePresence>
         </div>

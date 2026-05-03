@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { AIStatus } from '@/components/ui/ai-status'
+import { useTour } from '@/lib/tour/context'
 import { gerarDiagnostico } from '@/lib/diagnostico'
 import { gerarInsights } from '@/lib/insights'
 import { gerarAlertas } from '@/lib/alertas'
@@ -954,6 +955,7 @@ function ReturnNotif({ ganho, onClose }: { ganho: number; onClose: () => void })
 // ─── Main page ────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { start: startTour, completed: tourCompleted, active: tourActive, loaded: tourLoaded } = useTour()
   const [session, setSession] = useState<SessionData | null>(null)
   const [plan, setPlan] = useState<Plan>('free')
   const [companyId, setCompanyId] = useState<string | null>(null)
@@ -1388,6 +1390,16 @@ export default function DashboardPage() {
                   <h1 className="text-xl font-bold text-white">{session?.nomeEmpresa ?? 'Minha Empresa'}</h1>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* Tour restart button — only show when tour is not active and was completed */}
+                  {tourLoaded && !tourActive && tourCompleted && (
+                    <button
+                      onClick={startTour}
+                      className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:border-violet-600/50 hover:bg-violet-600/10 hover:text-violet-300"
+                    >
+                      <Play className="h-3 w-3" />
+                      Tour
+                    </button>
+                  )}
                   {/* Phase 7: dynamic CTA button */}
                   <Link
                     href="/dashboard/upgrade"
