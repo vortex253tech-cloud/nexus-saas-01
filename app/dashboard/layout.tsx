@@ -11,7 +11,7 @@ import {
   ArrowRight, Mail, FolderOpen, Map, Settings,
   TrendingUp, AlertTriangle, Loader2, RefreshCw,
   CheckCircle2, AlertCircle, ExternalLink, Activity,
-  Moon, Brain, UserPlus, BarChart3,
+  Moon, Brain, UserPlus, BarChart3, Package,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -32,6 +32,7 @@ const NAV = [
   { href: '/dashboard/revenue',    label: 'Receita',            icon: BarChart3,       tourId: 'nav-revenue' },
   { href: '/dashboard/advisor',    label: 'Consultor IA',       icon: Brain },
   { href: '/dashboard/leads',      label: 'Leads',              icon: UserPlus },
+  { href: '/dashboard/suppliers',   label: 'Custos',             icon: Package },
   { href: '/dashboard/dados',      label: 'Dados',              icon: Database,        tourId: 'nav-dados' },
   { href: '/dashboard/actions',    label: 'Ações',              icon: Zap,             tourId: 'nav-actions' },
   { href: '/dashboard/alerts',     label: 'Alertas',            icon: Bell },
