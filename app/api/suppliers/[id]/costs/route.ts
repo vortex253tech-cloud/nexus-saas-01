@@ -5,10 +5,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
 
+type Context = { params: Promise<{ id: string }> }
+
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  context: Context,
 ) {
+  const { id } = await context.params
   const auth = await getAuthContext()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -18,7 +21,7 @@ export async function GET(
   const { data: sup } = await db
     .from('suppliers')
     .select('id')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('company_id', auth.companyId)
     .maybeSingle()
 
@@ -27,7 +30,7 @@ export async function GET(
   const { data, error } = await db
     .from('supplier_costs')
     .select('*')
-    .eq('supplier_id', params.id)
+    .eq('supplier_id', id)
     .order('date', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -36,8 +39,9 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  context: Context,
 ) {
+  const { id } = await context.params
   const auth = await getAuthContext()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -47,7 +51,7 @@ export async function POST(
   const { data: sup } = await db
     .from('suppliers')
     .select('id')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('company_id', auth.companyId)
     .maybeSingle()
 
@@ -63,7 +67,7 @@ export async function POST(
   const { data, error } = await db
     .from('supplier_costs')
     .insert({
-      supplier_id: params.id,
+      supplier_id: id,
       amount:      Number(amount),
       frequency:   frequency ?? 'monthly',
       date:        date ?? new Date().toISOString().slice(0, 10),

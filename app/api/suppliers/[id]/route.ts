@@ -6,10 +6,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
 
+type Context = { params: Promise<{ id: string }> }
+
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  context: Context,
 ) {
+  const { id } = await context.params
   const auth = await getAuthContext()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -17,7 +20,7 @@ export async function GET(
   const { data, error } = await db
     .from('suppliers')
     .select('*, costs:supplier_costs(*)')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('company_id', auth.companyId)
     .single()
 
@@ -27,8 +30,9 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  context: Context,
 ) {
+  const { id } = await context.params
   const auth = await getAuthContext()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -38,7 +42,7 @@ export async function PATCH(
   const { data, error } = await db
     .from('suppliers')
     .update(body)
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('company_id', auth.companyId)
     .select()
     .single()
@@ -49,8 +53,9 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  context: Context,
 ) {
+  const { id } = await context.params
   const auth = await getAuthContext()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -58,7 +63,7 @@ export async function DELETE(
   const { error } = await db
     .from('suppliers')
     .delete()
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('company_id', auth.companyId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
