@@ -876,22 +876,26 @@ export default function SuppliersPage() {
                 placeholder="Buscar fornecedor..."
                 className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-white/20 w-48"
               />
-              {(['all', 'high_cost_risk', 'medium', 'efficient'] as const).map(f => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={cn(
-                    'px-3 py-1.5 rounded-lg text-xs transition-colors border',
-                    filter === f
-                      ? f === 'all'
-                        ? 'bg-white/[0.08] border-white/20 text-white'
-                        : cn(RISK_CONFIG[f === 'all' ? 'efficient' : f].bg, RISK_CONFIG[f === 'all' ? 'efficient' : f].border, RISK_CONFIG[f === 'all' ? 'efficient' : f].color)
-                      : 'border-white/[0.06] text-white/35 hover:text-white/60'
-                  )}
-                >
-                  {f === 'all' ? 'Todos' : RISK_CONFIG[f].label}
-                </button>
-              ))}
+              {(['all', 'high_cost_risk', 'medium', 'efficient'] as const).map(f => {
+                const isAll = f === 'all'
+                const riskCfg = isAll ? null : RISK_CONFIG[f]
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs transition-colors border',
+                      filter === f
+                        ? isAll
+                          ? 'bg-white/[0.08] border-white/20 text-white'
+                          : cn(riskCfg!.bg, riskCfg!.border, riskCfg!.color)
+                        : 'border-white/[0.06] text-white/35 hover:text-white/60'
+                    )}
+                  >
+                    {isAll ? 'Todos' : riskCfg!.label}
+                  </button>
+                )
+              })}
             </div>
 
             {/* List */}
