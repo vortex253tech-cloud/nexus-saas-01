@@ -33,6 +33,7 @@ const NAV = [
   { href: '/dashboard/revenue',    label: 'Receita',            icon: BarChart3,       tourId: 'nav-revenue' },
   { href: '/dashboard/advisor',    label: 'Consultor IA',       icon: Brain },
   { href: '/dashboard/leads',      label: 'Leads',              icon: UserPlus },
+  { href: '/dashboard/sales',      label: 'Vendas IA',          icon: TrendingUp },
   { href: '/dashboard/suppliers',   label: 'Custos',             icon: Package },
   { href: '/dashboard/dados',      label: 'Dados',              icon: Database,        tourId: 'nav-dados' },
   { href: '/dashboard/actions',    label: 'Ações',              icon: Zap,             tourId: 'nav-actions' },
