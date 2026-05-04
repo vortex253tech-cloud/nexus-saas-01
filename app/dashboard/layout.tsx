@@ -11,13 +11,14 @@ import {
   ArrowRight, Mail, FolderOpen, Map, Settings,
   TrendingUp, AlertTriangle, Loader2, RefreshCw,
   CheckCircle2, AlertCircle, ExternalLink, Activity,
-  Moon, Brain, UserPlus, BarChart3, Package,
+  Moon, Brain, UserPlus, BarChart3, Package, Bot,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
 import { resolveCompanyId } from '@/lib/get-company-id'
 import { TourProvider } from '@/lib/tour/context'
 import { TourEngine } from '@/components/tour/TourEngine'
+import { ChatPanel } from '@/components/ai-chat/ChatPanel'
 
 // ─── Nav ───────────────────────────────────────────────────────
 
@@ -841,6 +842,7 @@ function Sidebar({
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen,  setSidebarOpen]  = useState(false)
   const [activeDrawer, setActiveDrawer] = useState<DrawerType | null>(null)
+  const [chatOpen,     setChatOpen]     = useState(false)
   const [companyId,    setCompanyId]    = useState<string | null>(null)
   const [brandName,    setBrandName]    = useState('NEXUS')
   const [logoUrl,      setLogoUrl]      = useState<string | null>(null)
@@ -913,13 +915,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onClose={() => setActiveDrawer(null)}
         />
 
+        <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
+
         <div className="lg:pl-60">
           <TrialBanner trial={trial} />
           <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-zinc-800/60 bg-zinc-950/95 px-4 py-3 backdrop-blur lg:hidden">
             <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white">
               <Menu size={18} />
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-1 items-center gap-2">
               {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={logoUrl} alt={brandName} className="h-6 w-6 rounded object-contain" />
@@ -930,9 +934,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
               <span className="text-sm font-semibold text-white">{brandName}</span>
             </div>
+            {/* AI chat toggle */}
+            <button
+              onClick={() => setChatOpen(v => !v)}
+              className="relative rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-violet-300"
+              title="NEXUS IA"
+            >
+              <Bot size={18} />
+              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            </button>
           </header>
           <main>{children}</main>
         </div>
+
+        {/* Floating AI chat button — desktop only */}
+        <button
+          onClick={() => setChatOpen(v => !v)}
+          title="NEXUS IA"
+          className={cn(
+            'fixed bottom-6 right-6 z-40 hidden lg:flex items-center justify-center rounded-2xl shadow-xl transition-all duration-200',
+            chatOpen
+              ? 'h-10 w-10 bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              : 'h-12 w-12 bg-violet-600 text-white hover:bg-violet-500 hover:scale-105',
+          )}
+          style={chatOpen ? {} : { boxShadow: '0 0 24px rgba(124,58,237,0.5), 0 8px 16px rgba(0,0,0,0.4)' }}
+        >
+          {chatOpen ? <X size={18} /> : <Bot size={20} />}
+          {!chatOpen && (
+            <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-400 ring-2 ring-zinc-950">
+              <span className="h-1.5 w-1.5 rounded-full bg-white" />
+            </span>
+          )}
+        </button>
 
         {/* Interactive product tour — renders as a portal over everything */}
         <TourEngine />
