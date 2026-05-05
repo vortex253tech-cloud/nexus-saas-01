@@ -9,7 +9,7 @@
 //   OR config.invoice_id + config.amount for a single invoice
 
 import { getSupabaseServerClient } from '@/lib/supabase'
-import { generatePaymentLink }     from '@/lib/payments/stripe'
+import { generateTenantPaymentLink } from '@/lib/payments/provider'
 import type { ActionFn, ActionResult } from './action.types'
 import { extractRecords, renderTemplate } from './action.types'
 
@@ -59,7 +59,7 @@ export const execute: ActionFn = async (config, context) => {
 
   for (const t of targets) {
     try {
-      const result = await generatePaymentLink({
+      const result = await generateTenantPaymentLink({
         invoiceId:     t.id,
         companyId:     context.companyId,
         amount:        t.amount,

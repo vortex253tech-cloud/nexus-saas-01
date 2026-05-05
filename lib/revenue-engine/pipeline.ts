@@ -10,7 +10,7 @@
 import { getSupabaseServerClient }                        from '@/lib/supabase'
 import { fetchAndSegmentClients, type SegmentedClient }   from './segmentation'
 import { buildMessage, makeVars, emailSubject }           from './message-builder'
-import { generatePaymentLink }                            from '@/lib/payments/stripe'
+import { generateTenantPaymentLink }                      from '@/lib/payments/provider'
 import { sendWhatsApp }                                   from '@/lib/whatsapp'
 import { sendEmail, buildCollectionEmailHTML }            from '@/lib/email'
 
@@ -52,8 +52,8 @@ async function generateClientPaymentLink(
   if (invErr || !inv) return null
   const invoiceId = inv.id as string
 
-  // Generate Stripe checkout session (or manual-pay URL as fallback)
-  const linkRes = await generatePaymentLink({
+  // Generate payment link using TENANT'S own provider
+  const linkRes = await generateTenantPaymentLink({
     invoiceId,
     companyId,
     amount:        client.total_revenue,
@@ -61,10 +61,10 @@ async function generateClientPaymentLink(
     customerEmail: client.email ?? undefined,
   })
 
-  // Update invoice with URL + stripe session id
+  // Update invoice with payment URL + external reference
   await db.from('invoices').update({
     payment_link:      linkRes.url,
-    stripe_session_id: linkRes.externalId,
+    stripe_session_id: linkRes.externalId, // column kept for backwards compat; stores any provider's external id
   }).eq('id', invoiceId)
 
   // Attach latest invoice to client record

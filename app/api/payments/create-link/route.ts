@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { getString, readJsonObject } from '@/lib/unknown'
-import { generatePaymentLink } from '@/lib/payments/stripe'
+import { generateTenantPaymentLink } from '@/lib/payments/provider'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,8 +45,8 @@ export async function POST(req: NextRequest) {
 
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
 
-    // ── Generate Stripe checkout link ─────────────────────────────────────────
-    const result = await generatePaymentLink({
+    // ── Generate payment link using TENANT'S own provider ────────────────────
+    const result = await generateTenantPaymentLink({
       invoiceId:     lead.id,
       companyId:     auth.companyId,
       amount,

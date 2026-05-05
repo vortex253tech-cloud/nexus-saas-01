@@ -1,5 +1,9 @@
-// Stripe payment helper — singleton client + link generation.
-// Falls back to a manual-pay URL when STRIPE_SECRET_KEY is not set.
+// PLATFORM-ONLY Stripe helper — used exclusively for NEXUS platform billing
+// (subscriptions, upgrades, etc.).
+//
+// ⚠️  DO NOT use this to generate payment links for tenants.
+//     For tenant payment links, use lib/payments/provider.ts → generateTenantPaymentLink
+//     which reads the tenant's own credentials from user_payment_config.
 
 import Stripe from 'stripe'
 
