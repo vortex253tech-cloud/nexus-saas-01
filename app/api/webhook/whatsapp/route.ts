@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateWhatsAppReply } from '@/lib/ai'
 import { replyWhatsApp } from '@/lib/whatsapp'
+import { getSupabaseServerClient } from '@/lib/supabase'
+import { captureLead, classifyTier } from '@/lib/lead-capture'
+import { generateSalesResponse, type Lead, type BusinessContext } from '@/lib/sales-engine'
 
 export const dynamic = 'force-dynamic'
 
@@ -146,23 +149,112 @@ async function handleTextMessage(params: {
   const { from, userText, senderName, phoneNumberId } = params
 
   try {
-    // 1. Generate AI reply
+    // ── Resolve company from phone number ID ──────────────────────────────────
+    const companyId = await resolveCompanyFromPhoneId(phoneNumberId)
+
+    if (companyId) {
+      // ── Sales Engine Path: capture lead + AI sales response ───────────────
+      const { lead, isNew } = await captureLead({
+        name:      senderName ?? `WhatsApp ${from}`,
+        phone:     from,
+        source:    'whatsapp',
+        message:   userText,
+        companyId,
+      })
+
+      const db = getSupabaseServerClient()
+
+      // Load business context
+      const [companyRes, clientsRes] = await Promise.all([
+        db.from('companies').select('name, brand_name').eq('id', companyId).maybeSingle(),
+        db.from('clients').select('id', { count: 'exact', head: true }).eq('company_id', companyId),
+      ])
+      const ctx: BusinessContext = {
+        company_name:    companyRes.data?.brand_name ?? companyRes.data?.name ?? 'NEXUS',
+        average_ticket:  497,
+        monthly_revenue: 0,
+        total_clients:   clientsRes.count ?? 0,
+      }
+
+      // Get conversation history
+      const { data: conv } = await db
+        .from('sales_conversations')
+        .select('id')
+        .eq('lead_id', lead.id as string)
+        .eq('company_id', companyId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const salesLead: Lead = {
+        id:         lead.id as string,
+        company_id: companyId,
+        name:       lead.name as string,
+        phone:      lead.phone as string | null,
+        email:      lead.email as string | null,
+        source:     lead.source as Lead['source'],
+        status:     lead.status as Lead['status'],
+        score:      lead.score as number,
+        notes:      null,
+        metadata:   {},
+        created_at: lead.created_at as string,
+        updated_at: lead.updated_at as string,
+      }
+
+      const result = await generateSalesResponse(salesLead, [], userText, ctx)
+      const aiReply = result.message
+
+      // Persist conversation + messages
+      if (conv?.id) {
+        await db.from('sales_messages').insert([
+          { conversation_id: conv.id, role: 'lead', content: userText },
+          { conversation_id: conv.id, role: 'ai',   content: aiReply },
+        ])
+      }
+
+      // Update lead
+      await db.from('leads')
+        .update({ score: result.new_score, status: result.new_status })
+        .eq('id', lead.id as string)
+
+      console.log('[whatsapp/webhook] sales reply', {
+        to: from, tier: result.tier, score: result.new_score, isNew,
+      })
+
+      // Send via WhatsApp
+      await replyWhatsApp({ phoneNumberId, to: from, message: aiReply })
+      return
+    }
+
+    // ── Generic AI Path (no company configured) ───────────────────────────────
     const aiReply = await generateWhatsAppReply({ userMessage: userText, senderName })
-    console.log('[whatsapp/webhook] AI reply generated', { to: from, reply: aiReply })
+    console.log('[whatsapp/webhook] generic reply generated', { to: from })
 
-    // 2. Send reply via WhatsApp Cloud API
     const result = await replyWhatsApp({ phoneNumberId, to: from, message: aiReply })
-
     if (result.success) {
-      console.log('[whatsapp/webhook] ✅ reply sent', { to: from, messageId: result.messageId, simulated: result.simulated })
+      console.log('[whatsapp/webhook] ✅ reply sent', { to: from, messageId: result.messageId })
     } else {
       console.error('[whatsapp/webhook] ❌ reply failed', { to: from, error: result.error })
     }
-
-    // ── Future integration points ──────────────────────────────────────────
-    // await saveConversationToSupabase({ from, senderName, userText, aiReply, phoneNumberId })
-    // ──────────────────────────────────────────────────────────────────────
   } catch (err) {
     console.error('[whatsapp/webhook] error handling message', { from, err })
+  }
+}
+
+// ─── Resolve company from WhatsApp phone number ID ───────────────────────────
+
+async function resolveCompanyFromPhoneId(phoneNumberId: string): Promise<string | null> {
+  if (!phoneNumberId) return null
+  try {
+    const db = getSupabaseServerClient()
+    const { data } = await db
+      .from('companies')
+      .select('id')
+      .eq('whatsapp_phone_id', phoneNumberId)
+      .maybeSingle()
+    return data?.id ?? null
+  } catch {
+    return null
   }
 }
