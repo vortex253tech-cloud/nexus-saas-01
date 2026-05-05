@@ -13,6 +13,7 @@
 
 import Stripe from 'stripe'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { decrypt } from '@/lib/payments/encryption'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,7 +62,16 @@ export async function getTenantPaymentConfig(
     .limit(1)
     .maybeSingle()
 
-  return data as TenantPaymentConfig | null
+  if (!data) return null
+
+  // Decrypt encrypted fields before returning
+  const config = data as Record<string, unknown> & TenantPaymentConfig
+  for (const field of ['stripe_secret_key', 'stripe_webhook_secret', 'mp_access_token'] as const) {
+    if (config[field] && typeof config[field] === 'string') {
+      try { config[field] = decrypt(config[field] as string) } catch { config[field] = null }
+    }
+  }
+  return config
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
