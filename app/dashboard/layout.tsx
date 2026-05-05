@@ -11,7 +11,7 @@ import {
   ArrowRight, Mail, FolderOpen, Map, Settings,
   TrendingUp, AlertTriangle, Loader2, RefreshCw,
   CheckCircle2, AlertCircle, ExternalLink, Activity,
-  Moon, Brain, UserPlus, BarChart3, Package, Bot,
+  Moon, Brain, UserPlus, BarChart3, Package, Bot, Wallet,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -39,8 +39,9 @@ const NAV = [
   { href: '/dashboard/actions',    label: 'Ações',              icon: Zap,             tourId: 'nav-actions' },
   { href: '/dashboard/alerts',     label: 'Alertas',            icon: Bell },
   { href: '/dashboard/history',    label: 'Histórico',          icon: History },
-  { href: '/dashboard/billing',    label: 'Plano',              icon: CreditCard },
-  { href: '/dashboard/settings',   label: 'Configurações',      icon: Settings },
+  { href: '/dashboard/billing',            label: 'Plano',              icon: CreditCard },
+  { href: '/dashboard/settings/payments', label: 'Pagamentos',         icon: Wallet },
+  { href: '/dashboard/settings',          label: 'Configurações',      icon: Settings },
 ]
 
 // ─── Quick Drawer Types ─────────────────────────────────────────
@@ -517,9 +518,10 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
   }
 
   const links = [
-    { href: '/dashboard/settings',  label: 'Configurações gerais', icon: <Settings size={13} className="text-zinc-400" /> },
-    { href: '/dashboard/billing',   label: 'Gerenciar plano',      icon: <CreditCard size={13} className="text-violet-400" /> },
-    { href: '/dashboard/dados',     label: 'Dados financeiros',    icon: <Database size={13} className="text-blue-400" /> },
+    { href: '/dashboard/settings',           label: 'Configurações gerais', icon: <Settings size={13} className="text-zinc-400" /> },
+    { href: '/dashboard/settings/payments',  label: 'Métodos de pagamento', icon: <CreditCard size={13} className="text-emerald-400" /> },
+    { href: '/dashboard/billing',            label: 'Gerenciar plano',      icon: <CreditCard size={13} className="text-violet-400" /> },
+    { href: '/dashboard/dados',              label: 'Dados financeiros',    icon: <Database size={13} className="text-blue-400" /> },
   ]
 
   return (

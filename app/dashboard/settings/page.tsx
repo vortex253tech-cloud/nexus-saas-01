@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import {
   Palette, User, Bell, Shield,
-  Lightbulb, Brain, Zap, Star, Sparkles, Clock, Wrench,
+  Lightbulb, Brain, Zap, Star, Sparkles, Clock, Wrench, CreditCard, ChevronRight,
 } from 'lucide-react'
 import ThemeSelector from '@/components/ui/theme-selector'
 import LiveDashboardPreview from '@/components/ui/live-dashboard-preview'
@@ -226,6 +227,25 @@ export default function SettingsPage() {
             </button>
           )
         })}
+      </div>
+
+      {/* Payment settings card — always visible */}
+      <div className="mb-6">
+        <Link
+          href="/dashboard/settings/payments"
+          className="flex items-center justify-between gap-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/10"
+        >
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/15">
+              <CreditCard size={18} className="text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Métodos de Pagamento</p>
+              <p className="text-xs text-zinc-500">Configure Stripe, Mercado Pago ou Pix para receber pagamentos dos seus clientes.</p>
+            </div>
+          </div>
+          <ChevronRight size={16} className="shrink-0 text-zinc-500" />
+        </Link>
       </div>
 
       {/* Tab content */}
