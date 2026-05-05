@@ -2,6 +2,7 @@
 // POST /api/financial-data  { company_id, revenue, costs, profit, period_label, period_date }
 
 import { NextRequest, NextResponse } from 'next/server'
+import { getAuthContext } from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { getNumber, getString, readJsonObject } from '@/lib/unknown'
 
@@ -93,11 +94,19 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await getAuthContext()
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const db = getSupabaseServerClient()
-  const { error } = await db.from('financial_data').delete().eq('id', id)
+  // Scope delete to authenticated tenant — prevents cross-tenant data deletion
+  const { error } = await db
+    .from('financial_data')
+    .delete()
+    .eq('id', id)
+    .eq('company_id', auth.companyId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

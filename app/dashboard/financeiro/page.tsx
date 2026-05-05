@@ -9,19 +9,17 @@ import {
 } from 'lucide-react'
 import { resolveCompanyId } from '@/lib/get-company-id'
 import { cn } from '@/lib/cn'
+import type { CanonicalMetrics } from '@/lib/metrics'
 
-interface Metrics {
-  total_pending: number
-  total_overdue: number
-  total_paid: number
-  total_invoiced: number
-  default_rate: string
-  customer_count: number
-}
+// ─── Types ─────────────────────────────────────────────────────────────────
+
 interface Debtor { name: string; total_overdue: number; invoice_count: number }
 interface AIAnalysis { risk_level: string; risk_reason: string; summary: string; top_actions: string[]; alert?: string }
 
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+const fmtRate = (v: number) => `${v.toFixed(1)}%`
 
 const RISK_CONFIG: Record<string, { label: string; color: string; border: string; badge: string }> = {
   baixo:   { label: 'Risco Baixo',   color: 'text-emerald-400', border: 'border-emerald-500/30', badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
@@ -30,12 +28,14 @@ const RISK_CONFIG: Record<string, { label: string; color: string; border: string
   crítico: { label: 'Risco Crítico', color: 'text-red-400',     border: 'border-red-500/30',     badge: 'bg-red-500/15     text-red-400     border-red-500/30'     },
 }
 
+// ─── Component ─────────────────────────────────────────────────────────────
+
 export default function FinanceiroPage() {
-  const [metrics, setMetrics]   = useState<Metrics | null>(null)
-  const [debtors, setDebtors]   = useState<Debtor[]>([])
-  const [ai, setAi]             = useState<AIAnalysis | null>(null)
-  const [loading, setLoading]   = useState(true)
-  const [running, setRunning]   = useState(false)
+  const [canonical, setCanonical] = useState<CanonicalMetrics | null>(null)
+  const [debtors, setDebtors]     = useState<Debtor[]>([])
+  const [ai, setAi]               = useState<AIAnalysis | null>(null)
+  const [loading, setLoading]     = useState(true)
+  const [running, setRunning]     = useState(false)
   const [companyId, setCompanyId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -47,15 +47,26 @@ export default function FinanceiroPage() {
   async function load() {
     setLoading(true)
     try {
-      const res  = await fetch('/api/ai/financial-insights', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ company_id: companyId }),
-      })
-      const data = await res.json()
-      setMetrics(data.metrics)
-      setDebtors(data.top_debtors ?? [])
-      setAi(data.ai_analysis)
+      // Canonical numbers come from the unified metrics service (same source as dashboard)
+      const [metricsRes, aiRes] = await Promise.all([
+        fetch('/api/metrics').catch(() => null),
+        fetch('/api/ai/financial-insights', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ company_id: companyId }),
+        }).catch(() => null),
+      ])
+
+      if (metricsRes?.ok) {
+        const m = await metricsRes.json() as { canonical: CanonicalMetrics }
+        setCanonical(m.canonical)
+      }
+
+      if (aiRes?.ok) {
+        const data = await aiRes.json()
+        setDebtors(data.top_debtors ?? [])
+        setAi(data.ai_analysis)
+      }
     } finally {
       setLoading(false)
     }
@@ -73,8 +84,8 @@ export default function FinanceiroPage() {
     }
   }
 
-  const riskCfg = RISK_CONFIG[ai?.risk_level ?? ''] ?? RISK_CONFIG.médio
-  const defaultRate = parseFloat(metrics?.default_rate ?? '0')
+  const riskCfg    = RISK_CONFIG[ai?.risk_level ?? ''] ?? RISK_CONFIG.médio
+  const defaultRate = canonical?.default_rate ?? 0
 
   if (loading) {
     return (
@@ -84,7 +95,7 @@ export default function FinanceiroPage() {
             <Loader2 size={32} className="animate-spin text-violet-400" />
             <span className="absolute inset-0 rounded-full bg-violet-500/10 animate-ping" />
           </div>
-          <p className="text-zinc-400 text-sm">IA analisando finanças...</p>
+          <p className="text-zinc-400 text-sm">Carregando dados financeiros...</p>
         </div>
       </div>
     )
@@ -140,40 +151,40 @@ export default function FinanceiroPage() {
         )}
       </AnimatePresence>
 
-      {/* Metrics Grid */}
+      {/* Metrics Grid — numbers from unified /api/metrics (same as dashboard) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           {
             label: 'A Receber',
-            value: fmt(metrics?.total_pending ?? 0),
-            icon: <DollarSign size={16} />,
+            value: fmt(canonical?.total_pending ?? 0),
+            icon:  <DollarSign size={16} />,
             color: 'text-blue-400',
-            bg:   'bg-blue-500/10 border-blue-500/25',
-            glow: false,
+            bg:    'bg-blue-500/10 border-blue-500/25',
+            glow:  false,
           },
           {
             label: 'Total Vencido',
-            value: fmt(metrics?.total_overdue ?? 0),
-            icon: <TrendingDown size={16} />,
+            value: fmt(canonical?.total_overdue ?? 0),
+            icon:  <TrendingDown size={16} />,
             color: 'text-red-400',
-            bg:   'bg-red-500/10 border-red-500/25',
-            glow: false,
+            bg:    'bg-red-500/10 border-red-500/25',
+            glow:  false,
           },
           {
             label: 'Total Recebido',
-            value: fmt(metrics?.total_paid ?? 0),
-            icon: <TrendingUp size={16} />,
+            value: fmt(canonical?.total_paid ?? 0),
+            icon:  <TrendingUp size={16} />,
             color: 'text-emerald-400',
-            bg:   'bg-emerald-500/10 border-emerald-500/25',
-            glow: true,
+            bg:    'bg-emerald-500/10 border-emerald-500/25',
+            glow:  true,
           },
           {
             label: 'Inadimplência',
-            value: metrics?.default_rate ?? '0%',
-            icon: <AlertTriangle size={16} />,
+            value: fmtRate(defaultRate),
+            icon:  <AlertTriangle size={16} />,
             color: defaultRate > 20 ? 'text-red-400' : 'text-yellow-400',
-            bg:   defaultRate > 20 ? 'bg-red-500/10 border-red-500/25' : 'bg-yellow-500/10 border-yellow-500/25',
-            glow: false,
+            bg:    defaultRate > 20 ? 'bg-red-500/10 border-red-500/25' : 'bg-yellow-500/10 border-yellow-500/25',
+            glow:  false,
           },
         ].map((card, i) => (
           <motion.div

@@ -24,6 +24,7 @@ import type { InsightAcao } from '@/lib/insights'
 import type { Alerta, AlertaTipo } from '@/lib/alertas'
 import type { Diagnostico } from '@/lib/diagnostico'
 import type { DBAction, DBAlert, DBFinancialData, Plan } from '@/lib/db'
+import type { CanonicalMetrics } from '@/lib/metrics'
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -966,6 +967,7 @@ export default function DashboardPage() {
   const [historico, setHistorico] = useState<ExecutionHistoryItem[]>([])
   const [diagnostico, setDiagnostico] = useState<Diagnostico | null>(null)
   const [ganhoAcumulado, setGanhoAcumulado] = useState(0)
+  const [unifiedCanonical, setUnifiedCanonical] = useState<CanonicalMetrics | null>(null)
 
   const [generating, setGenerating] = useState(false)
   const [hasApiKey, setHasApiKey] = useState(false)
@@ -1075,12 +1077,13 @@ export default function DashboardPage() {
         setDiagnostico(gerarDiagnostico(diagInput))
 
         if (cid) {
-          const [fdRes, actRes, alertRes, histRes, apRes] = await Promise.all([
+          const [fdRes, actRes, alertRes, histRes, apRes, metricsRes] = await Promise.all([
             fetch(`/api/financial-data?company_id=${cid}`).catch(() => null),
             fetch(`/api/actions?company_id=${cid}`).catch(() => null),
             fetch(`/api/alerts?company_id=${cid}`).catch(() => null),
             fetch(`/api/execution-history?company_id=${cid}`).catch(() => null),
             fetch('/api/autopilot/enable').catch(() => null),
+            fetch('/api/metrics').catch(() => null),
           ])
           if (fdRes?.ok) { const fd = await fdRes.json(); setFinancialData(fd.data ?? []) }
 
@@ -1101,6 +1104,11 @@ export default function DashboardPage() {
           if (apRes?.ok) {
             const apJson = await apRes.json() as { autopilot_enabled?: boolean }
             setAutopilotEnabled(apJson.autopilot_enabled ?? false)
+          }
+          if (metricsRes?.ok) {
+            const mj = await metricsRes.json() as { canonical?: CanonicalMetrics; recovered?: { total_ganho: number; actions_count: number } }
+            if (mj.canonical) setUnifiedCanonical(mj.canonical)
+            if (mj.recovered?.total_ganho) setGanhoAcumulado(mj.recovered.total_ganho)
           }
           if (!hasReal) fallbackMock(diagInput)
           if (!hasRealAlerts) fallbackAlerts(diagInput)
@@ -1434,10 +1442,14 @@ export default function DashboardPage() {
                     icon: AlertTriangle, color: alertasAtivos > 0 ? 'text-red-400' : 'text-zinc-500', highlight: false, link: null,
                   },
                   {
-                    label: 'Score financeiro',
-                    value: diagnostico ? String(diagnostico.score) : '—',
-                    sub: diagnostico?.benchmarkLabel ?? 'vs benchmark do setor',
-                    icon: BarChart3, color: 'text-blue-400', highlight: false, link: null,
+                    label: 'A Receber',
+                    value: unifiedCanonical
+                      ? `R$ ${unifiedCanonical.total_receivable.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                      : '—',
+                    sub: unifiedCanonical
+                      ? `Vencido: R$ ${unifiedCanonical.total_overdue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                      : 'carregando...',
+                    icon: BarChart3, color: 'text-blue-400', highlight: false, link: '/dashboard/financeiro',
                   },
                 ].map((kpi, i) => (
                   <motion.div key={kpi.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 * i, type: 'spring', stiffness: 360, damping: 26 }}
