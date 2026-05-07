@@ -1,6 +1,6 @@
 // GET /auth/callback
 // Supabase emails the user a link like:
-//   https://nexus-saas-theta.vercel.app/auth/callback?code=xxx
+//   https://nexusaas.com.br/auth/callback?code=xxx
 // This route exchanges the one-time code for a real session, sets the
 // cookie, then redirects to /dashboard.
 

@@ -24,12 +24,18 @@ export function isTrialActive(subscription: DBSubscription | null): boolean {
   return new Date(subscription.trial_ends_at) > new Date()
 }
 
-// ─── Effective plan — trial users get PRO access ────────────────
+// ─── Effective plan ──────────────────────────────────────────────
+// Rules (in priority order):
+//   1. past_due or canceled → always 'free' (access revoked)
+//   2. active trial          → 'pro' access during trial
+//   3. otherwise             → use the stored basePlan
 
 export function getEffectivePlan(
   subscription: DBSubscription | null,
   basePlan: Plan,
 ): Plan {
+  if (!subscription) return basePlan
+  if (subscription.status === 'past_due' || subscription.status === 'canceled') return 'free'
   if (isTrialActive(subscription)) return 'pro'
   return basePlan
 }

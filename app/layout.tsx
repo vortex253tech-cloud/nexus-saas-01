@@ -8,13 +8,20 @@ import './globals.css'
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://nexusaas.com.br'),
   title: 'NEXUS — Seu COO de IA',
   description:
     'Inteligência financeira para empresas que querem crescer. Monitore, analise e tome decisões com IA.',
+  alternates: {
+    canonical: 'https://nexusaas.com.br',
+  },
   openGraph: {
     title: 'NEXUS — Seu COO de IA',
     description: 'Inteligência financeira para empresas que querem crescer.',
+    url: 'https://nexusaas.com.br',
+    siteName: 'NEXUS',
     type: 'website',
+    locale: 'pt_BR',
   },
 }
 

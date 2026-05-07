@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -52,6 +52,7 @@ interface TrialInfo {
   isTrialActive: boolean
   trialDaysLeft: number | null
   effectivePlan: string
+  isPastDue?: boolean
 }
 
 // ─── Drawer Sub-components ──────────────────────────────────────
@@ -656,9 +657,26 @@ function QuickDrawerOverlay({
   )
 }
 
-// ─── Trial Banner ──────────────────────────────────────────────
+// ─── Trial / PastDue Banner ─────────────────────────────────────
 
 function TrialBanner({ trial }: { trial: TrialInfo }) {
+  if (trial.isPastDue) {
+    return (
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-red-500/30 bg-red-500/10 text-xs text-red-300">
+        <div className="flex items-center gap-2">
+          <AlertTriangle size={12} className="shrink-0" />
+          <span>Pagamento com problema — acesso limitado ao plano Free. Regularize para restaurar seus recursos.</span>
+        </div>
+        <Link
+          href="/dashboard/billing"
+          className="flex items-center gap-1 rounded-full bg-red-500 px-2.5 py-0.5 font-semibold whitespace-nowrap text-white transition-colors hover:bg-red-400"
+        >
+          Regularizar <ArrowRight size={10} />
+        </Link>
+      </div>
+    )
+  }
+
   if (!trial.isTrialActive || trial.trialDaysLeft === null) return null
 
   const urgent = trial.trialDaysLeft <= 2
@@ -853,14 +871,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     isTrialActive: false,
     trialDaysLeft: null,
     effectivePlan: 'free',
+    isPastDue: false,
   })
+
+  const router       = useRouter()
+  const searchParams = useSearchParams()
 
   // Resolve company_id once on mount
   useEffect(() => {
     resolveCompanyId().then(cid => setCompanyId(cid))
   }, [])
 
-  useEffect(() => {
+  const fetchSession = useCallback(() => {
     fetch('/api/auth/session')
       .then(r => r.ok ? r.json() : null)
       .then((data: unknown) => {
@@ -868,6 +890,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const d = data as {
           isTrialActive?: boolean
           trialDaysLeft?: number | null
+          subscription?: { status?: string } | null
           user?: { effectivePlan?: string }
           company?: { brand_name?: string | null; logo_url?: string | null }
         }
@@ -875,12 +898,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           isTrialActive: d.isTrialActive ?? false,
           trialDaysLeft: d.trialDaysLeft ?? null,
           effectivePlan: d.user?.effectivePlan ?? 'free',
+          isPastDue: d.subscription?.status === 'past_due',
         })
         if (d.company?.brand_name) setBrandName(d.company.brand_name)
         if (d.company?.logo_url)   setLogoUrl(d.company.logo_url)
       })
       .catch(() => { /* ok */ })
   }, [])
+
+  useEffect(() => { fetchSession() }, [fetchSession])
+
+  // After a successful checkout, wait briefly for webhook then refetch plan
+  useEffect(() => {
+    if (searchParams.get('checkout') === 'success') {
+      const timer = setTimeout(() => {
+        fetchSession()
+        // Clean the query param from the URL without a navigation
+        const url = new URL(window.location.href)
+        url.searchParams.delete('checkout')
+        url.searchParams.delete('plan')
+        router.replace(url.pathname + url.search)
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams, fetchSession, router])
 
   // Listen for drawer events dispatched by icon rail in page.tsx
   useEffect(() => {

@@ -310,56 +310,61 @@ const USE_CASES = [
 
 const PRICING = [
   {
-    name: 'Diagnóstico',
-    price: 'Grátis',
-    desc: 'Comece agora e veja onde está perdendo dinheiro',
-    cta: 'Começar grátis',
-    ctaHref: '/start',
+    name: 'Starter',
+    price: 'R$ 197',
+    period: '/mês',
+    desc: 'Diagnóstico + IA financeira para começar a recuperar',
+    cta: 'Testar grátis 7 dias',
+    ctaHref: '/dashboard/upgrade?plan=starter',
     highlight: false,
+    badge: null as string | null,
     features: [
       'Diagnóstico financeiro completo',
-      '1 projeto ativo',
-      'Growth Map (visualização)',
-      'Alertas básicos de IA',
-      'Assistente financeiro limitado',
+      '5 insights da IA por análise',
+      'Alertas automáticos',
+      'Dados financeiros (6 meses)',
+      'Até 50 clientes',
     ],
+    notIncluded: ['Auto-Pilot de execução', 'Alertas WhatsApp', 'Flows ilimitados'],
   },
   {
     name: 'Pro',
-    price: 'R$ 197',
+    price: 'R$ 397',
     period: '/mês',
-    desc: 'Para quem quer crescer com IA trabalhando 24h',
-    cta: 'Assinar Pro',
-    ctaHref: '/start?plan=pro',
+    desc: 'IA executando por você — 24h, sem intervenção manual',
+    cta: 'Testar grátis 7 dias',
+    ctaHref: '/dashboard/upgrade?plan=pro',
     highlight: true,
-    badge: 'Mais popular',
+    badge: 'Mais popular' as string | null,
     features: [
-      'Projetos ilimitados',
-      'Automações de cobrança e reativação',
-      'Assistente IA sem limites',
-      'Growth Map completo',
-      'Mensagens WhatsApp + e-mail',
-      'Relatórios executivos semanais',
-      'Integrações com Google Sheets e CRM',
+      'Insights ilimitados da IA',
+      'Auto-Pilot de execução',
+      'Gráfico de evolução financeira',
+      'Alertas WhatsApp + e-mail',
+      'Exportar relatórios PDF',
+      'Score antes/depois',
+      'Até 200 clientes',
     ],
+    notIncluded: ['Flows de automação ilimitados'],
   },
   {
     name: 'Scale',
-    price: 'R$ 497',
+    price: 'R$ 797',
     period: '/mês',
-    desc: 'Para empresas que precisam de escala real',
-    cta: 'Falar com time',
-    ctaHref: '/start?plan=scale',
+    desc: 'Para empresas que precisam de escala real e API',
+    cta: 'Testar grátis 7 dias',
+    ctaHref: '/dashboard/upgrade?plan=scale',
     highlight: false,
+    badge: null as string | null,
     features: [
       'Tudo do Pro',
-      'Multi-empresa (até 5)',
-      'Acesso a API',
-      'Onboarding personalizado',
-      'Suporte dedicado',
-      'Relatórios customizados',
-      'SLA garantido',
+      'Flows de automação ilimitados',
+      'Clientes ilimitados',
+      'API de integração',
+      'Onboarding dedicado',
+      'Suporte prioritário',
     ],
+    notIncluded: [],
   },
 ]
 
@@ -722,6 +727,14 @@ export default function LandingPage() {
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2.5 text-sm text-zinc-300">
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                    {f}
+                  </li>
+                ))}
+                {plan.notIncluded.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5 text-sm text-zinc-600 line-through">
+                    <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v.01M12 12V9m0 12a9 9 0 100-18 9 9 0 000 18z" />
+                    </svg>
                     {f}
                   </li>
                 ))}

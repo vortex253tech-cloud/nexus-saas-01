@@ -95,7 +95,7 @@ export function buildActionEmailHTML(params: {
       </div>
 
       <!-- CTA -->
-      <a href="${process.env.NEXT_PUBLIC_APP_URL ?? 'https://nexus.app'}/dashboard"
+      <a href="${process.env.NEXT_PUBLIC_APP_URL ?? 'https://nexusaas.com.br'}/dashboard"
          style="display:block;text-align:center;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;padding:14px 24px;border-radius:10px;font-weight:700;font-size:15px;margin-bottom:24px;">
         Ver no dashboard →
       </a>

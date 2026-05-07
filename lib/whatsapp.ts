@@ -181,7 +181,7 @@ export function buildHelpMessage(): string {
     `*ajuda* — este menu`,
     ``,
     `Para detalhes completos, acesse o dashboard:`,
-    process.env.NEXT_PUBLIC_APP_URL ?? 'https://nexus.app',
+    process.env.NEXT_PUBLIC_APP_URL ?? 'https://nexusaas.com.br',
   ].join('\n')
 }
 

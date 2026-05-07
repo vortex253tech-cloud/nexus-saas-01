@@ -95,7 +95,7 @@ export interface DBSubscription {
 
 // ─── Plan types ────────────────────────────────────────────────
 
-export type Plan = 'free' | 'starter' | 'pro' | 'enterprise'
+export type Plan = 'free' | 'starter' | 'pro' | 'scale' | 'enterprise'
 
 // ─── API response shape for dashboard ─────────────────────────
 

@@ -14,11 +14,14 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { AIStatus } from '@/components/ui/ai-status'
+import EngineStatusPanel from '@/components/ui/engine-status-panel'
+import ActivationBanner from '@/components/ui/activation-banner'
 import { useTour } from '@/lib/tour/context'
 import { gerarDiagnostico } from '@/lib/diagnostico'
 import { gerarInsights } from '@/lib/insights'
 import { gerarAlertas } from '@/lib/alertas'
 import { getFeatures, isAtLeast } from '@/lib/plan-gates'
+import { track } from '@/lib/track'
 import { calcularProjection, getSocialProof } from '@/lib/projection'
 import type { InsightAcao } from '@/lib/insights'
 import type { Alerta, AlertaTipo } from '@/lib/alertas'
@@ -957,6 +960,9 @@ function ReturnNotif({ ganho, onClose }: { ganho: number; onClose: () => void })
 
 export default function DashboardPage() {
   const { start: startTour, completed: tourCompleted, active: tourActive, loaded: tourLoaded } = useTour()
+  const [checkoutSuccess, setCheckoutSuccess] = useState(false)
+  const [checkoutPlan, setCheckoutPlan] = useState('')
+
   const [session, setSession] = useState<SessionData | null>(null)
   const [plan, setPlan] = useState<Plan>('free')
   const [companyId, setCompanyId] = useState<string | null>(null)
@@ -1118,10 +1124,22 @@ export default function DashboardPage() {
           fallbackAlerts(diagInput2)
         }
       } catch (e) { console.error('Boot error:', e) }
-      finally { setLoading(false) }
+      finally {
+        setLoading(false)
+        track('dashboard_viewed')
+      }
     }
     boot()
   }, []) // eslint-disable-line
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('checkout') === 'success') {
+      setCheckoutPlan(params.get('plan') ?? 'Pro')
+      setCheckoutSuccess(true)
+      setTimeout(() => setCheckoutSuccess(false), 6000)
+    }
+  }, [])
 
   function mapActions(data: ExtendedDBAction[]): UnifiedInsight[] {
     return data
@@ -1238,6 +1256,7 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: false }),
       }).catch(() => null)
+      track('autopilot_toggled', { enabled: false })
       setAutopilotEnabled(false)
       return
     }
@@ -1248,6 +1267,7 @@ export default function DashboardPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: true }),
     }).catch(() => null)
+    track('autopilot_toggled', { enabled: true })
     setAutopilotEnabled(true)
     setAutopilotRunning(true)
 
@@ -1366,6 +1386,33 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
+              {/* Checkout success toast */}
+              <AnimatePresence>
+                {checkoutSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="mb-4 flex items-center gap-3 rounded-2xl border border-emerald-600/40 bg-emerald-950/40 px-4 py-3"
+                  >
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-300">Bem-vindo ao plano {checkoutPlan}!</p>
+                      <p className="text-xs text-zinc-500">Todas as funcionalidades foram desbloqueadas. A IA já está trabalhando para você.</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Activation banner — post-login emotional hook */}
+              <ActivationBanner
+                ganhoEstimado={ganhoEstimado}
+                nomeEmpresa={session?.nomeEmpresa ?? 'Sua empresa'}
+                hasData={financialData.length > 0}
+                plan={plan}
+                overdueAmount={unifiedCanonical?.total_overdue ?? 0}
+              />
+
               {/* Phase 7: return notification */}
               <AnimatePresence>
                 {returnNotif && (
@@ -1475,8 +1522,13 @@ export default function DashboardPage() {
                 enabled={autopilotEnabled} running={autopilotRunning}
                 autoCount={autoExecPending} plan={plan} totalGanho={ganhoEstimado}
                 onToggle={handleAutoPilot}
-                onPaywall={() => setModal({ open: true, type: 'autopilot' })}
+                onPaywall={() => { track('paywall_hit', { feature: 'autopilot' }); setModal({ open: true, type: 'autopilot' }) }}
               />
+
+              {/* Revenue Engine Status Panel */}
+              <div className="mb-4">
+                <EngineStatusPanel />
+              </div>
 
               {/* AI bar */}
               <AIGenerateBar onGenerate={handleGenerate} generating={generating} hasApiKey={hasApiKey} plan={plan} lastGenerated={lastGenerated} />
