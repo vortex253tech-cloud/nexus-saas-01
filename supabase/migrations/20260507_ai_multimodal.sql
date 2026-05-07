@@ -1,0 +1,128 @@
+-- ─── NEXUS AI Multimodal Engine — Database Schema ────────────────────────────
+-- Run this migration in Supabase SQL Editor
+
+-- ── Enable UUID extension (already enabled on most projects) ─────────────────
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ── 1. ai_attachments ─────────────────────────────────────────────────────────
+-- Stores metadata for every file uploaded to the AI assistant.
+-- Actual files live in Supabase Storage buckets: ai-files, ai-images, ai-audio.
+
+CREATE TABLE IF NOT EXISTS ai_attachments (
+  id                uuid         PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id        uuid         NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  user_id           uuid         REFERENCES users(id) ON DELETE SET NULL,
+  conversation_id   uuid         REFERENCES nexus_ai_conversations(id) ON DELETE CASCADE,
+  message_id        uuid         NULL,   -- populated after message is created
+
+  -- File identity
+  name              text         NOT NULL,
+  mime_type         text         NOT NULL,
+  file_size         bigint       NOT NULL,
+  bucket            text         NOT NULL,  -- ai-files | ai-images | ai-audio
+  storage_path      text         NOT NULL,
+
+  -- Processed content
+  extracted_text    text         NULL,      -- text extracted from doc/audio/OCR
+  ai_summary        text         NULL,      -- AI-generated summary
+  metadata          jsonb        NOT NULL DEFAULT '{}',
+
+  created_at        timestamptz  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_attachments_company    ON ai_attachments(company_id);
+CREATE INDEX IF NOT EXISTS idx_ai_attachments_conv       ON ai_attachments(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_ai_attachments_created    ON ai_attachments(created_at DESC);
+
+-- RLS
+ALTER TABLE ai_attachments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "company members can access own attachments"
+  ON ai_attachments
+  FOR ALL
+  USING (
+    company_id IN (
+      SELECT c.id FROM companies c
+      JOIN users u ON u.id = c.user_id
+      WHERE u.auth_id = auth.uid()
+    )
+  );
+
+-- ── 2. ai_memory ──────────────────────────────────────────────────────────────
+-- Persistent cross-session memory scoped per company.
+-- The AI reads these facts at the start of every conversation.
+
+CREATE TABLE IF NOT EXISTS ai_memory (
+  id            uuid         PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id    uuid         NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  key           text         NOT NULL,    -- e.g. "business_goal", "pain_point"
+  value         text         NOT NULL,    -- the stored fact
+  source        text         NULL,        -- "user_stated" | "ai_inferred" | "document"
+  importance    smallint     NOT NULL DEFAULT 5,  -- 1-10
+  created_at    timestamptz  NOT NULL DEFAULT now(),
+  updated_at    timestamptz  NOT NULL DEFAULT now(),
+  UNIQUE(company_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_memory_company     ON ai_memory(company_id);
+CREATE INDEX IF NOT EXISTS idx_ai_memory_importance  ON ai_memory(company_id, importance DESC);
+
+ALTER TABLE ai_memory ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "company members can access own memory"
+  ON ai_memory
+  FOR ALL
+  USING (
+    company_id IN (
+      SELECT c.id FROM companies c
+      JOIN users u ON u.id = c.user_id
+      WHERE u.auth_id = auth.uid()
+    )
+  );
+
+-- ── 3. Add attachments column to nexus_ai_messages ────────────────────────────
+-- Stores the list of attachment IDs associated with a message.
+
+ALTER TABLE nexus_ai_messages
+  ADD COLUMN IF NOT EXISTS attachments jsonb NOT NULL DEFAULT '[]';
+
+-- ── 4. Supabase Storage Buckets ───────────────────────────────────────────────
+-- Run these in Supabase SQL Editor OR via Dashboard → Storage → New bucket.
+-- Private buckets require signed URLs for access.
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES
+  ('ai-files',  'ai-files',  false, 10485760,  -- 10 MB
+   ARRAY['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+         'application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+         'text/csv','text/plain']),
+  ('ai-images', 'ai-images', false, 5242880,   -- 5 MB
+   ARRAY['image/png','image/jpeg','image/webp','image/gif']),
+  ('ai-audio',  'ai-audio',  false, 26214400,  -- 25 MB
+   ARRAY['audio/mpeg','audio/wav','audio/mp4','audio/x-m4a','audio/ogg'])
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage RLS: only authenticated users can upload to their own folder
+CREATE POLICY "authenticated can upload ai-files"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'ai-files');
+
+CREATE POLICY "authenticated can read own ai-files"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (bucket_id = 'ai-files');
+
+CREATE POLICY "authenticated can upload ai-images"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'ai-images');
+
+CREATE POLICY "authenticated can read own ai-images"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (bucket_id = 'ai-images');
+
+CREATE POLICY "authenticated can upload ai-audio"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'ai-audio');
+
+CREATE POLICY "authenticated can read own ai-audio"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (bucket_id = 'ai-audio');

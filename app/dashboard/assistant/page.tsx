@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Bot, Send, Loader2, Sparkles, Plus,
+  Bot, Sparkles, Plus, Loader2,
   User, Zap, TrendingUp, Users, AlertCircle, DollarSign,
   MessageSquare, ChevronRight, ArrowUpRight,
   PanelLeftClose, PanelLeft, X,
@@ -16,7 +16,12 @@ import {
   type ChatMessage,
   type ActionCard,
   type ConversationSummary,
+  type AttachmentInput,
 } from '@/lib/store/chat-store'
+import {
+  MultimodalChatInput,
+  type UploadedAttachment,
+} from '@/components/ai/MultimodalChatInput'
 
 // ─── Quick suggestions ────────────────────────────────────────────────────────
 
@@ -43,11 +48,12 @@ function inlineMarkdown(text: string): React.ReactNode[] {
   })
 }
 
-function renderMarkdown(text: string): React.ReactNode {
+function renderMarkdown(text: string, showCursor = false): React.ReactNode {
   const paragraphs = text.split(/\n{2,}/)
   return (
     <div className="space-y-2">
       {paragraphs.map((para, pi) => {
+        const isLastPara = pi === paragraphs.length - 1
         const lines = para.split('\n').filter(Boolean)
         if (!lines.length) return null
 
@@ -57,7 +63,10 @@ function renderMarkdown(text: string): React.ReactNode {
               {lines.map((item, ii) => (
                 <li key={ii} className="flex items-start gap-2 text-sm leading-relaxed">
                   <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-violet-400" />
-                  <span>{inlineMarkdown(item.replace(/^[•\-\*]\s/, ''))}</span>
+                  <span>
+                    {inlineMarkdown(item.replace(/^[•\-\*]\s/, ''))}
+                    {isLastPara && ii === lines.length - 1 && showCursor && <StreamCursor />}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -70,7 +79,10 @@ function renderMarkdown(text: string): React.ReactNode {
               {lines.map((item, ii) => (
                 <li key={ii} className="flex items-start gap-2 text-sm leading-relaxed">
                   <span className="min-w-[18px] shrink-0 text-xs font-semibold text-violet-400">{ii + 1}.</span>
-                  <span>{inlineMarkdown(item.replace(/^\d+\.\s/, ''))}</span>
+                  <span>
+                    {inlineMarkdown(item.replace(/^\d+\.\s/, ''))}
+                    {isLastPara && ii === lines.length - 1 && showCursor && <StreamCursor />}
+                  </span>
                 </li>
               ))}
             </ol>
@@ -81,6 +93,7 @@ function renderMarkdown(text: string): React.ReactNode {
           return (
             <p key={pi} className="text-sm font-bold text-white">
               {inlineMarkdown(lines[0].replace(/^#{1,3} /, ''))}
+              {isLastPara && showCursor && <StreamCursor />}
             </p>
           )
         }
@@ -90,6 +103,7 @@ function renderMarkdown(text: string): React.ReactNode {
             {lines.map((line, li) => (
               <span key={li}>
                 {inlineMarkdown(line)}
+                {isLastPara && li === lines.length - 1 && showCursor && <StreamCursor />}
                 {li < lines.length - 1 && <br />}
               </span>
             ))}
@@ -97,6 +111,18 @@ function renderMarkdown(text: string): React.ReactNode {
         )
       })}
     </div>
+  )
+}
+
+// ─── Streaming cursor ─────────────────────────────────────────────────────────
+
+function StreamCursor() {
+  return (
+    <motion.span
+      animate={{ opacity: [1, 0, 1] }}
+      transition={{ repeat: Infinity, duration: 0.75, ease: 'easeInOut' }}
+      className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 rounded-full bg-violet-400"
+    />
   )
 }
 
@@ -145,11 +171,20 @@ function ActionCardWidget({ card }: { card: ActionCard }) {
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ msg, isLast }: { msg: ChatMessage; isLast: boolean }) {
+function MessageBubble({
+  msg, isLast, isStreaming,
+}: {
+  msg:        ChatMessage
+  isLast:     boolean
+  isStreaming: boolean
+}) {
   const isUser = msg.role === 'user'
   const time   = new Date(msg.timestamp).toLocaleTimeString('pt-BR', {
     hour: '2-digit', minute: '2-digit',
   })
+
+  // Show pulsing empty state while streaming hasn't emitted any tokens yet
+  const showTypingDots = isStreaming && msg.content.length === 0
 
   return (
     <motion.div
@@ -171,13 +206,25 @@ function MessageBubble({ msg, isLast }: { msg: ChatMessage; isLast: boolean }) {
             ? 'bg-gradient-to-br from-violet-600 to-violet-700 text-white rounded-br-sm shadow-lg shadow-violet-900/40'
             : 'bg-zinc-800/80 text-zinc-200 border border-zinc-700/40 rounded-bl-sm shadow-sm',
         )}>
-          {isUser
-            ? <p className="text-sm leading-relaxed">{msg.content}</p>
-            : renderMarkdown(msg.content)
-          }
+          {isUser ? (
+            <p className="text-sm leading-relaxed">{msg.content}</p>
+          ) : showTypingDots ? (
+            <div className="flex items-center gap-1 py-0.5">
+              {[0, 1, 2].map(i => (
+                <motion.div
+                  key={i}
+                  className="h-1.5 w-1.5 rounded-full bg-violet-400"
+                  animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
+                  transition={{ repeat: Infinity, duration: 1, delay: i * 0.18 }}
+                />
+              ))}
+            </div>
+          ) : (
+            renderMarkdown(msg.content, isStreaming)
+          )}
         </div>
 
-        {!isUser && msg.action_card && (
+        {!isUser && msg.action_card && !isStreaming && (
           <div className="w-full">
             <ActionCardWidget card={msg.action_card} />
           </div>
@@ -201,96 +248,6 @@ function MessageBubble({ msg, isLast }: { msg: ChatMessage; isLast: boolean }) {
   )
 }
 
-// ─── Typing indicator ─────────────────────────────────────────────────────────
-
-function TypingIndicator() {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 8 }}
-      className="flex items-end gap-2.5"
-    >
-      <div className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-600/30 to-violet-500/10 ring-1 ring-violet-500/30">
-        <Bot size={13} className="text-violet-300" />
-      </div>
-      <div className="rounded-2xl rounded-bl-sm border border-zinc-700/40 bg-zinc-800/80 px-4 py-3.5">
-        <div className="flex items-center gap-1">
-          {[0, 1, 2].map(i => (
-            <motion.div
-              key={i}
-              className="h-1.5 w-1.5 rounded-full bg-violet-400"
-              animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-              transition={{ repeat: Infinity, duration: 1, delay: i * 0.18 }}
-            />
-          ))}
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-// ─── Chat input ───────────────────────────────────────────────────────────────
-
-function ChatInput({
-  value, onChange, onSend, loading, disabled,
-}: {
-  value:    string
-  onChange: (v: string) => void
-  onSend:   () => void
-  loading:  boolean
-  disabled: boolean
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    const ta = ref.current
-    if (!ta) return
-    ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
-  }, [value])
-
-  return (
-    <div className={cn(
-      'flex items-end gap-3 rounded-2xl border bg-zinc-900/90 px-4 py-3 transition-all',
-      disabled
-        ? 'border-zinc-800 opacity-60'
-        : 'border-zinc-700/70 focus-within:border-violet-500/60 focus-within:ring-1 focus-within:ring-violet-500/20',
-    )}>
-      <textarea
-        ref={ref}
-        rows={1}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            if (!loading && !disabled && value.trim()) onSend()
-          }
-        }}
-        disabled={disabled || loading}
-        placeholder={disabled ? 'Carregando...' : 'Pergunte sobre seus dados...'}
-        className="max-h-36 flex-1 resize-none bg-transparent text-sm text-white placeholder-zinc-600 outline-none disabled:cursor-not-allowed leading-relaxed"
-      />
-      <button
-        onClick={onSend}
-        disabled={loading || !value.trim() || disabled}
-        className={cn(
-          'mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all',
-          value.trim() && !loading && !disabled
-            ? 'bg-violet-600 text-white hover:bg-violet-500 shadow-md shadow-violet-900/40 active:scale-95'
-            : 'bg-zinc-800 text-zinc-600 cursor-not-allowed',
-        )}
-      >
-        {loading
-          ? <Loader2 size={14} className="animate-spin text-violet-400" />
-          : <Send size={14} />
-        }
-      </button>
-    </div>
-  )
-}
-
 // ─── Conversation item ────────────────────────────────────────────────────────
 
 function ConversationItem({
@@ -301,11 +258,11 @@ function ConversationItem({
   onClick:  () => void
 }) {
   const time = (() => {
-    const d   = new Date(conv.updated_at ?? conv.created_at)
-    const now = new Date()
+    const d     = new Date(conv.updated_at ?? conv.created_at)
+    const now   = new Date()
     const diffH = (now.getTime() - d.getTime()) / (1000 * 60 * 60)
-    if (diffH < 24)   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-    if (diffH < 168)  return d.toLocaleDateString('pt-BR', { weekday: 'short' })
+    if (diffH < 24)  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    if (diffH < 168) return d.toLocaleDateString('pt-BR', { weekday: 'short' })
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
   })()
 
@@ -338,7 +295,7 @@ function ConversationItem({
   )
 }
 
-// ─── Sidebar panel (shared desktop/mobile) ───────────────────────────────────
+// ─── Sidebar panel ────────────────────────────────────────────────────────────
 
 function SidebarPanel({
   onClose, conversationId, onNewChat, onSelectConversation,
@@ -419,7 +376,7 @@ function SidebarPanel({
 
 export default function AssistantPage() {
   const {
-    messages, loading, companyId, conversationId,
+    messages, loading, companyId, conversationId, streamingMessageId,
     setCompanyId, sendMessage, startNewConversation, loadConversation, fetchConversations,
   } = useChatStore()
 
@@ -439,29 +396,46 @@ export default function AssistantPage() {
     void fetchConversations()
   }, [companyId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom on new content
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  const handleSend = useCallback(async (text?: string) => {
-    const msg = (text ?? input).trim()
-    if (!msg || loading) return
+  // Send with optional attachments from MultimodalChatInput
+  const handleSend = useCallback(async (attachments: UploadedAttachment[] = []) => {
+    const msg = input.trim()
+    const hasAtt = attachments.length > 0
+    if ((!msg && !hasAtt) || loading) return
     setInput('')
-    await sendMessage(msg)
+    const apiAtts: AttachmentInput[] = attachments.map(a => ({
+      id:             a.id ?? undefined,
+      name:           a.name,
+      mime:           a.mime,
+      type_category:  a.type_category,
+      extracted_text: a.extracted_text,
+      ai_summary:     a.ai_summary,
+    }))
+    await sendMessage(msg, apiAtts)
   }, [input, loading, sendMessage])
+
+  // Quick suggestion chips directly send (no attachments)
+  const handleSuggestion = useCallback(async (text: string) => {
+    if (loading) return
+    setInput('')
+    await sendMessage(text, [])
+  }, [loading, sendMessage])
 
   const ready           = Boolean(companyId)
   const showSuggestions = messages.length <= 1 && !loading
 
-  const closeSidebar = useCallback(() => setSidebarOpen(false), [])
-  const handleNewChat = useCallback(() => { startNewConversation(); setSidebarOpen(false) }, [startNewConversation])
-  const handleSelectConv = useCallback((id: string) => { void loadConversation(id); setSidebarOpen(false) }, [loadConversation])
+  const closeSidebar      = useCallback(() => setSidebarOpen(false), [])
+  const handleNewChat     = useCallback(() => { startNewConversation(); setSidebarOpen(false) }, [startNewConversation])
+  const handleSelectConv  = useCallback((id: string) => { void loadConversation(id); setSidebarOpen(false) }, [loadConversation])
 
   return (
     <div className="flex h-[calc(100vh-52px)] overflow-hidden bg-zinc-950 lg:h-screen">
 
-      {/* ── Desktop sidebar (always rendered, width-transition) ── */}
+      {/* ── Desktop sidebar ── */}
       <div className={cn(
         'hidden overflow-hidden border-r border-zinc-800/80 transition-all duration-300 lg:flex',
         sidebarOpen ? 'w-72' : 'w-0',
@@ -539,7 +513,7 @@ export default function AssistantPage() {
             )}>
               <span className={cn(
                 'h-1.5 w-1.5 rounded-full',
-                ready ? 'bg-emerald-400 animate-pulse' : 'animate-pulse bg-amber-400',
+                ready ? 'animate-pulse bg-emerald-400' : 'animate-pulse bg-amber-400',
               )} />
               {ready ? 'Conectado' : 'Conectando'}
             </div>
@@ -558,25 +532,19 @@ export default function AssistantPage() {
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-2xl space-y-5 px-4 py-6">
-            <AnimatePresence mode="wait">
-              {messages.map((msg, i) => (
-                <MessageBubble
-                  key={msg.id}
-                  msg={msg}
-                  isLast={i === messages.length - 1}
-                />
-              ))}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {loading && <TypingIndicator />}
-            </AnimatePresence>
-
+            {messages.map((msg, i) => (
+              <MessageBubble
+                key={msg.id}
+                msg={msg}
+                isLast={i === messages.length - 1}
+                isStreaming={msg.id === streamingMessageId}
+              />
+            ))}
             <div ref={bottomRef} />
           </div>
         </div>
 
-        {/* Suggestions */}
+        {/* Suggestion chips */}
         <AnimatePresence>
           {showSuggestions && (
             <motion.div
@@ -585,7 +553,7 @@ export default function AssistantPage() {
               exit={{ opacity: 0, y: 6 }}
               className="shrink-0 px-4 pb-2"
             >
-              <div className="mx-auto max-w-2xl flex flex-wrap gap-2">
+              <div className="mx-auto flex max-w-2xl flex-wrap gap-2">
                 {SUGGESTIONS.map(({ icon: Icon, text }, i) => (
                   <motion.button
                     key={text}
@@ -594,7 +562,7 @@ export default function AssistantPage() {
                     transition={{ delay: i * 0.05, type: 'spring', stiffness: 360, damping: 26 }}
                     whileHover={{ y: -1, scale: 1.02 }}
                     whileTap={{ scale: 0.97 }}
-                    onClick={() => handleSend(text)}
+                    onClick={() => handleSuggestion(text)}
                     disabled={!ready}
                     className="flex items-center gap-1.5 rounded-full border border-zinc-700/50 bg-zinc-800/50 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300 disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -610,7 +578,7 @@ export default function AssistantPage() {
         {/* Input area */}
         <div className="shrink-0 border-t border-zinc-800/60 bg-zinc-950/95 px-4 py-4 backdrop-blur">
           <div className="mx-auto max-w-2xl">
-            <ChatInput
+            <MultimodalChatInput
               value={input}
               onChange={setInput}
               onSend={handleSend}
@@ -618,7 +586,7 @@ export default function AssistantPage() {
               disabled={!ready}
             />
             <p className="mt-2 text-center text-[10px] text-zinc-700">
-              Enter para enviar · Shift+Enter para nova linha
+              Enter para enviar · Shift+Enter para nova linha · Arraste arquivos para o campo
             </p>
           </div>
         </div>

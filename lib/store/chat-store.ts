@@ -11,40 +11,51 @@ export interface ActionCard {
 }
 
 export interface ChatMessage {
-  id:          string
-  role:        'user' | 'assistant'
-  content:     string
-  timestamp:   number
+  id:           string
+  role:         'user' | 'assistant'
+  content:      string
+  timestamp:    number
   action_card?: ActionCard | null
 }
 
 export interface ConversationSummary {
-  id:           string
-  title:        string
-  created_at:   string
-  updated_at?:  string
+  id:            string
+  title:         string
+  created_at:    string
+  updated_at?:   string
   last_message?: { role: string; content: string } | null
+}
+
+// Matches the chat API's AttachmentInput interface
+export interface AttachmentInput {
+  id?:            string
+  name:           string
+  mime:           string
+  type_category:  'document' | 'image' | 'audio'
+  extracted_text: string | null
+  ai_summary?:    string | null
 }
 
 interface ChatState {
   // Current chat
-  messages:       ChatMessage[]
-  loading:        boolean
-  conversationId: string | null
+  messages:           ChatMessage[]
+  loading:            boolean
+  conversationId:     string | null
+  streamingMessageId: string | null   // ID of the message being streamed right now
 
   // Company
   companyId: string | null
 
   // Sidebar
-  conversations:         ConversationSummary[]
-  loadingConversations:  boolean
+  conversations:        ConversationSummary[]
+  loadingConversations: boolean
 
   // Actions
-  setCompanyId:        (id: string | null) => void
-  sendMessage:         (text: string) => Promise<void>
+  setCompanyId:         (id: string | null) => void
+  sendMessage:          (text: string, attachments?: AttachmentInput[]) => Promise<void>
   startNewConversation: () => void
-  loadConversation:    (id: string) => Promise<void>
-  fetchConversations:  () => Promise<void>
+  loadConversation:     (id: string) => Promise<void>
+  fetchConversations:   () => Promise<void>
 }
 
 // ─── Welcome message ──────────────────────────────────────────────────────────
@@ -53,7 +64,7 @@ function makeWelcome(): ChatMessage {
   return {
     id:        'welcome',
     role:      'assistant',
-    content:   'Olá! Sou o **NEXUS IA** — sua assistente de negócios.\n\nAcesso dados reais da sua empresa: clientes, cobranças, faturamento, fornecedores e muito mais. O que deseja saber?',
+    content:   'Olá! Sou o **NEXUS IA** — sua assistente de negócios.\n\nAcesso dados reais da sua empresa: clientes, cobranças, faturamento, fornecedores e muito mais. Você também pode enviar **PDFs, planilhas, imagens e áudios** para análise. O que deseja saber?',
     timestamp: Date.now(),
   }
 }
@@ -61,19 +72,22 @@ function makeWelcome(): ChatMessage {
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const useChatStore = create<ChatState>()((set, get) => ({
-  messages:              [makeWelcome()],
-  loading:               false,
-  conversationId:        null,
-  companyId:             null,
-  conversations:         [],
-  loadingConversations:  false,
+  messages:             [makeWelcome()],
+  loading:              false,
+  conversationId:       null,
+  streamingMessageId:   null,
+  companyId:            null,
+  conversations:        [],
+  loadingConversations: false,
 
   setCompanyId: (companyId) => set({ companyId }),
 
-  // ── Send a message ─────────────────────────────────────────────────────────
-  sendMessage: async (text: string) => {
+  // ── Send a message (SSE streaming) ────────────────────────────────────────
+  sendMessage: async (text: string, attachments: AttachmentInput[] = []) => {
     const { companyId, loading, conversationId } = get()
-    if (!text.trim() || loading) return
+    const hasText       = text.trim().length > 0
+    const hasAttachment = attachments.length > 0
+    if ((!hasText && !hasAttachment) || loading) return
 
     const userMsg: ChatMessage = {
       id:        crypto.randomUUID(),
@@ -82,7 +96,20 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       timestamp: Date.now(),
     }
 
-    set((s) => ({ messages: [...s.messages, userMsg], loading: true }))
+    // Pre-add an empty assistant message that will be filled by the stream
+    const streamMsgId = crypto.randomUUID()
+    const streamMsg: ChatMessage = {
+      id:        streamMsgId,
+      role:      'assistant',
+      content:   '',
+      timestamp: Date.now(),
+    }
+
+    set((s) => ({
+      messages:           [...s.messages, userMsg, streamMsg],
+      loading:             true,
+      streamingMessageId:  streamMsgId,
+    }))
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -92,46 +119,83 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           message:         text.trim(),
           company_id:      companyId,
           conversation_id: conversationId,
+          attachments,
         }),
       })
 
-      const data = await res.json() as {
-        reply?:           string
-        action_card?:     ActionCard | null
-        conversation_id?: string
+      if (!res.ok || !res.body) {
+        throw new Error(`HTTP ${res.status}`)
       }
 
-      const content = data.reply?.trim() || 'Não consegui gerar uma resposta. Tente novamente.'
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+      let fullText   = ''
+      let actionCard: ActionCard | null = null
+      let newConvId  = conversationId
+      let sseBuffer  = ''
 
-      const aiMsg: ChatMessage = {
-        id:          crypto.randomUUID(),
-        role:        'assistant',
-        content,
-        timestamp:   Date.now(),
-        action_card: data.action_card ?? null,
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        sseBuffer += decoder.decode(value, { stream: true })
+        const lines = sseBuffer.split('\n')
+        sseBuffer = lines.pop() ?? ''  // keep last (possibly incomplete) line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const jsonStr = line.slice(6).trim()
+          if (!jsonStr) continue
+
+          try {
+            const event = JSON.parse(jsonStr) as Record<string, unknown>
+
+            if (typeof event.token === 'string') {
+              fullText += event.token
+              set((s) => ({
+                messages: s.messages.map(m =>
+                  m.id === streamMsgId ? { ...m, content: fullText } : m,
+                ),
+              }))
+            } else if (event.done === true) {
+              actionCard = (event.action_card as ActionCard | null) ?? null
+              newConvId  = (event.conversation_id as string | null) ?? newConvId
+            } else if (typeof event.error === 'string') {
+              fullText = event.error
+              set((s) => ({
+                messages: s.messages.map(m =>
+                  m.id === streamMsgId ? { ...m, content: fullText } : m,
+                ),
+              }))
+            }
+          } catch { /* skip malformed line */ }
+        }
       }
 
-      // If API returned a new conversationId (first message), store it
-      const newConvId = data.conversation_id ?? conversationId
-
+      // Finalize: stamp action card and conversation id
       set((s) => ({
-        messages:       [...s.messages, aiMsg],
-        conversationId: newConvId,
+        messages: s.messages.map(m =>
+          m.id === streamMsgId
+            ? { ...m, content: fullText || 'Não consegui gerar uma resposta. Tente novamente.', action_card: actionCard }
+            : m,
+        ),
+        conversationId:     newConvId,
+        streamingMessageId: null,
       }))
 
-      // Refresh sidebar conversation list after first message
+      // Refresh sidebar if this was the first message
       if (!conversationId && newConvId) {
         void get().fetchConversations()
       }
 
     } catch {
       set((s) => ({
-        messages: [...s.messages, {
-          id:        crypto.randomUUID(),
-          role:      'assistant',
-          content:   'Erro de conexão. Verifique sua internet e tente novamente.',
-          timestamp: Date.now(),
-        }],
+        messages: s.messages.map(m =>
+          m.id === streamMsgId
+            ? { ...m, content: 'Erro de conexão. Verifique sua internet e tente novamente.' }
+            : m,
+        ),
+        streamingMessageId: null,
       }))
     } finally {
       set({ loading: false })
@@ -141,9 +205,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   // ── Start a fresh conversation ────────────────────────────────────────────
   startNewConversation: () => {
     set({
-      messages:       [makeWelcome()],
-      conversationId: null,
-      loading:        false,
+      messages:           [makeWelcome()],
+      conversationId:     null,
+      loading:            false,
+      streamingMessageId: null,
     })
   },
 
@@ -152,7 +217,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     const { conversationId } = get()
     if (conversationId === id) return
 
-    set({ loading: true, conversationId: id, messages: [] })
+    set({ loading: true, conversationId: id, messages: [], streamingMessageId: null })
 
     try {
       const res  = await fetch(`/api/ai/conversations/${id}`)
@@ -189,9 +254,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       const res  = await fetch(url)
       const data = await res.json() as { data?: ConversationSummary[] }
       set({ conversations: data.data ?? [] })
-    } catch {
-      // ignore — sidebar just stays empty
-    } finally {
+    } catch { /* sidebar stays empty */ }
+    finally {
       set({ loadingConversations: false })
     }
   },
