@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
@@ -858,6 +859,28 @@ function Sidebar({
   )
 }
 
+// ─── Checkout Sync (needs Suspense because of useSearchParams) ──
+
+function CheckoutSync({ onSuccess }: { onSuccess: () => void }) {
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('checkout') === 'success') {
+      const timer = setTimeout(() => {
+        onSuccess()
+        const url = new URL(window.location.href)
+        url.searchParams.delete('checkout')
+        url.searchParams.delete('plan')
+        router.replace(url.pathname + url.search)
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams, onSuccess, router])
+
+  return null
+}
+
 // ─── Layout ────────────────────────────────────────────────────
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -873,9 +896,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     effectivePlan: 'free',
     isPastDue: false,
   })
-
-  const router       = useRouter()
-  const searchParams = useSearchParams()
 
   // Resolve company_id once on mount
   useEffect(() => {
@@ -907,21 +927,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [])
 
   useEffect(() => { fetchSession() }, [fetchSession])
-
-  // After a successful checkout, wait briefly for webhook then refetch plan
-  useEffect(() => {
-    if (searchParams.get('checkout') === 'success') {
-      const timer = setTimeout(() => {
-        fetchSession()
-        // Clean the query param from the URL without a navigation
-        const url = new URL(window.location.href)
-        url.searchParams.delete('checkout')
-        url.searchParams.delete('plan')
-        router.replace(url.pathname + url.search)
-      }, 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [searchParams, fetchSession, router])
 
   // Listen for drawer events dispatched by icon rail in page.tsx
   useEffect(() => {
@@ -988,6 +993,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
             </button>
           </header>
+          <Suspense fallback={null}>
+            <CheckoutSync onSuccess={fetchSession} />
+          </Suspense>
           <main>{children}</main>
         </div>
 
