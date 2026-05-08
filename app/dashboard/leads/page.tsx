@@ -54,11 +54,11 @@ function fmtDate(iso: string) {
 }
 
 function StatusBadge({ status }: { status: LeadStatus }) {
-  const cfg = STATUS_CONFIG[status]
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.new
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', cfg.bg, cfg.color)}>
       <span className={cn('h-1.5 w-1.5 rounded-full', cfg.dot)} />
-      {cfg.label}
+      {STATUS_CONFIG[status] ? cfg.label : (status as string)}
     </span>
   )
 }
@@ -523,6 +523,7 @@ export default function LeadsPage() {
   const [filter,    setFilter]    = useState<LeadStatus | 'all'>('all')
   const [showCreate, setShowCreate] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   useEffect(() => {
     void resolveCompanyId().then(cid => setCompanyId(cid))
@@ -531,14 +532,21 @@ export default function LeadsPage() {
   const fetchLeads = useCallback(async () => {
     if (!companyId) return
     setLoading(true)
+    setFetchError(null)
     try {
       const params = new URLSearchParams({ company_id: companyId })
       if (filter !== 'all') params.set('status', filter)
       if (search)           params.set('q', search)
       const res  = await fetch(`/api/leads/manage?${params}`)
-      const json = await res.json() as { data: Lead[]; meta: Meta }
+      const json = await res.json() as { data?: Lead[]; meta?: Meta; error?: string }
+      if (!res.ok) {
+        setFetchError(json.error ?? `Erro ${res.status}`)
+        return
+      }
       setLeads(json.data ?? [])
       setMeta(json.meta  ?? null)
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : 'Erro ao carregar leads')
     } finally {
       setLoading(false)
     }
@@ -725,6 +733,20 @@ export default function LeadsPage() {
           </p>
           <ArrowUpRight size={12} className="shrink-0 text-zinc-600" />
         </motion.div>
+
+        {/* ── Fetch error ── */}
+        {fetchError && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-800/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+            <AlertCircle size={14} className="shrink-0" />
+            <span>{fetchError}</span>
+            <button
+              onClick={() => void fetchLeads()}
+              className="ml-auto flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-red-400 transition hover:bg-red-900/30"
+            >
+              <RefreshCw size={11} /> Tentar novamente
+            </button>
+          </div>
+        )}
 
         {/* ── Table ── */}
         <div className="overflow-hidden rounded-2xl border border-zinc-800/60">
