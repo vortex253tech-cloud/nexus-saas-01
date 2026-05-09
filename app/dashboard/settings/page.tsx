@@ -9,6 +9,7 @@ import {
 import ThemeSelector from '@/components/ui/theme-selector'
 import LiveDashboardPreview from '@/components/ui/live-dashboard-preview'
 import ColorCustomizer from '@/components/ui/color-customizer'
+import { BusinessProfileTab } from '@/components/settings/BusinessProfileTab'
 import { cn } from '@/lib/cn'
 import { getRecommendedTheme, THEMES } from '@/lib/themes/themes'
 import { useTheme } from '@/lib/themes/theme-context'
@@ -251,10 +252,11 @@ export default function SettingsPage() {
       {/* Tab content */}
       {activeTab === 'aparencia' ? (
         <AparenciaTab />
+      ) : activeTab === 'perfil' ? (
+        <BusinessProfileTab />
       ) : (
         <div className="mx-auto max-w-3xl">
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
-            {activeTab === 'perfil'    && <ComingSoon label="Perfil e dados da empresa" />}
             {activeTab === 'alertas'   && <ComingSoon label="Configurações de alertas" />}
             {activeTab === 'seguranca' && <ComingSoon label="Segurança e acesso" />}
           </div>
