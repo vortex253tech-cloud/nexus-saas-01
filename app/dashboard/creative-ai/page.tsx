@@ -742,23 +742,53 @@ function CampanhasTab() {
 
 // ─── Tab: Imagens ─────────────────────────────────────────────────────────────
 
+interface GeneratedImage {
+  url:            string
+  revised_prompt: string
+  generation_ms:  number
+  company_name:   string
+  size:           string
+}
+
 function ImagensTab() {
   const [style,     setStyle]     = useState('corporate')
   const [ratio,     setRatio]     = useState('square')
   const [objective, setObjective] = useState<Objective>('promocao')
   const [prompt,    setPrompt]    = useState('')
+  const [state,     setState]     = useState<GenState>('idle')
+  const [images,    setImages]    = useState<GeneratedImage[]>([])
+  const [selected,  setSelected]  = useState<GeneratedImage | null>(null)
+
+  async function handleGenerate() {
+    setState('generating')
+    try {
+      const res = await fetch('/api/creative/image', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ description: prompt, style, ratio, objective }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json() as GeneratedImage
+      setImages(prev => [data, ...prev.slice(0, 7)])
+      setSelected(data)
+      setState('done')
+    } catch (err) {
+      console.error(err)
+      setState('error')
+    }
+  }
+
+  const aspectClass: Record<string, string> = {
+    square:    'aspect-square',
+    portrait:  'aspect-[9/16]',
+    landscape: 'aspect-video',
+    banner:    'aspect-[3/1]',
+  }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
-        <div className="flex items-center gap-2">
-          <Sparkles size={14} className="text-violet-400" />
-          <p className="text-sm font-semibold text-violet-300">Geração de imagens via IA</p>
-        </div>
-        <p className="mt-1.5 text-xs text-zinc-500">Integração com DALL-E 3 / Stable Diffusion. Configure abaixo e ative sua chave de API nas configurações.</p>
-      </div>
-
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left: Controls */}
         <div className="space-y-5">
           <div>
             <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Estilo visual</label>
@@ -815,30 +845,102 @@ function ImagensTab() {
             />
           </div>
 
-          <button
-            disabled
-            className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-violet-600/50 to-purple-600/50 cursor-not-allowed opacity-60"
-          >
-            <LucideImage size={15} /> Gerar imagem (configure API nas settings)
-          </button>
+          <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Gerar imagem com DALL-E 3" />
+
+          {state === 'error' && (
+            <p className="text-xs text-red-400">Erro ao gerar imagem. Verifique os logs.</p>
+          )}
         </div>
 
-        {/* Placeholder grid */}
+        {/* Right: Preview */}
         <div>
-          <p className="mb-3 text-xs font-semibold text-zinc-400 uppercase tracking-wide">Gerados recentemente</p>
-          <div className="grid grid-cols-2 gap-3">
-            {[...Array(4)].map((_, i) => (
-              <div
-                key={i}
-                className="aspect-square rounded-xl border border-zinc-800 bg-zinc-900/40 flex flex-col items-center justify-center gap-2 text-zinc-700 hover:border-zinc-700 transition cursor-pointer"
-              >
-                <LucideImage size={20} className="opacity-30" />
-                <span className="text-[10px]">Nenhuma imagem</span>
+          <p className="mb-3 text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+            {selected ? 'Imagem gerada' : 'Aguardando geração'}
+          </p>
+
+          {/* Main preview */}
+          <div className={cn(
+            'w-full rounded-2xl border border-zinc-800 bg-zinc-900/40 overflow-hidden mb-3',
+            aspectClass[ratio] ?? 'aspect-square',
+          )}>
+            {state === 'generating' && (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-3">
+                <div className="relative">
+                  <div className="h-12 w-12 rounded-full border-2 border-violet-500/20" />
+                  <div className="absolute inset-0 h-12 w-12 animate-spin rounded-full border-2 border-transparent border-t-violet-500" />
+                </div>
+                <p className="text-xs text-zinc-500">Gerando com DALL-E 3…</p>
+                <p className="text-[10px] text-zinc-600">Pode levar 10–20 segundos</p>
               </div>
+            )}
+            {selected && state !== 'generating' && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={selected.url}
+                alt="Imagem gerada"
+                className="h-full w-full object-cover"
+              />
+            )}
+            {!selected && state === 'idle' && (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-zinc-700">
+                <LucideImage size={32} className="opacity-30" />
+                <span className="text-xs">Configure e clique em Gerar</span>
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          {selected && state === 'done' && (
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={selected.url}
+                download="imagem-gerada.png"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-400 transition hover:bg-violet-500/20"
+              >
+                <Download size={12} /> Baixar PNG
+              </a>
+              <button
+                onClick={() => navigator.clipboard.writeText(selected.url)}
+                className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200"
+              >
+                <Copy size={12} /> Copiar URL
+              </button>
+              <button
+                onClick={handleGenerate}
+                className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200"
+              >
+                <RefreshCw size={12} /> Regerar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* History grid */}
+      {images.length > 1 && (
+        <div>
+          <p className="mb-3 text-xs font-semibold text-zinc-400 uppercase tracking-wide">Histórico desta sessão</p>
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+            {images.map((img, i) => (
+              <button
+                key={i}
+                onClick={() => setSelected(img)}
+                className={cn(
+                  'aspect-square overflow-hidden rounded-xl border transition',
+                  selected?.url === img.url
+                    ? 'border-violet-500/60 ring-1 ring-violet-500/40'
+                    : 'border-zinc-800 hover:border-zinc-600',
+                )}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img.url} alt="" className="h-full w-full object-cover" />
+              </button>
             ))}
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
