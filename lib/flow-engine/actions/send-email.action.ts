@@ -1,5 +1,6 @@
-import { getSupabaseServerClient } from '@/lib/supabase'
-import { sendEmail }              from '@/lib/email'
+import { getSupabaseServerClient }           from '@/lib/supabase'
+import { sendEmail }                          from '@/lib/email'
+import { getBusinessIdentity, resolveEmailFrom } from '@/lib/business-identity'
 import {
   extractRecords, renderTemplate, emptyResult,
   type ActionContext, type ActionResult,
@@ -31,9 +32,22 @@ export async function execute(
     saveToMessages: config.saveToMessages !== false,
   }
 
+  // Load business identity for white-label sending
+  const identity   = await getBusinessIdentity(context.companyId)
+  const fromAddr   = resolveEmailFrom(identity)
+  const smtpParams = identity?.smtpEnabled && identity.smtpHost && identity.smtpUser && identity.smtpPassword
+    ? {
+        host:     identity.smtpHost,
+        port:     identity.smtpPort,
+        user:     identity.smtpUser,
+        password: identity.smtpPassword,
+        secure:   identity.smtpSecure,
+      }
+    : undefined
+
   const records      = extractRecords(context.lastOutput)
   const emailField   = cfg.recipientField ?? 'email'
-  const subject      = cfg.subject  ?? 'Mensagem do NEXUS'
+  const subject      = cfg.subject  ?? `Mensagem de ${identity?.companyName ?? 'nossa equipe'}`
   const template     = cfg.template ?? 'Olá {{nome}}, temos novidades para você.'
   const cap          = Math.min(records.length, EMAIL_CAP)
 
@@ -49,7 +63,11 @@ export async function execute(
     if (!email) continue
 
     const html   = renderTemplate(template, record)
-    const result = await sendEmail({ to: email, subject, html })
+    const result = await sendEmail({
+      to: email, subject, html,
+      from: fromAddr,
+      ...(smtpParams ? { smtp: smtpParams } : {}),
+    })
 
     if (result.success) {
       succeeded++

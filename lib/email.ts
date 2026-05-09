@@ -1,7 +1,8 @@
-// ─── Email Integration — Resend ────────────────────────────────
+// ─── Email Integration — Resend + SMTP ─────────────────────────
 // Server-side only. Never import in client components.
 
 import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 
 // Lazy — only instantiated when API key is present (avoids build-time crash)
 let _resend: Resend | null = null
@@ -34,6 +35,16 @@ export interface SendEmailParams {
   subject: string
   html: string
   replyTo?: string
+  /** Override the From address — use for white-label sending. Format: "Name <email>" */
+  from?: string
+  /** When set, send via SMTP instead of Resend */
+  smtp?: {
+    host: string
+    port: number
+    user: string
+    password: string
+    secure: boolean
+  }
 }
 
 export interface EmailResult {
@@ -52,8 +63,15 @@ export function buildActionEmailHTML(params: {
   actionDetalhe: string
   impactoEstimado: number
   passos?: string[]
+  senderName?: string
+  logoUrl?: string | null
+  primaryColor?: string
 }): string {
-  const { nomeEmpresa, actionTitulo, actionDescricao, actionDetalhe, impactoEstimado, passos } = params
+  const { nomeEmpresa, actionTitulo, actionDescricao, actionDetalhe, impactoEstimado, passos,
+    senderName, logoUrl, primaryColor } = params
+  const brand  = senderName || nomeEmpresa
+  const color  = primaryColor || '#7c3aed'
+  const color2 = primaryColor ? primaryColor + 'cc' : '#4f46e5'
   const impactoFmt = `R$ ${Math.round(impactoEstimado).toLocaleString('pt-BR')}`
 
   const passosHTML = passos && passos.length > 0
@@ -62,15 +80,19 @@ export function buildActionEmailHTML(params: {
        </ol>`
     : ''
 
+  const logoHTML = logoUrl
+    ? `<img src="${logoUrl}" alt="${brand}" style="height:32px;max-width:140px;object-fit:contain;margin-bottom:16px;display:block;">`
+    : `<span style="background:rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;font-weight:700;color:#fff;font-size:13px;letter-spacing:1px;">${brand}</span>`
+
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="background:#09090b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:40px 20px;">
   <div style="max-width:560px;margin:0 auto;background:#18181b;border-radius:16px;overflow:hidden;border:1px solid #27272a;">
     <!-- Header -->
-    <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:32px 32px 24px;">
+    <div style="background:linear-gradient(135deg,${color},${color2});padding:32px 32px 24px;">
       <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:16px;">
-        <span style="background:rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;font-weight:700;color:#fff;font-size:13px;letter-spacing:1px;">NEXUS</span>
+        ${logoHTML}
       </div>
       <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;line-height:1.3;">Ação de alto impacto identificada</h1>
       <p style="color:rgba(255,255,255,0.75);margin:8px 0 0;font-size:14px;">${nomeEmpresa}</p>
@@ -96,12 +118,12 @@ export function buildActionEmailHTML(params: {
 
       <!-- CTA -->
       <a href="${process.env.NEXT_PUBLIC_APP_URL ?? 'https://nexusaas.com.br'}/dashboard"
-         style="display:block;text-align:center;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;padding:14px 24px;border-radius:10px;font-weight:700;font-size:15px;margin-bottom:24px;">
+         style="display:block;text-align:center;background:linear-gradient(135deg,${color},${color2});color:#fff;text-decoration:none;padding:14px 24px;border-radius:10px;font-weight:700;font-size:15px;margin-bottom:24px;">
         Ver no dashboard →
       </a>
 
       <p style="color:#52525b;font-size:12px;text-align:center;margin:0;">
-        NEXUS · Inteligência financeira para empresas brasileiras<br>
+        ${brand}<br>
         Você está recebendo porque esta ação foi executada automaticamente pelo sistema.
       </p>
     </div>
@@ -158,7 +180,7 @@ export function buildCollectionEmailHTML(params: {
 <body style="background:#09090b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:40px 20px;">
   <div style="max-width:560px;margin:0 auto;background:#18181b;border-radius:16px;overflow:hidden;border:1px solid #27272a;">
     <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:32px 32px 24px;">
-      <span style="background:rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;font-weight:700;color:#fff;font-size:13px;letter-spacing:1px;">NEXUS</span>
+      <span style="background:rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;font-weight:700;color:#fff;font-size:13px;letter-spacing:1px;">${nomeEmpresa}</span>
       <h1 style="color:#fff;margin:16px 0 0;font-size:20px;font-weight:700;line-height:1.3;">Lembrete de pagamento pendente</h1>
       <p style="color:rgba(255,255,255,0.75);margin:6px 0 0;font-size:14px;">${nomeEmpresa}</p>
     </div>
@@ -197,8 +219,7 @@ export function buildCollectionEmailHTML(params: {
       </p>
 
       <p style="color:#52525b;font-size:12px;text-align:center;margin:0;border-top:1px solid #27272a;padding-top:20px;">
-        Atenciosamente, <strong style="color:#71717a;">Equipe ${nomeEmpresa}</strong><br><br>
-        NEXUS · Inteligência financeira para empresas brasileiras
+        Atenciosamente, <strong style="color:#71717a;">Equipe ${nomeEmpresa}</strong>
       </p>
     </div>
   </div>
@@ -209,16 +230,40 @@ export function buildCollectionEmailHTML(params: {
 // ─── Send email ────────────────────────────────────────────────
 
 export async function sendEmail(params: SendEmailParams): Promise<EmailResult> {
+  // ── SMTP path (custom sender) ──────────────────────────────────
+  if (params.smtp) {
+    try {
+      const { host, port, user, password, secure } = params.smtp
+      const transporter = nodemailer.createTransport({
+        host, port, secure,
+        auth: { user, pass: password },
+      })
+      const fromAddr = params.from ?? FROM_ADDRESS
+      const info = await transporter.sendMail({
+        from: fromAddr,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+      })
+      return { success: true, id: info.messageId }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'SMTP error'
+      return { success: false, error: msg }
+    }
+  }
+
+  // ── Resend path ────────────────────────────────────────────────
   const resend = getResend()
   if (!resend) {
-    // No API key — simulate
     console.log(`[Email Simulation] To: ${params.to} | Subject: ${params.subject}`)
     return { success: true, simulated: true }
   }
 
   try {
+    const fromAddr = params.from ?? FROM_ADDRESS
     const data = await resend.emails.send({
-      from: FROM_ADDRESS,
+      from: fromAddr,
       to: params.to,
       subject: params.subject,
       html: params.html,
@@ -236,7 +281,7 @@ export async function sendEmail(params: SendEmailParams): Promise<EmailResult> {
   }
 }
 
-// ─── WhatsApp (stub — replace body with real provider when ready) ─────────────
+// ─── WhatsApp via Z-API ────────────────────────────────────────
 
 export interface WhatsAppResult {
   success:    boolean
@@ -246,11 +291,20 @@ export interface WhatsAppResult {
 }
 
 export async function sendWhatsApp(params: {
-  to:   string  // E.164 format, e.g. +5511999999999
-  body: string
+  to:           string   // E.164 format, e.g. +5511999999999
+  body:         string
+  /** Per-company Z-API credentials (from business_identity). Falls back to env vars. */
+  zapiConfig?:  { instanceId: string; token: string; clientToken?: string } | null
 }): Promise<WhatsAppResult> {
-  // Placeholder: log and return simulated success
-  // When integrating a provider (Twilio, Z-API, etc.), replace this block.
-  console.log(`[whatsapp] stub → to=${params.to} | "${params.body.slice(0, 60)}${params.body.length > 60 ? '...' : ''}"`)
-  return { success: true, simulated: true, id: `wa_stub_${Date.now()}` }
+  const { resolveZApiConfig, zapiSendText } = await import('@/lib/zapi')
+
+  const config = resolveZApiConfig(params.zapiConfig)
+
+  if (!config) {
+    // No credentials configured — simulate
+    console.log(`[whatsapp] simulation → to=${params.to} | "${params.body.slice(0, 60)}${params.body.length > 60 ? '...' : ''}"`)
+    return { success: true, simulated: true, id: `wa_sim_${Date.now()}` }
+  }
+
+  return zapiSendText({ to: params.to, body: params.body, config })
 }

@@ -1,5 +1,6 @@
-import { getSupabaseServerClient } from '@/lib/supabase'
-import { sendWhatsApp }           from '@/lib/whatsapp'
+import { getSupabaseServerClient }           from '@/lib/supabase'
+import { sendWhatsApp }                       from '@/lib/email'
+import { getBusinessIdentity }               from '@/lib/business-identity'
 import {
   extractRecords, renderTemplate, emptyResult,
   type ActionContext, type ActionResult,
@@ -14,9 +15,10 @@ interface SendWhatsAppConfig {
 const WA_CAP = 100
 
 // ─── SEND_WHATSAPP action ─────────────────────────────────────────────────────
-// Sends (or simulates) a WhatsApp message per record from lastOutput.
-// Persists every attempt to the messages table for traceability.
-// Real provider integration: replace sendWhatsApp() stub in lib/email.ts.
+// Sends a WhatsApp message per record via Z-API.
+// Uses per-company Z-API credentials from business_identity if configured,
+// otherwise falls back to platform-level ZAPI_INSTANCE_ID / ZAPI_TOKEN env vars.
+// If neither is set, simulates (logs to console, no real send).
 
 export async function execute(
   config:  Record<string, unknown>,
@@ -27,6 +29,16 @@ export async function execute(
     phoneField:     config.phoneField     as string | undefined,
     saveToMessages: config.saveToMessages !== false,
   }
+
+  // Load business identity to get per-company Z-API credentials
+  const identity   = await getBusinessIdentity(context.companyId)
+  const zapiConfig = identity?.zapiInstanceId && identity.zapiToken
+    ? {
+        instanceId:  identity.zapiInstanceId,
+        token:       identity.zapiToken,
+        clientToken: identity.zapiClientToken ?? undefined,
+      }
+    : null
 
   const records    = extractRecords(context.lastOutput)
   const phoneField = cfg.phoneField ?? 'phone'
@@ -45,7 +57,7 @@ export async function execute(
     if (!phone) continue
 
     const body   = renderTemplate(template, record)
-    const result = await sendWhatsApp({ phone, message: body })
+    const result = await sendWhatsApp({ to: phone, body, zapiConfig })
 
     if (result.success) {
       succeeded++
@@ -58,7 +70,7 @@ export async function execute(
           recipient:   phone,
           content:     body,
           status:      result.simulated ? 'simulated' : 'sent',
-          metadata:    { messageId: result.messageId, template: cfg.message },
+          metadata:    { messageId: result.id, template: cfg.message },
         })
       }
     } else {

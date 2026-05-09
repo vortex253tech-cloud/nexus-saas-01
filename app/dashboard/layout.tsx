@@ -520,8 +520,9 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
   }
 
   const links = [
-    { href: '/dashboard/settings',           label: 'Configurações gerais', icon: <Settings size={13} className="text-zinc-400" /> },
-    { href: '/dashboard/settings/payments',  label: 'Métodos de pagamento', icon: <CreditCard size={13} className="text-emerald-400" /> },
+    { href: '/dashboard/settings',                        label: 'Configurações gerais',  icon: <Settings size={13} className="text-zinc-400" /> },
+    { href: '/dashboard/settings/payments',               label: 'Métodos de pagamento',  icon: <CreditCard size={13} className="text-emerald-400" /> },
+    { href: '/dashboard/settings/business-identity',      label: 'Identidade da empresa', icon: <Mail size={13} className="text-violet-400" /> },
     { href: '/dashboard/billing',            label: 'Gerenciar plano',      icon: <CreditCard size={13} className="text-violet-400" /> },
     { href: '/dashboard/dados',              label: 'Dados financeiros',    icon: <Database size={13} className="text-blue-400" /> },
   ]
