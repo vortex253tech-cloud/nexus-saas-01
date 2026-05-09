@@ -13,8 +13,11 @@ import { cn } from '@/lib/cn'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Tier     = 'HOT' | 'WARM' | 'COLD'
+// Includes both the original sales statuses and the leads-management statuses
+// so the page works regardless of which migration ran.
 type Status   = 'new' | 'qualified' | 'proposal' | 'won' | 'lost' | 'nurture'
-type Source   = 'whatsapp' | 'instagram' | 'site' | 'manual' | 'other'
+              | 'contacted' | 'converted'
+type Source   = 'whatsapp' | 'instagram' | 'site' | 'manual' | 'other' | 'import'
 type MsgRole  = 'lead' | 'ai' | 'human'
 
 interface Lead {
@@ -68,12 +71,16 @@ const TIER_CONFIG: Record<Tier, { label: string; icon: React.ReactNode; color: s
 }
 
 const STATUS_LABELS: Record<Status, { label: string; color: string }> = {
-  new:       { label: 'Novo',      color: 'text-zinc-400' },
-  qualified: { label: 'Qualif.',   color: 'text-blue-400' },
-  proposal:  { label: 'Proposta',  color: 'text-violet-400' },
-  won:       { label: 'Ganhou',    color: 'text-emerald-400' },
-  lost:      { label: 'Perdeu',    color: 'text-red-400' },
-  nurture:   { label: 'Nutrir',    color: 'text-amber-400' },
+  // Original sales-pipeline statuses
+  new:       { label: 'Novo',       color: 'text-zinc-400'    },
+  qualified: { label: 'Qualif.',    color: 'text-blue-400'    },
+  proposal:  { label: 'Proposta',   color: 'text-violet-400'  },
+  won:       { label: 'Ganhou',     color: 'text-emerald-400' },
+  lost:      { label: 'Perdeu',     color: 'text-red-400'     },
+  nurture:   { label: 'Nutrir',     color: 'text-amber-400'   },
+  // Leads-management statuses (same table, different page)
+  contacted: { label: 'Contatado',  color: 'text-blue-400'    },
+  converted: { label: 'Convertido', color: 'text-emerald-400' },
 }
 
 const SOURCE_LABELS: Record<Source, string> = {
@@ -82,6 +89,7 @@ const SOURCE_LABELS: Record<Source, string> = {
   site:      'Site',
   manual:    'Manual',
   other:     'Outro',
+  import:    'Importado',
 }
 
 function getTier(score: number): Tier {
@@ -590,9 +598,9 @@ export default function SalesPage() {
         ) : (
           <AnimatePresence>
             {leads.map((lead, i) => {
-              const tier = getTier(lead.score)
+              const tier = getTier(lead.score ?? 0)
               const t    = TIER_CONFIG[tier]
-              const s    = STATUS_LABELS[lead.status]
+              const s    = STATUS_LABELS[lead.status] ?? { label: lead.status, color: 'text-zinc-400' }
 
               return (
                 <motion.div

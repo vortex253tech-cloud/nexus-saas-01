@@ -24,7 +24,10 @@ const VALID_DATA_SOURCES = new Set([
 ])
 
 const VALID_MESSAGE_TYPES = new Set([
+  // Channel / delivery types
   'email', 'whatsapp', 'sms', 'push',
+  // Purpose / campaign types used by growth-map templates
+  'recovery', 'upsell', 'reactivation', 'campaign',
 ])
 
 const VALID_ACTION_TYPES = new Set([

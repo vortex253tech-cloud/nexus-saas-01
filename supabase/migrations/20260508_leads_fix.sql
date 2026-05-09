@@ -3,9 +3,10 @@
 -- Safe to re-run: all statements are idempotent.
 -- Fixes:
 --   1. Creates table if the previous migration failed (profiles RLS issue)
---   2. Corrects the status CHECK constraint to match the app's status values
---   3. Adds converted_at column if missing
---   4. Replaces broken RLS policy (referenced non-existent "profiles" table)
+--   2. Drops broken status constraint (any name containing 'status')
+--   3. Adds all valid status values (both leads-mgmt and sales-pipeline pages)
+--   4. Adds missing columns (score, converted_at, source, notes, phone, email)
+--   5. Replaces broken RLS policy (referenced non-existent "profiles" table)
 
 -- ─── 1. Create table if not exists ───────────────────────────────────────────
 
@@ -18,14 +19,14 @@ CREATE TABLE IF NOT EXISTS leads (
   source       text        DEFAULT 'manual',
   notes        text,
   status       text        NOT NULL DEFAULT 'new',
+  score        integer     NOT NULL DEFAULT 50,
   converted_at timestamptz,
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now()
 );
 
--- ─── 2. Fix status constraint (drop old, add correct) ─────────────────────────
+-- ─── 2. Drop any existing status constraint ───────────────────────────────────
 
--- Drop any existing status check (handles both old wrong versions)
 DO $$
 DECLARE
   r record;
@@ -43,26 +44,47 @@ BEGIN
 END;
 $$;
 
+-- ─── 3. Sanitise any truly unknown status values (edge cases) ─────────────────
+-- Known-good values from BOTH pages are kept untouched.
+-- Only values that match neither page's schema get reset to 'new'.
+
+UPDATE leads
+SET status = 'new'
+WHERE status NOT IN (
+  -- leads-management page (/dashboard/leads)
+  'new', 'contacted', 'converted', 'lost',
+  -- sales-pipeline page (/dashboard/sales)
+  'qualified', 'proposal', 'won', 'nurture'
+);
+
+-- ─── 4. Add correct constraint (safe because data is clean) ───────────────────
+-- Accepts all valid statuses from both pages that share this table.
+
 ALTER TABLE leads
   ADD CONSTRAINT leads_status_check
-  CHECK (status IN ('new', 'contacted', 'converted', 'lost'));
+  CHECK (status IN (
+    'new', 'contacted', 'converted', 'lost',
+    'qualified', 'proposal', 'won', 'nurture'
+  ));
 
--- ─── 3. Add missing columns ───────────────────────────────────────────────────
+-- ─── 5. Add missing columns ───────────────────────────────────────────────────
 
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS converted_at  timestamptz;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS source        text DEFAULT 'manual';
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS notes         text;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone         text;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS email         text;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS updated_at    timestamptz NOT NULL DEFAULT now();
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS score        integer     NOT NULL DEFAULT 50;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS converted_at timestamptz;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS source       text        DEFAULT 'manual';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS notes        text;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone        text;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS email        text;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS updated_at   timestamptz NOT NULL DEFAULT now();
 
--- ─── 4. Indexes ───────────────────────────────────────────────────────────────
+-- ─── 6. Indexes ───────────────────────────────────────────────────────────────
 
 CREATE INDEX IF NOT EXISTS leads_company_id_idx   ON leads (company_id);
 CREATE INDEX IF NOT EXISTS leads_status_idx       ON leads (company_id, status);
+CREATE INDEX IF NOT EXISTS leads_score_idx        ON leads (company_id, score DESC);
 CREATE INDEX IF NOT EXISTS leads_created_at_idx   ON leads (company_id, created_at DESC);
 
--- ─── 5. updated_at trigger ────────────────────────────────────────────────────
+-- ─── 7. updated_at trigger ────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION set_leads_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
@@ -77,16 +99,16 @@ CREATE TRIGGER leads_set_updated_at
   BEFORE UPDATE ON leads
   FOR EACH ROW EXECUTE FUNCTION set_leads_updated_at();
 
--- ─── 6. RLS ───────────────────────────────────────────────────────────────────
+-- ─── 8. RLS ───────────────────────────────────────────────────────────────────
 -- The API uses the service_role key (bypasses RLS entirely).
 -- We keep RLS enabled for defense in depth but add a safe service_role policy.
--- The broken "profiles" RLS policy from 20240001 is dropped and replaced.
 
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "leads_company_isolation"  ON leads;
-DROP POLICY IF EXISTS "leads_service_role_all"   ON leads;
-DROP POLICY IF EXISTS "service_role_all_leads"   ON leads;
+DROP POLICY IF EXISTS "leads_company_isolation"      ON leads;
+DROP POLICY IF EXISTS "leads_service_role_all"       ON leads;
+DROP POLICY IF EXISTS "service_role_all_leads"       ON leads;
+DROP POLICY IF EXISTS "leads_authenticated_company"  ON leads;
 
 -- Service role gets full access (used by all API routes)
 CREATE POLICY "leads_service_role_all"
@@ -95,7 +117,7 @@ CREATE POLICY "leads_service_role_all"
   USING (true)
   WITH CHECK (true);
 
--- Authenticated users see only their company's leads (client-side safety net)
+-- Authenticated users see only their company's leads
 CREATE POLICY "leads_authenticated_company"
   ON leads FOR ALL
   TO authenticated
@@ -115,10 +137,3 @@ CREATE POLICY "leads_authenticated_company"
       )
     )
   );
-
--- ─── 7. Migrate any existing leads with wrong status values ───────────────────
--- If leads were created before this fix with status values that no longer
--- match the constraint, reset them to 'new'.
-UPDATE leads
-SET status = 'new'
-WHERE status NOT IN ('new', 'contacted', 'converted', 'lost');
