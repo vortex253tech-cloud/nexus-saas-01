@@ -10,7 +10,7 @@ import {
   MessageSquare, Users, Phone, Mail, Package, Activity,
   ChevronRight, Send, Mic, Image, FileText, Table,
   RefreshCw, Bell, ShieldAlert, Lightbulb, Play, Loader2,
-  Brain, Target, X, Flame, Eye,
+  Brain, Target, X, Flame, Eye, Upload, Paperclip,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { gerarDiagnostico } from '@/lib/diagnostico'
@@ -21,6 +21,29 @@ import type { InsightAcao } from '@/lib/insights'
 import type { Alerta } from '@/lib/alertas'
 
 // ─── Types ─────────────────────────────────────────────────────
+
+interface UploadedAttachment {
+  id:             string | null
+  name:           string
+  mime:           string
+  type_category:  'document' | 'image' | 'audio'
+  extracted_text: string | null
+  ai_summary:     string | null
+  url:            string
+  size:           number
+  localPreviewUrl?: string
+}
+
+type FileUploadState = 'uploading' | 'extracting' | 'done' | 'error'
+
+interface PendingFile {
+  tempId:      string
+  file:        File
+  state:       FileUploadState
+  result?:     UploadedAttachment
+  error?:      string
+  previewUrl?: string
+}
 
 interface SessionData {
   nomeEmpresa?: string
@@ -37,11 +60,12 @@ interface SessionData {
 }
 
 interface AIChatMessage {
-  id: string
-  role: 'ai' | 'user'
-  content: string
+  id:           string
+  role:         'ai' | 'user'
+  content:      string
+  attachments?: UploadedAttachment[]
   actionCards?: { label: string; href: string; color: string }[]
-  timestamp: Date
+  timestamp:    Date
 }
 
 // ─── Formatters ────────────────────────────────────────────────
@@ -145,7 +169,7 @@ function AICockpit({
   diagnostico: Diagnostico | null
   aiName: string
   messages: AIChatMessage[]
-  onSendMessage: (text: string) => void
+  onSendMessage: (text: string, attachments?: UploadedAttachment[]) => void
   sending: boolean
 }) {
   const [input, setInput] = useState('')
@@ -205,6 +229,29 @@ function AICockpit({
                 ? 'bg-zinc-800/60 text-zinc-200'
                 : 'bg-violet-600/20 border border-violet-600/30 text-zinc-200 rounded-tr-sm',
             )}>
+              {/* Attachment chips */}
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {msg.attachments.map((a, ai) => (
+                    <div
+                      key={ai}
+                      className="flex items-center gap-1.5 rounded-lg border border-zinc-700/50 bg-zinc-800/40 px-2 py-1"
+                    >
+                      {a.localPreviewUrl ? (
+                        <img src={a.localPreviewUrl} alt="" className="h-5 w-5 rounded object-cover" />
+                      ) : (
+                        <span className="text-xs">
+                          {a.type_category === 'image' ? '🖼️' : a.type_category === 'audio' ? '🎤' : '📎'}
+                        </span>
+                      )}
+                      <span className="max-w-[110px] truncate text-[10px] text-zinc-400">{a.name}</span>
+                      {a.ai_summary && (
+                        <CheckCircle2 size={9} className="shrink-0 text-emerald-400" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               {msg.content}
               {msg.actionCards && msg.actionCards.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -426,63 +473,364 @@ function SmartActionCards() {
   )
 }
 
-// ─── Multimodal bottom input bar ──────────────────────────────
-
-const INPUT_TYPES = [
-  { id: 'text',     icon: '𝑻',    label: 'Texto'    },
-  { id: 'audio',    icon: '🎤',    label: 'Áudio'    },
-  { id: 'image',    icon: '🖼️',   label: 'Imagem'   },
-  { id: 'pdf',      icon: '📄',    label: 'PDF'      },
-  { id: 'sheet',    icon: '📊',    label: 'Planilha' },
-  { id: 'more',     icon: '···',   label: 'Mais'     },
-]
+// ─── Multimodal bottom input bar (fully functional) ───────────
 
 function MultimodalInputBar({
   onSend,
   sending,
 }: {
-  onSend: (text: string) => void
+  onSend: (text: string, attachments: UploadedAttachment[]) => void
   sending: boolean
 }) {
-  const [input, setInput] = useState('')
+  const [input, setInput]                     = useState('')
+  const [pendingFiles, setPendingFiles]        = useState<PendingFile[]>([])
+  const [isRecording, setIsRecording]          = useState(false)
+  const [isDragging, setIsDragging]            = useState(false)
+  const [recordingTime, setRecordingTime]      = useState(0)
 
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef        = useRef<Blob[]>([])
+  const timerRef         = useRef<ReturnType<typeof setInterval> | null>(null)
+  const imageInputRef    = useRef<HTMLInputElement>(null)
+  const audioInputRef    = useRef<HTMLInputElement>(null)
+  const docInputRef      = useRef<HTMLInputElement>(null)
+  const sheetInputRef    = useRef<HTMLInputElement>(null)
+
+  // ── Upload one file ─────────────────────────────────────────
+  async function uploadOneFile(file: File) {
+    const tempId     = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
+
+    setPendingFiles(p => [...p, { tempId, file, state: 'uploading', previewUrl }])
+
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      setPendingFiles(p => p.map(f => f.tempId === tempId ? { ...f, state: 'extracting' } : f))
+
+      const res = await fetch('/api/ai/upload', { method: 'POST', body: form })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Upload falhou' })) as { error?: string }
+        throw new Error(err.error ?? 'Upload falhou')
+      }
+
+      const data = await res.json() as UploadedAttachment
+      const result: UploadedAttachment = { ...data, localPreviewUrl: previewUrl }
+      setPendingFiles(p => p.map(f => f.tempId === tempId ? { ...f, state: 'done', result } : f))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro no upload'
+      setPendingFiles(p => p.map(f => f.tempId === tempId ? { ...f, state: 'error', error: msg } : f))
+    }
+  }
+
+  // ── Handle file list ────────────────────────────────────────
+  function handleFiles(files: FileList | File[]) {
+    const valid = Array.from(files).filter(f => {
+      if (f.type.startsWith('image/') && f.size > 10 * 1024 * 1024) return false
+      if (f.type.startsWith('audio/') && f.size > 25 * 1024 * 1024) return false
+      if (f.size > 30 * 1024 * 1024) return false
+      return true
+    })
+    void Promise.all(valid.map(uploadOneFile))
+  }
+
+  // ── Voice recording ─────────────────────────────────────────
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr     = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      chunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        const file = new File([blob], `gravacao-${Date.now()}.webm`, { type: 'audio/webm' })
+        await uploadOneFile(file)
+        setIsRecording(false)
+        setRecordingTime(0)
+        if (timerRef.current) clearInterval(timerRef.current)
+      }
+      mr.start(200)
+      mediaRecorderRef.current = mr
+      setIsRecording(true)
+      timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000)
+    } catch { /* mic denied */ }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop()
+  }
+
+  // ── Drag & drop ─────────────────────────────────────────────
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files)
+  }
+
+  // ── Send ─────────────────────────────────────────────────────
   function handleSend() {
-    if (!input.trim() || sending) return
-    onSend(input.trim())
+    if (sending) return
+    const ready = pendingFiles.filter(f => f.state === 'done' && f.result).map(f => f.result!)
+    const uploadingCount = pendingFiles.filter(f => f.state === 'uploading' || f.state === 'extracting').length
+    if (uploadingCount > 0) return
+    if (!input.trim() && ready.length === 0) return
+    onSend(input.trim(), ready)
     setInput('')
+    setPendingFiles([])
+  }
+
+  const uploadingCount = pendingFiles.filter(f => f.state === 'uploading' || f.state === 'extracting').length
+  const readyCount     = pendingFiles.filter(f => f.state === 'done').length
+  const canSend        = !sending && uploadingCount === 0 && (input.trim().length > 0 || readyCount > 0)
+
+  function fmtSize(bytes: number) {
+    return bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`
+  }
+  function fmtTime(s: number) {
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+  }
+  function fileIcon(mime: string) {
+    if (mime.startsWith('image/')) return '🖼️'
+    if (mime.startsWith('audio/')) return '🎤'
+    if (mime.includes('pdf'))      return '📄'
+    if (mime.includes('sheet') || mime.includes('csv') || mime.includes('excel')) return '📊'
+    return '📎'
   }
 
   return (
-    <div className="border-t border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md px-6 py-4">
-      <div className="rounded-2xl border border-zinc-700/50 bg-zinc-800/50 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <input
+    <div
+      className={cn(
+        'rounded-2xl border bg-zinc-900/60 transition-all',
+        isDragging ? 'border-violet-500/60 bg-violet-500/5 shadow-lg shadow-violet-500/10' : 'border-zinc-800/60',
+      )}
+      onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false) }}
+      onDrop={onDrop}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-3">
+        <div className="flex items-center gap-2">
+          <Upload size={13} className="text-violet-400" />
+          <p className="text-xs font-semibold text-white">IA Multimodal</p>
+          <span className="text-[10px] text-zinc-600">Envie texto, áudio, imagem, PDF ou planilha</span>
+        </div>
+        {isDragging && (
+          <motion.span
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-xs font-semibold text-violet-400"
+          >
+            Solte o arquivo aqui ↓
+          </motion.span>
+        )}
+      </div>
+
+      {/* Attachment preview chips */}
+      {pendingFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-5 pt-3">
+          {pendingFiles.map(pf => {
+            const isLoading = pf.state === 'uploading' || pf.state === 'extracting'
+            const labelMap: Record<FileUploadState, string> = {
+              uploading:  'Enviando...',
+              extracting: 'IA analisando...',
+              done:       'Analisado',
+              error:      pf.error ?? 'Erro',
+            }
+            return (
+              <motion.div
+                key={pf.tempId}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className={cn(
+                  'flex items-center gap-2 rounded-xl border px-3 py-2 text-xs',
+                  pf.state === 'done'  ? 'border-emerald-800/40 bg-emerald-950/20' :
+                  pf.state === 'error' ? 'border-red-800/40 bg-red-950/20' :
+                                         'border-violet-800/40 bg-violet-950/20',
+                )}
+              >
+                {pf.previewUrl && pf.state === 'done' ? (
+                  <img src={pf.previewUrl} alt="" className="h-8 w-8 rounded object-cover" />
+                ) : (
+                  <span className="text-base leading-none">{fileIcon(pf.file.type)}</span>
+                )}
+                <div className="min-w-0">
+                  <p className="max-w-[130px] truncate font-medium text-zinc-300">{pf.file.name}</p>
+                  <div className="flex items-center gap-1.5">
+                    {isLoading && <Loader2 size={9} className="animate-spin text-violet-400" />}
+                    <span className={cn(
+                      'text-[10px]',
+                      pf.state === 'done'  ? 'text-emerald-400' :
+                      pf.state === 'error' ? 'text-red-400' : 'text-violet-400',
+                    )}>
+                      {labelMap[pf.state]}
+                    </span>
+                    {pf.state === 'done' && (
+                      <span className="text-[10px] text-zinc-600">{fmtSize(pf.file.size)}</span>
+                    )}
+                  </div>
+                </div>
+                {!isLoading && (
+                  <button
+                    onClick={() => setPendingFiles(p => p.filter(f => f.tempId !== pf.tempId))}
+                    className="ml-1 shrink-0 text-zinc-600 transition hover:text-red-400"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </motion.div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Recording indicator */}
+      {isRecording && (
+        <div className="mx-5 mt-3 flex items-center gap-3 rounded-xl border border-red-800/40 bg-red-950/20 px-4 py-2.5">
+          <motion.span
+            className="h-2 w-2 shrink-0 rounded-full bg-red-500"
+            animate={{ opacity: [1, 0.2, 1] }}
+            transition={{ duration: 1, repeat: Infinity }}
+          />
+          <span className="text-xs font-semibold text-red-400">Gravando {fmtTime(recordingTime)}</span>
+          <button
+            onClick={stopRecording}
+            className="ml-auto rounded-lg bg-red-600/30 px-3 py-1.5 text-[11px] font-semibold text-red-300 transition hover:bg-red-600/50"
+          >
+            Parar e enviar
+          </button>
+        </div>
+      )}
+
+      {/* Text input */}
+      <div className="px-5 py-3">
+        <div className="flex items-end gap-3">
+          <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-            placeholder="Fale com a IA, envie um áudio, imagem, PDF, planilha..."
-            className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 focus:outline-none"
+            placeholder={
+              isDragging
+                ? 'Solte o arquivo aqui...'
+                : pendingFiles.length > 0
+                  ? 'Adicione uma instrução ou envie diretamente...'
+                  : 'Fale com a IA, analise documentos, faça perguntas...'
+            }
+            rows={2}
+            className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-white placeholder-zinc-600 focus:outline-none"
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || sending}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white transition hover:bg-violet-500 disabled:opacity-40"
+            disabled={!canSend}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {sending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           </button>
         </div>
-        <div className="mt-3 flex items-center gap-4">
-          {INPUT_TYPES.map(t => (
-            <button
-              key={t.id}
-              className="flex flex-col items-center gap-1 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-700/50 hover:text-zinc-300"
-            >
-              <span className="text-sm">{t.icon}</span>
-              <span className="text-[9px]">{t.label}</span>
-            </button>
-          ))}
+      </div>
+
+      {/* Toolbar */}
+      <div className="border-t border-zinc-800/40 px-5 py-2.5">
+        <div className="flex flex-wrap items-center gap-1">
+          {/* Image */}
+          <button
+            onClick={() => imageInputRef.current?.click()}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+          >
+            <Image size={13} />
+            Imagem
+          </button>
+
+          {/* Audio file */}
+          <button
+            onClick={() => audioInputRef.current?.click()}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+          >
+            <Paperclip size={13} />
+            Áudio
+          </button>
+
+          {/* Voice record */}
+          <button
+            onClick={isRecording ? stopRecording : startRecording}
+            className={cn(
+              'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] transition',
+              isRecording
+                ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
+                : 'text-zinc-500 hover:bg-zinc-800/60 hover:text-zinc-300',
+            )}
+          >
+            <Mic size={13} />
+            {isRecording ? `Parar (${fmtTime(recordingTime)})` : 'Gravar voz'}
+          </button>
+
+          {/* PDF / doc */}
+          <button
+            onClick={() => docInputRef.current?.click()}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+          >
+            <FileText size={13} />
+            PDF
+          </button>
+
+          {/* Spreadsheet */}
+          <button
+            onClick={() => sheetInputRef.current?.click()}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+          >
+            <Table size={13} />
+            Planilha
+          </button>
+
+          {/* Drag hint */}
+          <span className="ml-auto text-[10px] text-zinc-700">
+            ou arraste arquivos aqui
+          </span>
+
+          {/* Processing indicator */}
+          {uploadingCount > 0 && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-violet-500/10 px-2.5 py-1 ml-1">
+              <Loader2 size={10} className="animate-spin text-violet-400" />
+              <span className="text-[10px] font-medium text-violet-400">
+                {uploadingCount} processando...
+              </span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Hidden file inputs */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+        multiple
+        className="hidden"
+        onChange={e => e.target.files && handleFiles(e.target.files)}
+      />
+      <input
+        ref={audioInputRef}
+        type="file"
+        accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/m4a,audio/x-m4a,audio/ogg,audio/webm"
+        className="hidden"
+        onChange={e => e.target.files && handleFiles(e.target.files)}
+      />
+      <input
+        ref={docInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.txt"
+        multiple
+        className="hidden"
+        onChange={e => e.target.files && handleFiles(e.target.files)}
+      />
+      <input
+        ref={sheetInputRef}
+        type="file"
+        accept=".csv,.xlsx,.xls"
+        multiple
+        className="hidden"
+        onChange={e => e.target.files && handleFiles(e.target.files)}
+      />
     </div>
   )
 }
@@ -853,52 +1201,71 @@ export default function DashboardPage() {
   }, [])
 
   // ── Send message to AI ─────────────────────────────────────
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, attachments: UploadedAttachment[] = []) => {
     if (sending) return
 
+    const displayContent = text || (attachments.length
+      ? `[${attachments.map(a => a.name).join(', ')}]`
+      : '')
+    if (!displayContent) return
+
     const userMsg: AIChatMessage = {
-      id:        `user-${Date.now()}`,
-      role:      'user',
-      content:   text,
-      timestamp: new Date(),
+      id:          `user-${Date.now()}`,
+      role:        'user',
+      content:     displayContent,
+      attachments: attachments.length ? attachments : undefined,
+      timestamp:   new Date(),
     }
     setMessages(prev => [...prev, userMsg])
     setSending(true)
 
-    // Try intent routing first (fast, free)
-    try {
-      const routeRes = await fetch('/api/ai/router', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ query: text }),
-      })
-      const routeData = await routeRes.json() as { route?: string; label?: string; actionHint?: string; confidence?: number }
+    // Skip intent routing when files are attached — go straight to full AI
+    if (!attachments.length) {
+      try {
+        const routeRes = await fetch('/api/ai/router', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ query: text }),
+        })
+        const routeData = await routeRes.json() as { route?: string; label?: string; actionHint?: string; confidence?: number }
 
-      if (routeData.confidence && routeData.confidence >= 0.7 && routeData.route && routeData.route !== '/dashboard') {
-        // High-confidence route: navigate + show AI message
-        const aiResp: AIChatMessage = {
-          id:          `ai-route-${Date.now()}`,
-          role:        'ai',
-          content:     `Entendido! Abrindo **${routeData.label}** para você${routeData.actionHint ? ` — ${routeData.actionHint}` : ''}.`,
-          actionCards: [{ label: `Ir para ${routeData.label}`, href: routeData.route, color: '#6366f1' }],
-          timestamp:   new Date(),
+        if (routeData.confidence && routeData.confidence >= 0.7 && routeData.route && routeData.route !== '/dashboard') {
+          const aiResp: AIChatMessage = {
+            id:          `ai-route-${Date.now()}`,
+            role:        'ai',
+            content:     `Entendido! Abrindo **${routeData.label}** para você${routeData.actionHint ? ` — ${routeData.actionHint}` : ''}.`,
+            actionCards: [{ label: `Ir para ${routeData.label}`, href: routeData.route, color: '#6366f1' }],
+            timestamp:   new Date(),
+          }
+          setMessages(prev => [...prev, aiResp])
+          setSending(false)
+          setTimeout(() => router.push(routeData.route!), 900)
+          return
         }
-        setMessages(prev => [...prev, aiResp])
-        setSending(false)
-        // Navigate after short delay
-        setTimeout(() => router.push(routeData.route!), 900)
-        return
-      }
-    } catch { /* fall through to full AI */ }
+      } catch { /* fall through to full AI */ }
+    }
 
     // Full AI chat (streaming SSE)
     try {
+      // Build effective message for the AI when file-only (no text)
+      const aiMessage = text || (attachments.length
+        ? `Analise ${attachments.length === 1 ? 'este arquivo' : 'estes arquivos'}: ${attachments.map(a => a.name).join(', ')}`
+        : '')
+
       const res = await fetch('/api/ai/chat', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          message:         text,
+          message:         aiMessage,
           conversation_id: conversationId,
+          attachments:     attachments.map(a => ({
+            id:             a.id,
+            name:           a.name,
+            mime:           a.mime,
+            type_category:  a.type_category,
+            extracted_text: a.extracted_text,
+            ai_summary:     a.ai_summary,
+          })),
         }),
       })
 
