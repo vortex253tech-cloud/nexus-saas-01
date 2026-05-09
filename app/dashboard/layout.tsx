@@ -12,7 +12,7 @@ import {
   ArrowRight, Mail, FolderOpen, Map, Settings,
   TrendingUp, AlertTriangle, Loader2, RefreshCw,
   CheckCircle2, AlertCircle, ExternalLink, Activity,
-  Moon, Brain, UserPlus, BarChart3, Package, Bot, Wallet,
+  Moon, Brain, UserPlus, BarChart3, Package, Bot, Wallet, Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -32,8 +32,9 @@ const NAV = [
   { href: '/dashboard/growth-map', label: 'Mapa de Crescimento',icon: Map,             tourId: 'nav-growth-map' },
   { href: '/dashboard/assistant',  label: 'Assistente IA',      icon: MessageSquare },
   { href: '/dashboard/revenue',    label: 'Receita',            icon: BarChart3,       tourId: 'nav-revenue' },
-  { href: '/dashboard/advisor',    label: 'Consultor IA',       icon: Brain },
-  { href: '/dashboard/leads',      label: 'Leads',              icon: UserPlus },
+  { href: '/dashboard/advisor',      label: 'Consultor IA',       icon: Brain },
+  { href: '/dashboard/creative-ai', label: 'Creative AI',        icon: Sparkles },
+  { href: '/dashboard/leads',       label: 'Leads',              icon: UserPlus },
   { href: '/dashboard/sales',      label: 'Vendas IA',          icon: TrendingUp },
   { href: '/dashboard/suppliers',   label: 'Custos',             icon: Package },
   { href: '/dashboard/dados',      label: 'Dados',              icon: Database,        tourId: 'nav-dados' },
