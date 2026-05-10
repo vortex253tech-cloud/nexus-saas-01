@@ -1,28 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles, Image as LucideImage, MessageSquare, Mail, Camera, FileText,
-  Megaphone, Globe, Zap, Copy, Download, Send, Calendar,
-  Heart, Share2, Loader2, CheckCircle2, RefreshCw,
+  Megaphone, Globe, Zap, Copy, Download, Send,
+  Heart, Loader2, CheckCircle2, RefreshCw,
   ChevronRight, Plus, TrendingUp, Target,
   BarChart3, DollarSign, Palette, Wand2, Play, Bookmark,
-  LayoutTemplate, ArrowRight, Eye, Edit3,
+  LayoutTemplate, ArrowRight, Eye, Edit3, Brain,
+  AlertTriangle, Activity, Clock, Users, BotMessageSquare,
+  ChevronDown, Power, Rocket, Shield, Star,
+  X, Check, Lightbulb, Navigation,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import type { OpportunityCard } from '@/app/api/creative/opportunities/route'
+import type { Variation }       from '@/app/api/creative/generate-multi/route'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type TabId = 'imagens' | 'whatsapp' | 'email' | 'instagram' | 'pdfs' | 'campanhas' | 'landing' | 'automacao'
+type TabId     = 'imagens' | 'whatsapp' | 'email' | 'instagram' | 'pdfs' | 'campanhas' | 'landing' | 'automacao'
 type Objective = 'cobranca' | 'reativacao' | 'lancamento' | 'promocao' | 'boas_vindas' | 'follow_up'
 type GenState  = 'idle' | 'generating' | 'done' | 'error'
 
-interface GeneratedContent {
-  text?:       string
-  json?:       unknown
-  asset_id?:   string
-  company_name?: string
+interface GeneratedImage {
+  url:           string
+  revised_prompt?: string
+  generation_ms?: number
+  company_name?:  string
+  size?:          string
 }
 
 interface CampaignMessage {
@@ -43,51 +49,52 @@ interface Campaign {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TABS: Array<{ id: TabId; label: string; icon: React.ElementType; color: string }> = [
-  { id: 'imagens',   label: 'Imagens',       icon: LucideImage,    color: 'violet'  },
-  { id: 'whatsapp',  label: 'WhatsApp',       icon: MessageSquare,  color: 'emerald' },
-  { id: 'email',     label: 'Email',          icon: Mail,           color: 'blue'    },
-  { id: 'instagram', label: 'Instagram',      icon: Camera,         color: 'pink'    },
-  { id: 'pdfs',      label: 'PDFs',           icon: FileText,       color: 'amber'   },
-  { id: 'campanhas', label: 'Campanhas',      icon: Megaphone,      color: 'orange'  },
-  { id: 'landing',   label: 'Landing Pages',  icon: Globe,          color: 'cyan'    },
-  { id: 'automacao', label: 'Automação IA',   icon: Zap,            color: 'purple'  },
+  { id: 'whatsapp',  label: 'WhatsApp',      icon: MessageSquare,  color: 'emerald' },
+  { id: 'email',     label: 'Email',         icon: Mail,           color: 'blue'    },
+  { id: 'instagram', label: 'Instagram',     icon: Camera,         color: 'pink'    },
+  { id: 'imagens',   label: 'Imagens IA',    icon: LucideImage,    color: 'violet'  },
+  { id: 'campanhas', label: 'Campanhas',     icon: Megaphone,      color: 'orange'  },
+  { id: 'landing',   label: 'Landing Pages', icon: Globe,          color: 'cyan'    },
+  { id: 'pdfs',      label: 'PDFs',          icon: FileText,       color: 'amber'   },
+  { id: 'automacao', label: 'Automação IA',  icon: Zap,            color: 'purple'  },
 ]
 
 const OBJECTIVES: Array<{ value: Objective; label: string; emoji: string }> = [
-  { value: 'cobranca',    label: 'Cobrança',       emoji: '💰' },
-  { value: 'reativacao',  label: 'Reativação',     emoji: '🔥' },
-  { value: 'lancamento',  label: 'Lançamento',     emoji: '🚀' },
-  { value: 'promocao',    label: 'Promoção',       emoji: '🎯' },
-  { value: 'boas_vindas', label: 'Boas-vindas',    emoji: '👋' },
-  { value: 'follow_up',   label: 'Follow-up',      emoji: '📞' },
-]
-
-const NICHES = [
-  'Restaurantes', 'Academias', 'Clínicas', 'E-commerce',
-  'Salões de Beleza', 'Imobiliárias', 'Consultórios', 'Pet Shops',
-  'Cursos Online', 'Advocacia', 'Contabilidade', 'Varejo',
+  { value: 'cobranca',    label: 'Cobrança',    emoji: '💰' },
+  { value: 'reativacao',  label: 'Reativação',  emoji: '🔥' },
+  { value: 'lancamento',  label: 'Lançamento',  emoji: '🚀' },
+  { value: 'promocao',    label: 'Promoção',    emoji: '🎯' },
+  { value: 'boas_vindas', label: 'Boas-vindas', emoji: '👋' },
+  { value: 'follow_up',   label: 'Follow-up',   emoji: '📞' },
 ]
 
 const IMAGE_STYLES = [
-  { id: 'corporate',  label: 'Corporativo',  desc: 'Sóbrio e profissional'    },
-  { id: 'vibrant',    label: 'Vibrante',     desc: 'Cores fortes, energético' },
-  { id: 'minimal',    label: 'Minimalista',  desc: 'Clean e moderno'          },
-  { id: 'luxury',     label: 'Luxo',         desc: 'Elegante e exclusivo'     },
+  { id: 'corporate', label: 'Corporativo', desc: 'Sóbrio e profissional'    },
+  { id: 'vibrant',   label: 'Vibrante',   desc: 'Cores fortes, energético' },
+  { id: 'minimal',   label: 'Minimal',    desc: 'Clean e moderno'          },
+  { id: 'luxury',    label: 'Luxo',       desc: 'Elegante e exclusivo'     },
 ]
 
 const IMAGE_RATIOS = [
-  { id: 'square',    label: '1:1',     desc: 'Feed Instagram / WhatsApp' },
-  { id: 'portrait',  label: '9:16',    desc: 'Stories / Reels'           },
-  { id: 'landscape', label: '16:9',    desc: 'Email / Banner web'        },
-  { id: 'banner',    label: '3:1',     desc: 'Capa Facebook / LinkedIn'  },
+  { id: 'square',    label: '1:1',   desc: 'Feed / WhatsApp' },
+  { id: 'portrait',  label: '9:16',  desc: 'Stories / Reels' },
+  { id: 'landscape', label: '16:9',  desc: 'Email / Banner'  },
+  { id: 'banner',    label: '3:1',   desc: 'Capa / LinkedIn' },
 ]
 
-const STATS = [
-  { label: 'Conteúdos gerados', value: '2.847',     icon: Sparkles,    color: 'violet' },
-  { label: 'Taxa de abertura',  value: '68,4%',     icon: Eye,         color: 'emerald'},
-  { label: 'Taxa de conversão', value: '12,1%',     icon: Target,      color: 'blue'   },
-  { label: 'Receita recuperada',value: 'R$ 47.820', icon: DollarSign,  color: 'amber'  },
-]
+const URGENCY_CONFIG = {
+  critical: { label: 'Crítico',  color: 'red',    dot: 'bg-red-500'    },
+  high:     { label: 'Urgente',  color: 'orange', dot: 'bg-orange-500' },
+  medium:   { label: 'Atenção',  color: 'amber',  dot: 'bg-amber-500'  },
+}
+
+const TYPE_CONFIG: Record<string, { gradient: string; border: string }> = {
+  cobranca:     { gradient: 'from-red-500/10 to-orange-500/10',     border: 'border-red-500/20'    },
+  reativacao:   { gradient: 'from-orange-500/10 to-amber-500/10',   border: 'border-orange-500/20' },
+  lancamento:   { gradient: 'from-violet-500/10 to-purple-500/10',  border: 'border-violet-500/20' },
+  risco:        { gradient: 'from-red-600/10 to-rose-500/10',       border: 'border-red-600/20'    },
+  crescimento:  { gradient: 'from-emerald-500/10 to-teal-500/10',   border: 'border-emerald-500/20'},
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -101,141 +108,50 @@ function colorClass(color: string, variant: 'bg' | 'text' | 'border') {
     orange:  { bg: 'bg-orange-500/15',  text: 'text-orange-400',  border: 'border-orange-500/30'  },
     cyan:    { bg: 'bg-cyan-500/15',    text: 'text-cyan-400',    border: 'border-cyan-500/30'    },
     purple:  { bg: 'bg-purple-500/15',  text: 'text-purple-400',  border: 'border-purple-500/30'  },
+    red:     { bg: 'bg-red-500/15',     text: 'text-red-400',     border: 'border-red-500/30'     },
   }
   return map[color]?.[variant] ?? ''
 }
 
-async function generate(
+async function generateMulti(
   type:      string,
   channel:   string,
   objective: string,
   context:   string,
-): Promise<GeneratedContent> {
-  const res = await fetch('/api/creative/generate', {
+): Promise<{ variations: Variation[]; company_name?: string }> {
+  const res = await fetch('/api/creative/generate-multi', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ type, channel, objective, context }),
   })
   if (!res.ok) throw new Error(await res.text())
-  return res.json() as Promise<GeneratedContent>
+  return res.json()
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── CopyButton ───────────────────────────────────────────────────────────────
 
-function StatCard({ stat }: { stat: typeof STATS[number] }) {
-  const Icon = stat.icon
-  return (
-    <div className={cn(
-      'rounded-2xl border p-4 flex items-center gap-4',
-      'bg-zinc-900/40 border-zinc-800/60',
-    )}>
-      <div className={cn(
-        'flex h-10 w-10 items-center justify-center rounded-xl border',
-        colorClass(stat.color, 'bg'),
-        colorClass(stat.color, 'border'),
-      )}>
-        <Icon size={18} className={colorClass(stat.color, 'text')} />
-      </div>
-      <div>
-        <p className="text-xs text-zinc-500">{stat.label}</p>
-        <p className="text-lg font-bold text-white">{stat.value}</p>
-      </div>
-    </div>
-  )
-}
-
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, size = 'sm' }: { text: string; size?: 'sm' | 'xs' }) {
   const [copied, setCopied] = useState(false)
-
-  function handleCopy() {
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
   return (
     <button
-      onClick={handleCopy}
-      className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-violet-500/50 hover:text-violet-400"
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+      className={cn(
+        'flex items-center gap-1.5 rounded-lg border border-zinc-700 text-zinc-400 transition hover:border-violet-500/50 hover:text-violet-400',
+        size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-2 py-1 text-[10px]',
+      )}
     >
-      {copied ? <CheckCircle2 size={12} className="text-emerald-400" /> : <Copy size={12} />}
+      {copied ? <CheckCircle2 size={size === 'sm' ? 12 : 10} className="text-emerald-400" /> : <Copy size={size === 'sm' ? 12 : 10} />}
       {copied ? 'Copiado!' : 'Copiar'}
     </button>
   )
 }
 
-function GenerateButton({
-  onClick,
-  loading,
-  label = 'Gerar com IA',
-}: { onClick: () => void; loading: boolean; label?: string }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      className={cn(
-        'flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all',
-        'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500',
-        'disabled:opacity-50 disabled:cursor-not-allowed',
-        'shadow-lg shadow-violet-500/20',
-      )}
-    >
-      {loading ? (
-        <><Loader2 size={15} className="animate-spin" /> Gerando...</>
-      ) : (
-        <><Sparkles size={15} /> {label}</>
-      )}
-    </button>
-  )
-}
+// ─── ObjectiveSelector ────────────────────────────────────────────────────────
 
-function ResultBox({
-  content,
-  onRegenerate,
-}: { content: GeneratedContent; onRegenerate: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mt-6 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5 space-y-4"
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 size={14} className="text-emerald-400" />
-          <span className="text-xs font-semibold text-emerald-400">Conteúdo gerado</span>
-          {content.company_name && (
-            <span className="text-xs text-zinc-500">· para {content.company_name}</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onRegenerate}
-            className="flex items-center gap-1 rounded-lg p-1.5 text-zinc-500 transition hover:text-violet-400"
-          >
-            <RefreshCw size={13} />
-          </button>
-          {content.text && <CopyButton text={content.text} />}
-        </div>
-      </div>
-
-      {content.text && (
-        <pre className="whitespace-pre-wrap font-sans text-sm text-zinc-200 leading-relaxed">
-          {content.text}
-        </pre>
-      )}
-    </motion.div>
-  )
-}
-
-function ObjectiveSelector({
-  value,
-  onChange,
-}: { value: Objective; onChange: (v: Objective) => void }) {
+function ObjectiveSelector({ value, onChange }: { value: Objective; onChange: (v: Objective) => void }) {
   return (
     <div>
-      <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">
-        Objetivo
-      </label>
+      <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Objetivo</label>
       <div className="flex flex-wrap gap-2">
         {OBJECTIVES.map(obj => (
           <button
@@ -257,36 +173,159 @@ function ObjectiveSelector({
   )
 }
 
+// ─── GenerateButton ───────────────────────────────────────────────────────────
+
+function GenerateButton({ onClick, loading, label = 'Gerar 3 Variações com IA' }: {
+  onClick: () => void; loading: boolean; label?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className={cn(
+        'relative flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all overflow-hidden',
+        'bg-gradient-to-r from-violet-600 to-purple-600',
+        'disabled:opacity-70 disabled:cursor-not-allowed',
+        'shadow-lg shadow-violet-500/25',
+        !loading && 'hover:from-violet-500 hover:to-purple-500 hover:shadow-violet-500/40',
+      )}
+    >
+      {!loading && (
+        <span className="absolute inset-0 bg-gradient-to-r from-violet-400/0 via-white/5 to-violet-400/0 translate-x-[-100%] animate-shimmer" />
+      )}
+      {loading ? (
+        <><Loader2 size={15} className="animate-spin" /> Gerando variações...</>
+      ) : (
+        <><Sparkles size={15} /> {label}</>
+      )}
+    </button>
+  )
+}
+
+// ─── VariationsPanel ─────────────────────────────────────────────────────────
+
+function VariationsPanel({
+  variations,
+  onRegenerate,
+  companyName,
+}: { variations: Variation[]; onRegenerate: () => void; companyName?: string }) {
+  const [selected, setSelected] = useState<number | null>(null)
+
+  const toneColors: Record<string, string> = {
+    persuasivo: 'violet',
+    emocional:  'pink',
+    urgente:    'orange',
+    premium:    'amber',
+    amigavel:   'emerald',
+    corporativo:'blue',
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mt-6 space-y-3"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 size={14} className="text-emerald-400" />
+          <span className="text-xs font-semibold text-emerald-400">3 variações geradas</span>
+          {companyName && <span className="text-xs text-zinc-500">· {companyName}</span>}
+        </div>
+        <button onClick={onRegenerate} className="flex items-center gap-1 rounded-lg p-1.5 text-zinc-500 transition hover:text-violet-400">
+          <RefreshCw size={13} />
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        {variations.map((v, i) => {
+          const color = toneColors[v.tone] ?? 'violet'
+          const isSelected = selected === i
+          return (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.08 }}
+              onClick={() => setSelected(isSelected ? null : i)}
+              className={cn(
+                'relative cursor-pointer rounded-2xl border p-4 transition-all',
+                isSelected
+                  ? 'border-violet-500/50 bg-violet-500/8 shadow-lg shadow-violet-500/10'
+                  : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700',
+              )}
+            >
+              {/* Tone badge */}
+              <div className="mb-3 flex items-center justify-between">
+                <span className={cn(
+                  'rounded-lg border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                  colorClass(color, 'text'),
+                  colorClass(color, 'border'),
+                  colorClass(color, 'bg'),
+                )}>
+                  {v.tone_label}
+                </span>
+                {isSelected && <Check size={12} className="text-violet-400" />}
+              </div>
+
+              {/* Text preview */}
+              <p className="text-xs text-zinc-300 leading-relaxed line-clamp-6">
+                {v.text}
+              </p>
+
+              {/* Actions */}
+              <div className="mt-3 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                <CopyButton text={v.text} size="xs" />
+                <button className="flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-[10px] text-zinc-400 transition hover:border-emerald-500/40 hover:text-emerald-400">
+                  <Send size={9} /> Usar
+                </button>
+              </div>
+            </motion.div>
+          )
+        })}
+      </div>
+
+      {selected !== null && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          className="overflow-hidden rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5"
+        >
+          <p className="whitespace-pre-wrap font-sans text-sm text-zinc-200 leading-relaxed">
+            {variations[selected].text}
+          </p>
+        </motion.div>
+      )}
+    </motion.div>
+  )
+}
+
 // ─── Tab: WhatsApp ────────────────────────────────────────────────────────────
 
-function WhatsAppTab() {
-  const [objective, setObjective] = useState<Objective>('cobranca')
+function WhatsAppTab({ jumpObjective }: { jumpObjective?: Objective | null }) {
+  const [objective, setObjective] = useState<Objective>(jumpObjective ?? 'cobranca')
   const [context,   setContext]   = useState('')
   const [state,     setState]     = useState<GenState>('idle')
-  const [result,    setResult]    = useState<GeneratedContent | null>(null)
+  const [result,    setResult]    = useState<{ variations: Variation[]; company_name?: string } | null>(null)
+
+  useEffect(() => { if (jumpObjective) setObjective(jumpObjective) }, [jumpObjective])
 
   async function handleGenerate() {
     setState('generating')
     try {
-      const data = await generate('message', 'whatsapp', objective, context)
+      const data = await generateMulti('message', 'whatsapp', objective, context)
       setResult(data)
       setState('done')
-    } catch {
-      setState('error')
-    }
+    } catch { setState('error') }
   }
 
   return (
     <div className="space-y-6">
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Left: Config */}
         <div className="space-y-5">
           <ObjectiveSelector value={objective} onChange={setObjective} />
-
           <div>
-            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">
-              Contexto (opcional)
-            </label>
+            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Contexto (opcional)</label>
             <textarea
               value={context}
               onChange={e => setContext(e.target.value)}
@@ -295,54 +334,39 @@ function WhatsAppTab() {
               className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition"
             />
           </div>
-
           <GenerateButton onClick={handleGenerate} loading={state === 'generating'} />
-
           {state === 'error' && (
-            <p className="text-xs text-red-400">Erro ao gerar. Tente novamente.</p>
+            <p className="text-xs text-red-400">Erro ao gerar. Verifique a configuração de API.</p>
           )}
         </div>
 
-        {/* Right: Preview phone */}
-        <div className="flex flex-col items-center">
-          <div className="w-full max-w-[260px]">
-            <div className="rounded-3xl border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
-              <div className="mb-3 flex items-center gap-2 border-b border-zinc-800 pb-2">
-                <div className="h-8 w-8 rounded-full bg-emerald-600/20 flex items-center justify-center">
-                  <MessageSquare size={14} className="text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-white">WhatsApp</p>
-                  <p className="text-[10px] text-zinc-500">Preview</p>
-                </div>
+        {/* WhatsApp preview */}
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+          <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Preview</p>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">NX</div>
+              <div>
+                <p className="text-xs font-semibold text-white">Sua Empresa</p>
+                <p className="text-[10px] text-emerald-400">● Online</p>
               </div>
-              <div className="rounded-2xl rounded-tl-none bg-zinc-800 p-3 text-xs text-zinc-300 leading-relaxed min-h-[80px]">
-                {result?.text
-                  ? result.text.slice(0, 180) + (result.text.length > 180 ? '…' : '')
-                  : <span className="text-zinc-600 italic">O conteúdo gerado aparecerá aqui</span>
-                }
-              </div>
+            </div>
+            <div className="max-w-[85%] rounded-xl rounded-tl-sm bg-zinc-800 px-3 py-2">
+              {state === 'generating'
+                ? <div className="flex gap-1 items-center py-1"><span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:0ms]" /><span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:150ms]" /><span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:300ms]" /></div>
+                : <p className="text-xs text-zinc-300 leading-relaxed">{result?.variations[0]?.text?.slice(0, 120) ?? 'Sua mensagem gerada aparecerá aqui...'}{(result?.variations[0]?.text?.length ?? 0) > 120 ? '…' : ''}</p>
+              }
             </div>
           </div>
         </div>
       </div>
 
-      {result && state === 'done' && (
-        <ResultBox content={result} onRegenerate={handleGenerate} />
-      )}
-
-      {result && state === 'done' && (
-        <div className="flex flex-wrap gap-3">
-          <button className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-400 transition hover:bg-emerald-500/20">
-            <Send size={14} /> Enviar via WhatsApp
-          </button>
-          <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">
-            <Bookmark size={14} /> Salvar template
-          </button>
-          <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">
-            <Calendar size={14} /> Agendar envio
-          </button>
-        </div>
+      {state === 'done' && result && (
+        <VariationsPanel
+          variations={result.variations}
+          onRegenerate={handleGenerate}
+          companyName={result.company_name}
+        />
       )}
     </div>
   )
@@ -350,111 +374,60 @@ function WhatsAppTab() {
 
 // ─── Tab: Email ───────────────────────────────────────────────────────────────
 
-function EmailTab() {
-  const [objective, setObjective] = useState<Objective>('promocao')
+function EmailTab({ jumpObjective }: { jumpObjective?: Objective | null }) {
+  const [objective, setObjective] = useState<Objective>(jumpObjective ?? 'cobranca')
   const [context,   setContext]   = useState('')
-  const [genBody,   setGenBody]   = useState<GenState>('idle')
-  const [genSubj,   setGenSubj]   = useState<GenState>('idle')
-  const [body,      setBody]      = useState<GeneratedContent | null>(null)
-  const [subjects,  setSubjects]  = useState<string[]>([])
-  const [selSubj,   setSelSubj]   = useState<string | null>(null)
+  const [state,     setState]     = useState<GenState>('idle')
+  const [result,    setResult]    = useState<{ variations: Variation[]; company_name?: string } | null>(null)
 
-  async function handleGenerateBody() {
-    setGenBody('generating')
-    try {
-      const data = await generate('message', 'email', objective, context)
-      setBody(data)
-      setGenBody('done')
-    } catch {
-      setGenBody('error')
-    }
-  }
+  useEffect(() => { if (jumpObjective) setObjective(jumpObjective) }, [jumpObjective])
 
-  async function handleGenerateSubjects() {
-    setGenSubj('generating')
+  async function handleGenerate() {
+    setState('generating')
     try {
-      const data = await generate('subject', 'email', objective, context)
-      const lines = (data.text ?? '').split('\n').filter(Boolean)
-      setSubjects(lines)
-      setSelSubj(lines[0] ?? null)
-      setGenSubj('done')
-    } catch {
-      setGenSubj('error')
-    }
+      const data = await generateMulti('message', 'email', objective, context)
+      setResult(data)
+      setState('done')
+    } catch { setState('error') }
   }
 
   return (
     <div className="space-y-6">
-      <ObjectiveSelector value={objective} onChange={setObjective} />
-
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">
-          Contexto
-        </label>
-        <textarea
-          value={context}
-          onChange={e => setContext(e.target.value)}
-          placeholder="Ex: Promoção de Black Friday, 30% de desconto em todos os planos até domingo..."
-          rows={3}
-          className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-blue-500/50 transition"
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <GenerateButton
-          onClick={handleGenerateBody}
-          loading={genBody === 'generating'}
-          label="Gerar corpo do email"
-        />
-        <GenerateButton
-          onClick={handleGenerateSubjects}
-          loading={genSubj === 'generating'}
-          label="Gerar assuntos"
-        />
-      </div>
-
-      {subjects.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-2"
-        >
-          <p className="text-xs font-semibold text-blue-400 mb-3">Escolha o assunto do email</p>
-          {subjects.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => setSelSubj(s)}
-              className={cn(
-                'flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition',
-                selSubj === s
-                  ? 'border-blue-500/50 bg-blue-500/10 text-blue-300'
-                  : 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
-              )}
-            >
-              {selSubj === s && <CheckCircle2 size={12} className="shrink-0 text-blue-400" />}
-              <span className="flex-1">{s}</span>
-              <CopyButton text={s} />
-            </button>
-          ))}
-        </motion.div>
-      )}
-
-      {body && genBody === 'done' && (
-        <ResultBox content={body} onRegenerate={handleGenerateBody} />
-      )}
-
-      {(body || selSubj) && (
-        <div className="flex flex-wrap gap-3">
-          <button className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400 transition hover:bg-blue-500/20">
-            <Send size={14} /> Enviar email
-          </button>
-          <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-200">
-            <Calendar size={14} /> Agendar
-          </button>
-          <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-200">
-            <Eye size={14} /> Prévia completa
-          </button>
+      <div className="space-y-5">
+        <ObjectiveSelector value={objective} onChange={setObjective} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Contexto</label>
+            <textarea
+              value={context}
+              onChange={e => setContext(e.target.value)}
+              placeholder="Ex: Enviar para clientes que não abriram o último email..."
+              rows={3}
+              className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition"
+            />
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Preview Email</p>
+            <div className="space-y-2">
+              <div className="rounded-lg bg-zinc-800 px-3 py-2">
+                <p className="text-[10px] text-zinc-500">De: Sua Empresa &lt;contato@empresa.com&gt;</p>
+                <p className="text-[10px] text-zinc-500">Assunto: {OBJECTIVES.find(o => o.value === objective)?.emoji} {OBJECTIVES.find(o => o.value === objective)?.label}</p>
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-4">
+                {result?.variations[0]?.text?.slice(0, 100) ?? 'Conteúdo do email aparecerá aqui...'}
+              </p>
+            </div>
+          </div>
         </div>
+        <GenerateButton onClick={handleGenerate} loading={state === 'generating'} />
+      </div>
+
+      {state === 'done' && result && (
+        <VariationsPanel
+          variations={result.variations}
+          onRegenerate={handleGenerate}
+          companyName={result.company_name}
+        />
       )}
     </div>
   )
@@ -466,94 +439,33 @@ function InstagramTab() {
   const [objective, setObjective] = useState<Objective>('promocao')
   const [context,   setContext]   = useState('')
   const [state,     setState]     = useState<GenState>('idle')
-  const [result,    setResult]    = useState<GeneratedContent | null>(null)
+  const [result,    setResult]    = useState<{ variations: Variation[]; company_name?: string } | null>(null)
 
   async function handleGenerate() {
     setState('generating')
     try {
-      const data = await generate('caption', 'instagram', objective, context)
+      const data = await generateMulti('caption', 'instagram', objective, context)
       setResult(data)
       setState('done')
-    } catch {
-      setState('error')
-    }
+    } catch { setState('error') }
   }
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3 space-y-5">
-          <ObjectiveSelector value={objective} onChange={setObjective} />
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">
-              Contexto do post
-            </label>
-            <textarea
-              value={context}
-              onChange={e => setContext(e.target.value)}
-              placeholder="Ex: Foto do nosso novo produto X, campanha de lançamento com 20% off..."
-              rows={3}
-              className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-pink-500/50 transition"
-            />
-          </div>
-          <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Gerar legenda" />
-        </div>
-
-        {/* Instagram preview */}
-        <div className="lg:col-span-2">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
-            <div className="flex items-center gap-2.5 p-3 border-b border-zinc-800">
-              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-pink-500 to-orange-400" />
-              <div>
-                <p className="text-xs font-semibold text-white">sua_empresa</p>
-                <p className="text-[10px] text-zinc-500">Instagram</p>
-              </div>
-              <div className="ml-auto flex gap-1">
-                <div className="h-1 w-1 rounded-full bg-zinc-600" />
-                <div className="h-1 w-1 rounded-full bg-zinc-600" />
-                <div className="h-1 w-1 rounded-full bg-zinc-600" />
-              </div>
-            </div>
-            <div className="bg-zinc-800 aspect-square flex items-center justify-center">
-              <div className="flex flex-col items-center gap-2 text-zinc-600">
-                <LucideImage size={32} className="opacity-30" />
-                <p className="text-[10px]">Sua imagem aqui</p>
-              </div>
-            </div>
-            <div className="p-3">
-              <div className="flex gap-3 mb-2 text-zinc-400">
-                <Heart size={18} />
-                <MessageSquare size={18} />
-                <Share2 size={18} />
-                <Bookmark size={18} className="ml-auto" />
-              </div>
-              <p className="text-[11px] text-zinc-300 leading-relaxed line-clamp-4">
-                {result?.text
-                  ? result.text.slice(0, 120) + '…'
-                  : <span className="text-zinc-600 italic">Legenda gerada aparecerá aqui</span>
-                }
-              </p>
-            </div>
-          </div>
-        </div>
+      <ObjectiveSelector value={objective} onChange={setObjective} />
+      <div>
+        <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Contexto do post</label>
+        <textarea
+          value={context}
+          onChange={e => setContext(e.target.value)}
+          placeholder="Ex: Lançamento da coleção de verão, 30% de desconto só essa semana..."
+          rows={3}
+          className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition"
+        />
       </div>
-
-      {result && state === 'done' && (
-        <ResultBox content={result} onRegenerate={handleGenerate} />
-      )}
-
-      {result && state === 'done' && (
-        <div className="flex flex-wrap gap-3">
-          <button className="flex items-center gap-2 rounded-xl border border-pink-500/30 bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-400 transition hover:bg-pink-500/20">
-            <Camera size={14} /> Publicar agora
-          </button>
-          <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-200">
-            <Calendar size={14} /> Agendar post
-          </button>
-          <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-200">
-            <Bookmark size={14} /> Salvar rascunho
-          </button>
-        </div>
+      <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Gerar 3 Legendas com IA" />
+      {state === 'done' && result && (
+        <VariationsPanel variations={result.variations} onRegenerate={handleGenerate} companyName={result.company_name} />
       )}
     </div>
   )
@@ -561,178 +473,73 @@ function InstagramTab() {
 
 // ─── Tab: Campanhas ───────────────────────────────────────────────────────────
 
-function CampanhasTab() {
-  const [objective, setObjective] = useState<Objective>('reativacao')
-  const [channel,   setChannel]   = useState<'whatsapp' | 'email'>('whatsapp')
+function CampanhasTab({ jumpObjective }: { jumpObjective?: Objective | null }) {
+  const [objective, setObjective] = useState<Objective>(jumpObjective ?? 'reativacao')
   const [context,   setContext]   = useState('')
   const [state,     setState]     = useState<GenState>('idle')
   const [campaign,  setCampaign]  = useState<Campaign | null>(null)
-  const [expanded,  setExpanded]  = useState<number | null>(0)
+
+  useEffect(() => { if (jumpObjective) setObjective(jumpObjective) }, [jumpObjective])
 
   async function handleGenerate() {
     setState('generating')
     try {
-      const data = await generate('campaign', channel, objective, context)
-      if (data.json) {
-        setCampaign(data.json as Campaign)
-      } else {
-        setCampaign(null)
-      }
-      setState('done')
-    } catch {
-      setState('error')
-    }
+      const res = await fetch('/api/creative/generate', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ type: 'campaign', channel: 'whatsapp', objective, context }),
+      })
+      const data = await res.json() as { json?: Campaign; text?: string }
+      if (data.json) { setCampaign(data.json as Campaign); setState('done') }
+      else setState('error')
+    } catch { setState('error') }
   }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <Wand2 size={16} className="text-orange-400" />
-          <span className="text-sm font-semibold text-orange-300">Criador de Campanhas IA</span>
-        </div>
-        <p className="text-xs text-zinc-400">
-          Descreva o objetivo da campanha e a IA cria automaticamente toda a sequência de mensagens, timing e estratégia personalizada para sua empresa.
-        </p>
+      <ObjectiveSelector value={objective} onChange={setObjective} />
+      <div>
+        <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Contexto da campanha</label>
+        <textarea
+          value={context}
+          onChange={e => setContext(e.target.value)}
+          placeholder="Ex: Campanha de reativação para clientes que não compram há 60 dias..."
+          rows={3}
+          className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition"
+        />
       </div>
+      <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Criar Campanha Completa" />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-5">
-          <ObjectiveSelector value={objective} onChange={setObjective} />
-
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Canal</label>
-            <div className="flex gap-2">
-              {(['whatsapp', 'email'] as const).map(c => (
-                <button
-                  key={c}
-                  onClick={() => setChannel(c)}
-                  className={cn(
-                    'flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition',
-                    channel === c
-                      ? 'border-orange-500/50 bg-orange-500/15 text-orange-300'
-                      : 'border-zinc-800 text-zinc-400 hover:border-zinc-600',
-                  )}
-                >
-                  {c === 'whatsapp' ? <MessageSquare size={13} /> : <Mail size={13} />}
-                  {c === 'whatsapp' ? 'WhatsApp' : 'Email'}
-                </button>
-              ))}
-            </div>
+      {state === 'done' && campaign && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+          <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
+            <h3 className="font-semibold text-white">{campaign.name}</h3>
+            <p className="mt-1 text-xs text-zinc-400">{campaign.audience}</p>
           </div>
-
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Contexto da campanha</label>
-            <textarea
-              value={context}
-              onChange={e => setContext(e.target.value)}
-              placeholder="Ex: Clientes inativos há mais de 60 dias, oferecer desconto progressivo de até 30%..."
-              rows={4}
-              className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-orange-500/50 transition"
-            />
-          </div>
-
-          <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Criar campanha completa" />
-        </div>
-
-        {/* Metrics preview */}
-        <div className="space-y-3">
-          {campaign && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-3"
-            >
-              <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4">
-                <p className="text-sm font-bold text-white mb-1">{campaign.name}</p>
-                <p className="text-xs text-zinc-400">Público: {campaign.audience}</p>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-center">
-                  <p className="text-xs text-zinc-500">Abertura</p>
-                  <p className="text-base font-bold text-emerald-400">{campaign.expected_results.open_rate}</p>
-                </div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-center">
-                  <p className="text-xs text-zinc-500">Conversão</p>
-                  <p className="text-base font-bold text-violet-400">{campaign.expected_results.conversion_rate}</p>
-                </div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-center">
-                  <p className="text-xs text-zinc-500">Potencial</p>
-                  <p className="text-[10px] font-bold text-amber-400 leading-tight">{campaign.expected_results.revenue_potential}</p>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </div>
-      </div>
-
-      {campaign && state === 'done' && (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-3"
-        >
-          <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Sequência de mensagens</p>
-          {campaign.messages.map((msg, i) => (
-            <div
-              key={i}
-              className={cn(
-                'rounded-2xl border transition-all cursor-pointer',
-                expanded === i
-                  ? 'border-orange-500/30 bg-orange-500/5'
-                  : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700',
-              )}
-              onClick={() => setExpanded(expanded === i ? null : i)}
-            >
-              <div className="flex items-center gap-3 p-4">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-xs font-bold text-orange-400">
+          <div className="space-y-3">
+            {campaign.messages.map((msg, i) => (
+              <div key={i} className="flex gap-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-xs font-bold text-violet-400">
                   {msg.step}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white">Mensagem {msg.step}</p>
-                  <p className="text-xs text-zinc-500">{msg.delay} · {msg.channel}</p>
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="rounded-lg border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400">{msg.delay}</span>
+                    <span className="rounded-lg border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400">{msg.channel}</span>
+                  </div>
+                  <p className="text-xs text-zinc-300 leading-relaxed">{msg.content}</p>
                 </div>
-                <ChevronRight
-                  size={14}
-                  className={cn('text-zinc-500 transition-transform', expanded === i && 'rotate-90')}
-                />
+                <CopyButton text={msg.content} size="xs" />
               </div>
-              <AnimatePresence>
-                {expanded === i && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="border-t border-zinc-800 p-4 pt-3">
-                      <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                      <div className="mt-3 flex gap-2">
-                        <CopyButton text={msg.content} />
-                        <button className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200">
-                          <Edit3 size={11} /> Editar
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          ))}
-
-          <div className="flex flex-wrap gap-3 pt-2">
-            <button className="flex items-center gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-medium text-orange-400 transition hover:bg-orange-500/20">
-              <Play size={14} /> Lançar campanha
-            </button>
-            <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-200">
-              <Calendar size={14} /> Agendar
-            </button>
-            <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-200">
-              <Download size={14} /> Exportar
-            </button>
-            <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-200">
-              <Bookmark size={14} /> Salvar template
-            </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {Object.entries(campaign.expected_results).map(([k, v]) => (
+              <div key={k} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-center">
+                <p className="text-sm font-bold text-white">{v}</p>
+                <p className="text-[10px] text-zinc-500 capitalize">{k.replace('_', ' ')}</p>
+              </div>
+            ))}
           </div>
         </motion.div>
       )}
@@ -740,24 +547,16 @@ function CampanhasTab() {
   )
 }
 
-// ─── Tab: Imagens ─────────────────────────────────────────────────────────────
-
-interface GeneratedImage {
-  url:            string
-  revised_prompt: string
-  generation_ms:  number
-  company_name:   string
-  size:           string
-}
+// ─── Tab: Imagens (Creative Studio) ──────────────────────────────────────────
 
 function ImagensTab() {
-  const [style,     setStyle]     = useState('corporate')
-  const [ratio,     setRatio]     = useState('square')
-  const [objective, setObjective] = useState<Objective>('promocao')
-  const [prompt,    setPrompt]    = useState('')
-  const [state,     setState]     = useState<GenState>('idle')
-  const [images,    setImages]    = useState<GeneratedImage[]>([])
-  const [selected,  setSelected]  = useState<GeneratedImage | null>(null)
+  const [style,       setStyle]       = useState('corporate')
+  const [ratio,       setRatio]       = useState('square')
+  const [objective,   setObjective]   = useState<Objective>('promocao')
+  const [description, setDescription] = useState('')
+  const [state,       setState]       = useState<GenState>('idle')
+  const [image,       setImage]       = useState<GeneratedImage | null>(null)
+  const [history,     setHistory]     = useState<GeneratedImage[]>([])
 
   async function handleGenerate() {
     setState('generating')
@@ -765,31 +564,51 @@ function ImagensTab() {
       const res = await fetch('/api/creative/image', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ description: prompt, style, ratio, objective }),
+        body:    JSON.stringify({ description, style, ratio, objective }),
       })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json() as GeneratedImage
-      setImages(prev => [data, ...prev.slice(0, 7)])
-      setSelected(data)
+      setImage(data)
+      setHistory(h => [data, ...h.slice(0, 7)])
       setState('done')
-    } catch (err) {
-      console.error(err)
-      setState('error')
-    }
+    } catch { setState('error') }
   }
 
-  const aspectClass: Record<string, string> = {
+  const aspectClass = {
     square:    'aspect-square',
     portrait:  'aspect-[9/16]',
     landscape: 'aspect-video',
     banner:    'aspect-[3/1]',
-  }
+  }[ratio] ?? 'aspect-square'
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Left: Controls */}
-        <div className="space-y-5">
+      <div className="grid gap-6 lg:grid-cols-5">
+        {/* Controls */}
+        <div className="space-y-5 lg:col-span-2">
+          <ObjectiveSelector value={objective} onChange={setObjective} />
+
+          <div>
+            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Formato</label>
+            <div className="grid grid-cols-2 gap-2">
+              {IMAGE_RATIOS.map(r => (
+                <button
+                  key={r.id}
+                  onClick={() => setRatio(r.id)}
+                  className={cn(
+                    'rounded-xl border p-2.5 text-left transition-all',
+                    ratio === r.id
+                      ? 'border-violet-500/50 bg-violet-500/15'
+                      : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700',
+                  )}
+                >
+                  <p className={cn('text-xs font-semibold', ratio === r.id ? 'text-violet-300' : 'text-zinc-300')}>{r.label}</p>
+                  <p className="text-[10px] text-zinc-500">{r.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Estilo visual</label>
             <div className="grid grid-cols-2 gap-2">
@@ -798,239 +617,183 @@ function ImagensTab() {
                   key={s.id}
                   onClick={() => setStyle(s.id)}
                   className={cn(
-                    'flex flex-col gap-0.5 rounded-xl border p-3 text-left transition',
+                    'rounded-xl border p-2.5 text-left transition-all',
                     style === s.id
-                      ? 'border-violet-500/50 bg-violet-500/10'
+                      ? 'border-violet-500/50 bg-violet-500/15'
                       : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700',
                   )}
                 >
-                  <span className="text-xs font-semibold text-white">{s.label}</span>
-                  <span className="text-[10px] text-zinc-500">{s.desc}</span>
+                  <p className={cn('text-xs font-semibold', style === s.id ? 'text-violet-300' : 'text-zinc-300')}>{s.label}</p>
+                  <p className="text-[10px] text-zinc-500">{s.desc}</p>
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Proporção</label>
-            <div className="grid grid-cols-2 gap-2">
-              {IMAGE_RATIOS.map(r => (
-                <button
-                  key={r.id}
-                  onClick={() => setRatio(r.id)}
-                  className={cn(
-                    'flex items-center gap-2 rounded-xl border px-3 py-2 transition',
-                    ratio === r.id
-                      ? 'border-violet-500/50 bg-violet-500/10'
-                      : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700',
-                  )}
-                >
-                  <span className="text-sm font-bold text-white">{r.label}</span>
-                  <span className="text-[10px] text-zinc-500">{r.desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <ObjectiveSelector value={objective} onChange={setObjective} />
-
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Descrição</label>
+            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Descreva a imagem</label>
             <textarea
-              value={prompt}
-              onChange={e => setPrompt(e.target.value)}
-              placeholder="Ex: Banner de promoção de fim de ano com tema natalino, cores quentes..."
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Ex: Produto premium em fundo neutro, iluminação profissional..."
               rows={3}
               className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition"
             />
           </div>
 
-          <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Gerar imagem com DALL-E 3" />
-
-          {state === 'error' && (
-            <p className="text-xs text-red-400">Erro ao gerar imagem. Verifique os logs.</p>
-          )}
+          <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Gerar Imagem com DALL-E 3" />
+          {state === 'error' && <p className="text-xs text-red-400">Erro ao gerar. Verifique OPENAI_API_KEY.</p>}
         </div>
 
-        {/* Right: Preview */}
-        <div>
-          <p className="mb-3 text-xs font-semibold text-zinc-400 uppercase tracking-wide">
-            {selected ? 'Imagem gerada' : 'Aguardando geração'}
-          </p>
-
-          {/* Main preview */}
+        {/* Preview */}
+        <div className="flex flex-col gap-4 lg:col-span-3">
           <div className={cn(
-            'w-full rounded-2xl border border-zinc-800 bg-zinc-900/40 overflow-hidden mb-3',
-            aspectClass[ratio] ?? 'aspect-square',
+            'relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/40 flex items-center justify-center',
+            aspectClass,
           )}>
-            {state === 'generating' && (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-3">
-                <div className="relative">
-                  <div className="h-12 w-12 rounded-full border-2 border-violet-500/20" />
-                  <div className="absolute inset-0 h-12 w-12 animate-spin rounded-full border-2 border-transparent border-t-violet-500" />
-                </div>
-                <p className="text-xs text-zinc-500">Gerando com DALL-E 3…</p>
-                <p className="text-[10px] text-zinc-600">Pode levar 10–20 segundos</p>
-              </div>
-            )}
-            {selected && state !== 'generating' && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={selected.url}
-                alt="Imagem gerada"
-                className="h-full w-full object-cover"
-              />
-            )}
-            {!selected && state === 'idle' && (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-zinc-700">
-                <LucideImage size={32} className="opacity-30" />
-                <span className="text-xs">Configure e clique em Gerar</span>
+            <AnimatePresence mode="wait">
+              {state === 'generating' ? (
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col items-center gap-3"
+                >
+                  <div className="relative">
+                    <div className="h-12 w-12 rounded-2xl bg-violet-500/20 flex items-center justify-center">
+                      <Sparkles size={20} className="text-violet-400" />
+                    </div>
+                    <div className="absolute -inset-1 rounded-2xl border-2 border-violet-500/30 animate-ping" />
+                  </div>
+                  <p className="text-xs text-zinc-400 animate-pulse">Gerando com DALL-E 3...</p>
+                </motion.div>
+              ) : image ? (
+                <motion.div key="image" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="absolute inset-0">
+                  <img src={image.url} alt="AI generated" className="h-full w-full object-cover" />
+                </motion.div>
+              ) : (
+                <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-2 text-center p-6">
+                  <LucideImage size={32} className="text-zinc-700" />
+                  <p className="text-xs text-zinc-600">Configure e clique em Gerar</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Generation time badge */}
+            {image?.generation_ms && (
+              <div className="absolute bottom-2 right-2 rounded-lg bg-black/60 px-2 py-1 text-[10px] text-zinc-400 backdrop-blur-sm">
+                {(image.generation_ms / 1000).toFixed(1)}s
               </div>
             )}
           </div>
 
-          {/* Actions */}
-          {selected && state === 'done' && (
-            <div className="flex flex-wrap gap-2">
+          {/* Action bar */}
+          {image && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 flex-wrap">
               <a
-                href={selected.url}
-                download="imagem-gerada.png"
+                href={image.url}
+                download="nexus-creative.png"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-400 transition hover:bg-violet-500/20"
+                className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:border-violet-500/50 hover:text-violet-300 transition"
               >
-                <Download size={12} /> Baixar PNG
+                <Download size={12} /> Download PNG
               </a>
-              <button
-                onClick={() => navigator.clipboard.writeText(selected.url)}
-                className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200"
-              >
-                <Copy size={12} /> Copiar URL
-              </button>
+              <CopyButton text={image.url} />
               <button
                 onClick={handleGenerate}
-                className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200"
+                className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:border-violet-500/50 hover:text-violet-300 transition"
               >
                 <RefreshCw size={12} /> Regerar
               </button>
+            </motion.div>
+          )}
+
+          {/* History strip */}
+          {history.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {history.slice(1).map((img, i) => (
+                <button
+                  key={i}
+                  onClick={() => setImage(img)}
+                  className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-zinc-800 hover:border-violet-500/50 transition"
+                >
+                  <img src={img.url} alt="" className="h-full w-full object-cover" />
+                </button>
+              ))}
             </div>
           )}
         </div>
       </div>
-
-      {/* History grid */}
-      {images.length > 1 && (
-        <div>
-          <p className="mb-3 text-xs font-semibold text-zinc-400 uppercase tracking-wide">Histórico desta sessão</p>
-          <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
-            {images.map((img, i) => (
-              <button
-                key={i}
-                onClick={() => setSelected(img)}
-                className={cn(
-                  'aspect-square overflow-hidden rounded-xl border transition',
-                  selected?.url === img.url
-                    ? 'border-violet-500/60 ring-1 ring-violet-500/40'
-                    : 'border-zinc-800 hover:border-zinc-600',
-                )}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img.url} alt="" className="h-full w-full object-cover" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
 
 // ─── Tab: Landing Pages ───────────────────────────────────────────────────────
 
+type LandingContent = { headline: string; subheadline: string; body: string; benefits: string[]; cta: string }
+
 function LandingTab() {
   const [objective, setObjective] = useState<Objective>('lancamento')
   const [context,   setContext]   = useState('')
   const [state,     setState]     = useState<GenState>('idle')
-  const [result,    setResult]    = useState<GeneratedContent | null>(null)
+  const [landing,   setLanding]   = useState<LandingContent | null>(null)
 
   async function handleGenerate() {
     setState('generating')
     try {
-      const data = await generate('landing_section', 'general', objective, context)
-      setResult(data)
-      setState('done')
-    } catch {
-      setState('error')
-    }
+      const res = await fetch('/api/creative/generate', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ type: 'landing_section', channel: 'general', objective, context }),
+      })
+      const data = await res.json() as { json?: unknown }
+      if (data.json) { setLanding(data.json as unknown as LandingContent); setState('done') }
+      else setState('error')
+    } catch { setState('error') }
   }
-
-  // Parse JSON result
-  type LandingContent = {
-    headline: string; subheadline: string; body: string
-    benefits: string[]; cta: string
-  }
-  const landing: LandingContent | null = result?.json
-    ? (result.json as unknown as LandingContent)
-    : null
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-5">
-          <ObjectiveSelector value={objective} onChange={setObjective} />
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Produto / serviço</label>
-            <textarea
-              value={context}
-              onChange={e => setContext(e.target.value)}
-              placeholder="Ex: Curso online de confeitaria, 8 módulos, R$497, bônus de fichas técnicas..."
-              rows={3}
-              className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-cyan-500/50 transition"
-            />
-          </div>
-          <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Gerar seção da landing" />
-        </div>
+      <ObjectiveSelector value={objective} onChange={setObjective} />
+      <div>
+        <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Contexto</label>
+        <textarea
+          value={context}
+          onChange={e => setContext(e.target.value)}
+          placeholder="Ex: Landing page para captação de leads de consultoria financeira..."
+          rows={3}
+          className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition"
+        />
+      </div>
+      <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Gerar Seção de Landing Page" />
 
-        {/* Live preview */}
-        {landing && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6 space-y-4"
-          >
-            <h2 className="text-xl font-bold text-white leading-tight">{landing.headline}</h2>
+      {state === 'done' && landing && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+          <div className="border-b border-zinc-800 px-5 py-4 text-center space-y-1">
+            <h2 className="text-lg font-bold text-white">{landing.headline}</h2>
             <p className="text-sm text-zinc-400">{landing.subheadline}</p>
+          </div>
+          <div className="px-5 py-4 space-y-4">
             <p className="text-sm text-zinc-300 leading-relaxed">{landing.body}</p>
-            {landing.benefits?.length > 0 && (
-              <ul className="space-y-2">
-                {landing.benefits.map((b, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-zinc-300">
-                    <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-cyan-400" />
-                    {b}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <button className="w-full rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 py-3 text-sm font-bold text-white">
+            <ul className="space-y-2">
+              {landing.benefits?.map((b, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-zinc-300">
+                  <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-400" />
+                  {b}
+                </li>
+              ))}
+            </ul>
+            <button className="w-full rounded-xl bg-violet-600 py-3 text-sm font-semibold text-white hover:bg-violet-500 transition">
               {landing.cta}
             </button>
-          </motion.div>
-        )}
-      </div>
-
-      {result && state === 'done' && !landing && (
-        <ResultBox content={result} onRegenerate={handleGenerate} />
-      )}
-
-      {result && state === 'done' && (
-        <div className="flex flex-wrap gap-3">
-          <button className="flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-400 transition hover:bg-cyan-500/20">
-            <Globe size={14} /> Publicar landing page
-          </button>
-          <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-200">
-            <Download size={14} /> Exportar HTML
-          </button>
-        </div>
+          </div>
+          <div className="border-t border-zinc-800 px-5 py-3 flex justify-end gap-2">
+            <CopyButton text={JSON.stringify(landing, null, 2)} />
+          </div>
+        </motion.div>
       )}
     </div>
   )
@@ -1039,83 +802,26 @@ function LandingTab() {
 // ─── Tab: PDFs ────────────────────────────────────────────────────────────────
 
 function PdfsTab() {
-  const [objective, setObjective] = useState<Objective>('cobranca')
-  const [context,   setContext]   = useState('')
-  const [state,     setState]     = useState<GenState>('idle')
-  const [result,    setResult]    = useState<GeneratedContent | null>(null)
-
-  async function handleGenerate() {
-    setState('generating')
-    try {
-      const data = await generate('message', 'general', objective, context)
-      setResult(data)
-      setState('done')
-    } catch {
-      setState('error')
-    }
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
-        <div className="flex items-center gap-2">
-          <FileText size={14} className="text-amber-400" />
-          <p className="text-sm font-semibold text-amber-300">Gerador de PDFs inteligentes</p>
+    <div className="space-y-4">
+      {[
+        { icon: '📄', label: 'Proposta Comercial',    desc: 'Gera proposta profissional com valores e condições' },
+        { icon: '📊', label: 'Relatório Executivo',   desc: 'Relatório de desempenho do período com gráficos' },
+        { icon: '📋', label: 'Contrato Simples',      desc: 'Contrato de prestação de serviços editável' },
+        { icon: '🎯', label: 'Playbook de Vendas',    desc: 'Guia de vendas com scripts e objeções mapeadas' },
+      ].map((item, i) => (
+        <div key={i} className="flex items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 hover:border-zinc-700 transition cursor-pointer group">
+          <span className="text-2xl">{item.icon}</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-white">{item.label}</p>
+            <p className="text-xs text-zinc-500">{item.desc}</p>
+          </div>
+          <ChevronRight size={14} className="text-zinc-600 group-hover:text-violet-400 transition" />
         </div>
-        <p className="mt-1 text-xs text-zinc-500">Propostas comerciais, contratos, boletos, relatórios — gerados automaticamente com a identidade da sua empresa.</p>
+      ))}
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+        <p className="text-xs text-amber-400">📎 Em breve: geração de PDFs com layout da sua marca</p>
       </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { icon: FileText, label: 'Proposta Comercial', desc: 'Com valores e benefícios' },
-          { icon: FileText, label: 'Boleto Personalizado', desc: 'Com logo e dados da empresa' },
-          { icon: BarChart3, label: 'Relatório Executivo', desc: 'KPIs e métricas visuais' },
-        ].map((t, i) => (
-          <button
-            key={i}
-            className="flex flex-col gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 text-left hover:border-amber-500/30 hover:bg-amber-500/5 transition group"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10">
-              <t.icon size={16} className="text-amber-400" />
-            </div>
-            <p className="text-sm font-semibold text-white group-hover:text-amber-300 transition">{t.label}</p>
-            <p className="text-xs text-zinc-500">{t.desc}</p>
-            <div className="flex items-center gap-1 mt-auto text-xs text-amber-400 opacity-0 group-hover:opacity-100 transition">
-              Gerar <ArrowRight size={10} />
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <div className="space-y-4">
-        <ObjectiveSelector value={objective} onChange={setObjective} />
-        <div>
-          <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Conteúdo / dados</label>
-          <textarea
-            value={context}
-            onChange={e => setContext(e.target.value)}
-            placeholder="Ex: Proposta para cliente João Silva, serviço de manutenção mensal R$1.500..."
-            rows={3}
-            className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-amber-500/50 transition"
-          />
-        </div>
-        <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Gerar documento" />
-      </div>
-
-      {result && state === 'done' && (
-        <ResultBox content={result} onRegenerate={handleGenerate} />
-      )}
-
-      {result && state === 'done' && (
-        <div className="flex flex-wrap gap-3">
-          <button className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-400 transition hover:bg-amber-500/20">
-            <Download size={14} /> Baixar PDF
-          </button>
-          <button className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-200">
-            <Send size={14} /> Enviar por email
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -1124,167 +830,276 @@ function PdfsTab() {
 
 function AutomacaoTab() {
   const automations = [
-    {
-      name:     'Cobrança automática de inadimplentes',
-      trigger:  'Cliente em atraso há 3+ dias',
-      sequence: ['WhatsApp dia 3', 'WhatsApp dia 7', 'Email dia 10', 'WhatsApp dia 15'],
-      active:   true,
-      color:    'red',
-    },
-    {
-      name:     'Reativação de clientes inativos',
-      trigger:  'Sem compra há 60+ dias',
-      sequence: ['Email oferta especial', 'WhatsApp lembrete', 'Email urgência'],
-      active:   true,
-      color:    'orange',
-    },
-    {
-      name:     'Boas-vindas ao novo cliente',
-      trigger:  'Novo cliente cadastrado',
-      sequence: ['WhatsApp boas-vindas', 'Email apresentação', 'WhatsApp tutorial'],
-      active:   false,
-      color:    'emerald',
-    },
-    {
-      name:     'Follow-up pós-proposta',
-      trigger:  'Proposta enviada há 48h sem resposta',
-      sequence: ['WhatsApp acompanhamento', 'Email com cases', 'Ligação lembrete'],
-      active:   false,
-      color:    'violet',
-    },
+    { emoji: '💰', name: 'Régua de Cobrança',   desc: 'Sequência automática para inadimplentes', sequence: ['D+1 WhatsApp', 'D+3 Email', 'D+7 WhatsApp', 'D+15 Bloqueio'] },
+    { emoji: '🔥', name: 'Reativação de Leads', desc: 'Reengajamento de leads frios',             sequence: ['Segmenta leads', 'Gera oferta', 'Dispara campanha', 'Mede resultado'] },
+    { emoji: '👋', name: 'Boas-vindas VIP',     desc: 'Onboarding para novos clientes',           sequence: ['D+0 WhatsApp', 'D+1 Email', 'D+3 Pesquisa', 'D+7 Follow-up'] },
+    { emoji: '📈', name: 'Upsell Inteligente',  desc: 'Identificação de oportunidade de upgrade', sequence: ['Analisa histórico', 'Detecta momento', 'Gera proposta', 'Acompanha'] },
   ]
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs text-zinc-500">Fluxos que criam conteúdo personalizado automaticamente usando IA</p>
-        </div>
-        <button className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white">
-          <Plus size={14} /> Nova automação
-        </button>
-      </div>
-
-      <div className="grid gap-4">
-        {automations.map((a, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.06 }}
-            className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 hover:border-zinc-700 transition"
-          >
-            <div className="flex items-start justify-between gap-4 mb-4">
+    <div className="space-y-4">
+      {automations.map((a, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: i * 0.06 }}
+          className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 hover:border-zinc-700 transition"
+        >
+          <div className="mb-3 flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">{a.emoji}</span>
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <div className={cn(
-                    'h-2 w-2 rounded-full',
-                    a.active ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-zinc-600',
-                  )} />
-                  <p className="text-sm font-semibold text-white">{a.name}</p>
-                </div>
-                <p className="text-xs text-zinc-500">Gatilho: {a.trigger}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className={cn(
-                  'rounded-full px-2.5 py-0.5 text-[10px] font-bold',
-                  a.active
-                    ? 'bg-emerald-500/15 text-emerald-400'
-                    : 'bg-zinc-800 text-zinc-500',
-                )}>
-                  {a.active ? 'Ativo' : 'Pausado'}
-                </span>
-                <button className="rounded-lg p-1.5 text-zinc-500 hover:text-white transition hover:bg-zinc-800">
-                  <Edit3 size={13} />
-                </button>
+                <p className="text-sm font-semibold text-white">{a.name}</p>
+                <p className="text-xs text-zinc-500">{a.desc}</p>
               </div>
             </div>
+            <button className="rounded-xl bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 transition">
+              Ativar
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {a.sequence.map((step, si) => (
+              <div key={si} className="flex items-center gap-1.5">
+                <span className="rounded-lg border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-[10px] font-medium text-zinc-300">{step}</span>
+                {si < a.sequence.length - 1 && <ArrowRight size={10} className="text-zinc-700" />}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  )
+}
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              {a.sequence.map((step, si) => (
-                <div key={si} className="flex items-center gap-1.5">
-                  <span className="rounded-lg border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-[10px] font-medium text-zinc-300">
-                    {step}
-                  </span>
-                  {si < a.sequence.length - 1 && <ArrowRight size={10} className="text-zinc-700" />}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        ))}
-      </div>
+// ─── OpportunityEngine ────────────────────────────────────────────────────────
 
-      <div className="rounded-2xl border border-dashed border-zinc-700 p-8 flex flex-col items-center gap-3 text-center hover:border-violet-500/40 transition cursor-pointer group">
-        <div className="h-12 w-12 rounded-2xl border border-zinc-700 bg-zinc-900 flex items-center justify-center group-hover:border-violet-500/40 transition">
-          <Zap size={20} className="text-zinc-500 group-hover:text-violet-400 transition" />
+interface OpportunityEngineProps {
+  onAction: (tab: TabId, obj: Objective) => void
+}
+
+function OpportunityEngine({ onAction }: OpportunityEngineProps) {
+  const [cards,       setCards]       = useState<OpportunityCard[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [summary,     setSummary]     = useState<string>('')
+  const [healthScore, setHealthScore] = useState<number>(0)
+  const [dismissed,   setDismissed]   = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    fetch('/api/creative/opportunities')
+      .then(r => r.json())
+      .then((data: { cards?: OpportunityCard[]; summary?: string; health_score?: number }) => {
+        setCards(data.cards ?? [])
+        setSummary(data.summary ?? '')
+        setHealthScore(data.health_score ?? 0)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const visible = cards.filter(c => !dismissed.has(c.id))
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div className="relative">
+          <div className="h-8 w-8 rounded-xl bg-violet-500/20 flex items-center justify-center">
+            <Brain size={14} className="text-violet-400" />
+          </div>
+          <div className="absolute -inset-1 rounded-xl border border-violet-500/30 animate-ping" />
         </div>
-        <p className="text-sm font-semibold text-zinc-400 group-hover:text-white transition">Criar nova automação com IA</p>
-        <p className="text-xs text-zinc-600">Descreva o que você quer automatizar e a IA cria o fluxo completo</p>
+        <div className="space-y-1.5 flex-1">
+          <div className="h-3 w-48 rounded-full bg-zinc-800 animate-pulse" />
+          <div className="h-2.5 w-32 rounded-full bg-zinc-800 animate-pulse" />
+        </div>
+      </div>
+    )
+  }
+
+  if (visible.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      {/* Header */}
+      {summary && (
+        <div className="flex items-start gap-3 rounded-2xl border border-violet-500/15 bg-violet-500/5 p-4">
+          <div className="relative shrink-0 mt-0.5">
+            <div className="h-8 w-8 rounded-xl bg-violet-500/20 flex items-center justify-center">
+              <Brain size={14} className="text-violet-400" />
+            </div>
+            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-violet-500 border-2 border-zinc-950 animate-pulse" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-0.5">
+              <p className="text-xs font-semibold text-violet-300">NEXUS Intelligence</p>
+              <span className="rounded-full bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-bold text-violet-400 uppercase tracking-wide">LIVE</span>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed">{summary}</p>
+          </div>
+          {healthScore > 0 && (
+            <div className="shrink-0 text-right">
+              <p className="text-lg font-bold" style={{ color: healthScore >= 70 ? '#10b981' : healthScore >= 50 ? '#f59e0b' : '#ef4444' }}>
+                {healthScore}
+              </p>
+              <p className="text-[9px] text-zinc-600">saúde</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cards */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {visible.map((card, i) => {
+          const cfg     = TYPE_CONFIG[card.type] ?? TYPE_CONFIG.crescimento
+          const urgency = URGENCY_CONFIG[card.urgency]
+
+          return (
+            <motion.div
+              key={card.id}
+              initial={{ opacity: 0, y: 12, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ delay: i * 0.07 }}
+              className={cn(
+                'relative overflow-hidden rounded-2xl border p-4',
+                `bg-gradient-to-br ${cfg.gradient}`,
+                cfg.border,
+              )}
+            >
+              {/* Dismiss */}
+              <button
+                onClick={() => setDismissed(d => new Set([...d, card.id]))}
+                className="absolute top-2 right-2 rounded-full p-1 text-zinc-600 hover:text-zinc-400 transition"
+              >
+                <X size={10} />
+              </button>
+
+              {/* Urgency dot */}
+              <div className="mb-3 flex items-center gap-2">
+                <span className={cn('h-2 w-2 rounded-full', urgency.dot, card.urgency === 'critical' && 'animate-pulse')} />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">{urgency.label}</span>
+              </div>
+
+              {/* Icon + headline */}
+              <div className="mb-1 flex items-start gap-2">
+                <span className="text-lg leading-none">{card.emoji}</span>
+                <p className="text-xs font-semibold text-white leading-snug">{card.headline}</p>
+              </div>
+
+              {/* Value */}
+              <p className="mb-2 text-lg font-bold text-white">{card.value}</p>
+
+              {/* Description */}
+              <p className="mb-4 text-[11px] text-zinc-400 leading-relaxed line-clamp-2">{card.description}</p>
+
+              {/* Actions */}
+              <div className="flex flex-wrap gap-1.5">
+                {card.actions.map((action, ai) => (
+                  <button
+                    key={ai}
+                    onClick={() => {
+                      if (action.action === 'generate_campaign' && action.tab && action.obj) {
+                        onAction(action.tab as TabId, action.obj as Objective)
+                      } else if (action.href) {
+                        window.location.href = action.href
+                      }
+                    }}
+                    className={cn(
+                      'flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold transition',
+                      ai === 0
+                        ? 'bg-white/10 text-white hover:bg-white/20'
+                        : 'border border-zinc-700/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200',
+                    )}
+                  >
+                    {action.action === 'generate_campaign'
+                      ? <><Sparkles size={9} /> {action.label}</>
+                      : <><Navigation size={9} /> {action.label}</>
+                    }
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )
+        })}
       </div>
     </div>
   )
 }
 
-// ─── Template Library ─────────────────────────────────────────────────────────
+// ─── AutoPilot Toggle ─────────────────────────────────────────────────────────
 
-function TemplateLibrary({ onUse }: { onUse: (tab: TabId, objective: Objective) => void }) {
-  const templates = [
-    { niche: 'Restaurantes',   tab: 'whatsapp' as TabId, obj: 'promocao'    as Objective, label: 'Promoção do dia',      icon: '🍽️' },
-    { niche: 'Academias',      tab: 'whatsapp' as TabId, obj: 'reativacao'  as Objective, label: 'Reativar alunos',      icon: '💪' },
-    { niche: 'Clínicas',       tab: 'email'    as TabId, obj: 'boas_vindas' as Objective, label: 'Boas-vindas paciente', icon: '🏥' },
-    { niche: 'E-commerce',     tab: 'email'    as TabId, obj: 'cobranca'    as Objective, label: 'Boleto vencido',        icon: '🛒' },
-    { niche: 'Salão de Beleza',tab: 'whatsapp' as TabId, obj: 'follow_up'   as Objective, label: 'Confirmação de horário',icon: '✂️' },
-    { niche: 'Consultoria',    tab: 'email'    as TabId, obj: 'lancamento'  as Objective, label: 'Lançamento de serviço', icon: '📊' },
-  ]
+function AutoPilotToggle() {
+  const [enabled,  setEnabled]  = useState(false)
+  const [loading,  setLoading]  = useState(true)
+  const [toggling, setToggling] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/autopilot/enable')
+      .then(r => r.json())
+      .then((d: { autopilot_enabled?: boolean }) => setEnabled(d.autopilot_enabled ?? false))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function toggle() {
+    setToggling(true)
+    const next = !enabled
+    try {
+      await fetch('/api/autopilot/enable', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ enabled: next }),
+      })
+      setEnabled(next)
+    } catch { /* ok */ }
+    setToggling(false)
+  }
+
+  if (loading) return <div className="h-8 w-28 animate-pulse rounded-xl bg-zinc-800" />
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <LayoutTemplate size={14} className="text-zinc-500" />
-          <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Templates por nicho</p>
-        </div>
-        <button className="text-xs text-violet-400 hover:text-violet-300 transition">Ver todos</button>
-      </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {templates.map((t, i) => (
-          <button
-            key={i}
-            onClick={() => onUse(t.tab, t.obj)}
-            className="flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-left hover:border-violet-500/30 hover:bg-violet-500/5 transition group"
-          >
-            <span className="text-lg">{t.icon}</span>
-            <p className="text-xs font-semibold text-white">{t.label}</p>
-            <p className="text-[10px] text-zinc-500">{t.niche}</p>
-            <div className="flex items-center gap-1 text-[10px] text-violet-400 opacity-0 group-hover:opacity-100 transition">
-              Usar <ArrowRight size={9} />
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
+    <button
+      onClick={toggle}
+      disabled={toggling}
+      className={cn(
+        'flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all',
+        enabled
+          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15'
+          : 'border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200',
+      )}
+    >
+      {toggling
+        ? <Loader2 size={12} className="animate-spin" />
+        : <Power size={12} className={enabled ? 'text-emerald-400' : ''} />
+      }
+      AutoPilot {enabled ? 'ON' : 'OFF'}
+      {enabled && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+    </button>
   )
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CreativeAIPage() {
-  const [activeTab,  setActiveTab]  = useState<TabId>('whatsapp')
-  const [showLib,    setShowLib]    = useState(false)
+  const [activeTab,    setActiveTab]    = useState<TabId>('whatsapp')
+  const [jumpObjective, setJumpObjective] = useState<Objective | null>(null)
+
+  function handleOpportunityAction(tab: TabId, obj: Objective) {
+    setActiveTab(tab)
+    setJumpObjective(obj)
+    setTimeout(() => setJumpObjective(null), 500)
+    // scroll to tab content
+    document.getElementById('creative-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   const tab = TABS.find(t => t.id === activeTab)!
 
-  function handleUseTemplate(tab: TabId, _obj: Objective) {
-    setActiveTab(tab)
-    setShowLib(false)
-  }
-
   function renderTab() {
     switch (activeTab) {
-      case 'whatsapp':  return <WhatsAppTab />
-      case 'email':     return <EmailTab />
+      case 'whatsapp':  return <WhatsAppTab  jumpObjective={jumpObjective} />
+      case 'email':     return <EmailTab     jumpObjective={jumpObjective} />
       case 'instagram': return <InstagramTab />
-      case 'campanhas': return <CampanhasTab />
+      case 'campanhas': return <CampanhasTab jumpObjective={jumpObjective} />
       case 'imagens':   return <ImagensTab />
       case 'landing':   return <LandingTab />
       case 'pdfs':      return <PdfsTab />
@@ -1293,123 +1108,121 @@ export default function CreativeAIPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-5 py-8 md:px-8">
-      {/* Header */}
-      <div className="mb-8 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-lg shadow-violet-500/20">
-              <Sparkles size={17} className="text-white" />
+    <div className="min-h-screen bg-zinc-950 px-5 py-8 md:px-8 space-y-6">
+
+      {/* ── Header ── */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-lg shadow-violet-500/25">
+              <Brain size={18} className="text-white" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-white leading-tight">Creative AI</h1>
-              <p className="text-xs text-zinc-500">Motor criativo inteligente da sua empresa</p>
-            </div>
+            <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-emerald-400 border-2 border-zinc-950 animate-pulse" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white leading-tight">Creative AI</h1>
+            <p className="text-xs text-zinc-500">Motor de inteligência da sua empresa · Online agora</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <AutoPilotToggle />
           <button
-            onClick={() => setShowLib(!showLib)}
-            className={cn(
-              'flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition',
-              showLib
-                ? 'border-violet-500/50 bg-violet-500/10 text-violet-300'
-                : 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
-            )}
+            onClick={() => setActiveTab('imagens')}
+            className="flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-600 transition"
           >
-            <LayoutTemplate size={13} />
-            Templates
+            <Wand2 size={12} /> Criar Imagem
           </button>
-          <button className="flex items-center gap-2 rounded-xl border border-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition">
-            <Palette size={13} />
-            Identidade
+          <button
+            onClick={() => setActiveTab('campanhas')}
+            className="flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-600 transition"
+          >
+            <Megaphone size={12} /> Campanha
           </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {STATS.map((s, i) => (
-          <StatCard key={i} stat={s} />
-        ))}
-      </div>
+      {/* ── Opportunity Engine ── */}
+      <OpportunityEngine onAction={handleOpportunityAction} />
 
-      {/* Template Library drawer */}
-      <AnimatePresence>
-        {showLib && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mb-8 overflow-hidden"
-          >
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
-              <TemplateLibrary onUse={handleUseTemplate} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Tab bar */}
-      <div className="mb-6 flex overflow-x-auto gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-1 scrollbar-hide">
-        {TABS.map(t => {
-          const active = t.id === activeTab
-          const Icon   = t.icon
+      {/* ── Quick Stats ── */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: 'Conteúdos gerados', value: '2.847', icon: Sparkles,   color: 'violet'  },
+          { label: 'Taxa de abertura',  value: '68,4%', icon: Eye,        color: 'emerald' },
+          { label: 'Conversão média',   value: '12,1%', icon: Target,     color: 'blue'    },
+          { label: 'Receita recuperada',value: 'R$47.8k',icon: DollarSign, color: 'amber'  },
+        ].map((s, i) => {
+          const Icon = s.icon
           return (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
-              className={cn(
-                'flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-all whitespace-nowrap',
-                active
-                  ? cn('border', colorClass(t.color, 'bg'), colorClass(t.color, 'text'), colorClass(t.color, 'border'))
-                  : 'border border-transparent text-zinc-500 hover:bg-zinc-800/60 hover:text-zinc-300',
-              )}
-            >
-              <Icon size={13} />
-              <span className="hidden sm:inline">{t.label}</span>
-              <span className="sm:hidden">{t.label.split(' ')[0]}</span>
-            </button>
+            <div key={i} className={cn('rounded-2xl border p-4 flex items-center gap-3 bg-zinc-900/40 border-zinc-800/60')}>
+              <div className={cn('flex h-9 w-9 items-center justify-center rounded-xl border', colorClass(s.color, 'bg'), colorClass(s.color, 'border'))}>
+                <Icon size={16} className={colorClass(s.color, 'text')} />
+              </div>
+              <div>
+                <p className="text-[11px] text-zinc-500">{s.label}</p>
+                <p className="text-base font-bold text-white">{s.value}</p>
+              </div>
+            </div>
           )
         })}
       </div>
 
-      {/* Tab content */}
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
-        <div className="mb-5 flex items-center gap-2 border-b border-zinc-800/60 pb-4">
-          <div className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-xl border',
-            colorClass(tab.color, 'bg'),
-            colorClass(tab.color, 'border'),
-          )}>
-            <tab.icon size={15} className={colorClass(tab.color, 'text')} />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-white">{tab.label}</p>
-            <p className="text-[11px] text-zinc-500">
-              {activeTab === 'whatsapp'  && 'Mensagens personalizadas para WhatsApp'}
-              {activeTab === 'email'     && 'Emails e sequências automatizadas'}
-              {activeTab === 'instagram' && 'Legendas e conteúdo para Instagram'}
-              {activeTab === 'campanhas' && 'Campanhas multi-canal com sequências IA'}
-              {activeTab === 'imagens'   && 'Banners, posts e criativos visuais'}
-              {activeTab === 'landing'   && 'Páginas de conversão para seus produtos'}
-              {activeTab === 'pdfs'      && 'Documentos, propostas e relatórios PDF'}
-              {activeTab === 'automacao' && 'Fluxos automatizados com conteúdo IA'}
-            </p>
-          </div>
+      {/* ── Tab Navigation ── */}
+      <div id="creative-tabs" className="rounded-2xl border border-zinc-800 bg-zinc-900/30 overflow-hidden">
+        {/* Tab bar */}
+        <div className="flex overflow-x-auto border-b border-zinc-800">
+          {TABS.map(t => {
+            const Icon = t.icon
+            const active = activeTab === t.id
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={cn(
+                  'flex shrink-0 items-center gap-2 border-b-2 px-4 py-3.5 text-xs font-semibold transition-all',
+                  active
+                    ? `border-violet-500 ${colorClass(t.color, 'text')} bg-violet-500/5`
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300',
+                )}
+              >
+                <Icon size={13} />
+                <span className="hidden sm:block">{t.label}</span>
+              </button>
+            )
+          })}
         </div>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, x: 8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -8 }}
-            transition={{ duration: 0.15 }}
-          >
-            {renderTab()}
-          </motion.div>
-        </AnimatePresence>
+        {/* Tab heading */}
+        <div className="flex items-center justify-between border-b border-zinc-800/60 px-6 py-3">
+          <div className="flex items-center gap-2">
+            <div className={cn('flex h-6 w-6 items-center justify-center rounded-lg', colorClass(tab.color, 'bg'))}>
+              <tab.icon size={12} className={colorClass(tab.color, 'text')} />
+            </div>
+            <p className="text-sm font-semibold text-white">{tab.label}</p>
+            <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', colorClass(tab.color, 'bg'), colorClass(tab.color, 'text'))}>
+              IA Ativa
+            </span>
+          </div>
+          <span className="hidden text-[11px] text-zinc-600 sm:block">
+            Gera 3 variações simultâneas com tons diferentes
+          </span>
+        </div>
+
+        {/* Tab content */}
+        <div className="p-6">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+            >
+              {renderTab()}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   )
