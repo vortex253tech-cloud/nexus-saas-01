@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseServerClient } from '@/lib/supabase'
+import { getSupabaseRouteClient } from '@/lib/supabase-server'
 
-async function resolveCompany(db: ReturnType<typeof getSupabaseServerClient>) {
+type DbClient = Awaited<ReturnType<typeof getSupabaseRouteClient>>
+
+async function resolveCompany(db: DbClient) {
   const { data: { user } } = await db.auth.getUser()
   if (!user) return null
   const { data: u } = await db.from('users').select('id').eq('auth_id', user.id).single()
@@ -12,7 +14,7 @@ async function resolveCompany(db: ReturnType<typeof getSupabaseServerClient>) {
 
 // ─── GET ──────────────────────────────────────────────────────────
 export async function GET() {
-  const db = getSupabaseServerClient()
+  const db = await getSupabaseRouteClient()
   const company = await resolveCompany(db)
   if (!company) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -28,7 +30,7 @@ export async function GET() {
 
 // ─── POST ─────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const db = getSupabaseServerClient()
+  const db = await getSupabaseRouteClient()
   const company = await resolveCompany(db)
   if (!company) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getSupabaseServerClient } from '@/lib/supabase'
+import { getSupabaseRouteClient } from '@/lib/supabase-server'
 
 const BUCKET = 'brand-assets'
 const MAX_BYTES = 5 * 1024 * 1024
@@ -15,8 +15,8 @@ function adminClient() {
 }
 
 export async function POST(req: NextRequest) {
-  // Authenticate
-  const db = getSupabaseServerClient()
+  // Authenticate with cookie-based client so we can read the session
+  const db = await getSupabaseRouteClient()
   const { data: { user } } = await db.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
