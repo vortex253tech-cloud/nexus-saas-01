@@ -6,17 +6,17 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseRouteClient } from '@/lib/supabase-server'
+import { getSupabaseServerClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = new URL(req.url)
   const code     = searchParams.get('code')
-  const next     = searchParams.get('next') ?? '/dashboard'
+  const next     = searchParams.get('next') ?? null
   const appUrl   = process.env.NEXT_PUBLIC_APP_URL ?? origin
 
   if (!code) {
-    // No code → something went wrong (link expired or already used)
     return NextResponse.redirect(`${appUrl}/login?error=link_expired`)
   }
 
@@ -29,8 +29,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${appUrl}/login?error=confirmation_failed`)
     }
 
-    // Session cookie set — send the user directly into the app
-    return NextResponse.redirect(`${appUrl}${next}`)
+    // If a specific next param was provided, honour it
+    if (next) {
+      return NextResponse.redirect(`${appUrl}${next}`)
+    }
+
+    // Otherwise check whether the user has completed onboarding
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (authUser) {
+      const db = getSupabaseServerClient()
+      const { data: userRow } = await db
+        .from('users')
+        .select('onboarding_completed')
+        .or(`auth_id.eq.${authUser.id},email.eq.${authUser.email}`)
+        .maybeSingle()
+
+      if (!userRow?.onboarding_completed) {
+        return NextResponse.redirect(`${appUrl}/setup`)
+      }
+    }
+
+    return NextResponse.redirect(`${appUrl}/dashboard`)
   } catch (err) {
     console.error('[auth/callback] unexpected error:', err)
     return NextResponse.redirect(`${appUrl}/login?error=unexpected`)
