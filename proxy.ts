@@ -1,10 +1,13 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-const PUBLIC_PATHS    = ['/', '/start', '/onboarding', '/resultado', '/planos']
-const AUTH_PAGES      = ['/login', '/signup']           // logged-in users can't visit these
+// Routes accessible without authentication
+const PUBLIC_PATHS = ['/', '/start', '/onboarding', '/resultado', '/planos', '/setup']
+const AUTH_PAGES   = ['/login', '/signup']
+
+// Prefixes that always bypass the middleware
 const PUBLIC_PREFIXES = [
-  '/api/auth', '/api/leads', '/api/company', '/api/webhook',
+  '/api/auth', '/api/leads', '/api/company', '/api/webhook', '/api/waitlist',
   '/api/check-config', '/_next', '/favicon', '/auth',
 ]
 
@@ -15,8 +18,9 @@ export async function proxy(req: NextRequest) {
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
   if (pathname.includes('.')) return NextResponse.next()
 
-  const isDashboard   = pathname.startsWith('/dashboard')
-  const isAuthPage    = AUTH_PAGES.some(p => pathname === p || pathname.startsWith(p + '/'))
+  const isDashboard    = pathname.startsWith('/dashboard')
+  const isSetup        = pathname.startsWith('/setup')
+  const isAuthPage     = AUTH_PAGES.some(p => pathname === p || pathname.startsWith(p + '/'))
   const isProtectedApi = pathname.startsWith('/api/') &&
     !PUBLIC_PREFIXES.some(p => pathname.startsWith(p))
 
@@ -25,7 +29,7 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Build a cookie-aware client so tokens are refreshed on every edge request
+  // Build a cookie-aware Supabase client to refresh tokens at the edge
   let res = NextResponse.next({ request: req })
 
   const supabase = createServerClient(
@@ -38,21 +42,21 @@ export async function proxy(req: NextRequest) {
           cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value))
           res = NextResponse.next({ request: req })
           cookiesToSet.forEach(({ name, value, options }) =>
-            res.cookies.set(name, value, options)
+            res.cookies.set(name, value, options),
           )
         },
       },
-    }
+    },
   )
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Unauthenticated → protect dashboard and API routes
+  // ── Unauthenticated ──────────────────────────────────────────
   if (!user) {
-    if (isDashboard) {
+    if (isDashboard || isSetup) {
       const loginUrl = req.nextUrl.clone()
       loginUrl.pathname = '/login'
-      loginUrl.searchParams.set('redirect', pathname)
+      if (isDashboard) loginUrl.searchParams.set('redirect', pathname)
       return NextResponse.redirect(loginUrl)
     }
     if (isProtectedApi) {
@@ -61,7 +65,9 @@ export async function proxy(req: NextRequest) {
     return res
   }
 
-  // Authenticated → bounce away from login / signup
+  // ── Authenticated ────────────────────────────────────────────
+
+  // Bounce away from login / signup
   if (isAuthPage) {
     const url = req.nextUrl.clone()
     url.pathname = '/dashboard'

@@ -914,7 +914,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           trialDaysLeft?: number | null
           subscription?: { status?: string } | null
           user?: { effectivePlan?: string }
-          company?: { brand_name?: string | null; logo_url?: string | null }
+          company?: { name?: string | null }
         }
         setTrial({
           isTrialActive: d.isTrialActive ?? false,
@@ -922,8 +922,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           effectivePlan: d.user?.effectivePlan ?? 'free',
           isPastDue: d.subscription?.status === 'past_due',
         })
-        if (d.company?.brand_name) setBrandName(d.company.brand_name)
-        if (d.company?.logo_url)   setLogoUrl(d.company.logo_url)
+        if (d.company?.name) setBrandName(d.company.name)
       })
       .catch(() => { /* ok */ })
   }, [])
