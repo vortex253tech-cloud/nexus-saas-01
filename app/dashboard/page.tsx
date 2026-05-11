@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -11,6 +12,9 @@ import {
   ChevronRight, Send, Mic, Image, FileText, Table,
   RefreshCw, Bell, ShieldAlert, Lightbulb, Play, Loader2,
   Brain, Target, X, Flame, Eye, Upload, Paperclip,
+  Lock, Crown, Rocket, Star, Wand2, TrendingUp as TrendingUpIcon,
+  Megaphone, FileBarChart, LayoutTemplate, UserPlus,
+  Video, ImageIcon, Radio, Workflow, LineChart,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { gerarDiagnostico } from '@/lib/diagnostico'
@@ -21,6 +25,8 @@ import type { InsightAcao } from '@/lib/insights'
 import type { Alerta } from '@/lib/alertas'
 
 // ─── Types ─────────────────────────────────────────────────────
+
+type EffectivePlan = 'free' | 'starter' | 'pro' | 'scale' | 'enterprise'
 
 interface UploadedAttachment {
   id:             string | null
@@ -68,6 +74,23 @@ interface AIChatMessage {
   timestamp:    Date
 }
 
+interface OpportunityCard {
+  id:          string
+  type:        'cobranca' | 'reativacao' | 'risco' | 'crescimento'
+  emoji:       string
+  headline:    string
+  value:       number
+  description: string
+  urgency:     'alta' | 'media' | 'baixa'
+  actions:     string[]
+}
+
+interface UpgradeModalState {
+  open:        boolean
+  targetPlan:  'pro' | 'scale'
+  featureName: string
+}
+
 // ─── Formatters ────────────────────────────────────────────────
 
 function fmtBRL(v: number) {
@@ -90,17 +113,37 @@ const PIPELINE_STEPS = [
   { id: 5, label: 'A IA TE LEVA' },
 ]
 
-function PipelineHeader({ companyName }: { companyName: string }) {
+function PipelineHeader({ companyName, plan }: { companyName: string; plan: EffectivePlan }) {
+  const planLabel: Record<EffectivePlan, { label: string; color: string }> = {
+    free:       { label: 'Grátis',     color: 'bg-zinc-700 text-zinc-300' },
+    starter:    { label: 'Starter',    color: 'bg-blue-500/20 text-blue-300 border border-blue-500/30' },
+    pro:        { label: 'PRO',        color: 'bg-violet-500/20 text-violet-300 border border-violet-500/30' },
+    scale:      { label: 'SCALE',      color: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' },
+    enterprise: { label: 'Enterprise', color: 'bg-amber-500/20 text-amber-300 border border-amber-500/30' },
+  }
+  const p = planLabel[plan] ?? planLabel.free
+
   return (
-    <div className="border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md px-6 py-4">
-      <div className="flex items-center justify-between gap-6">
+    <div className="relative border-b border-zinc-800/60 bg-zinc-950/90 backdrop-blur-md px-6 py-4 overflow-hidden">
+      {/* Subtle hero glow */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-8 left-1/4 h-32 w-64 rounded-full bg-violet-600/8 blur-3xl" />
+        <div className="absolute -top-4 right-1/3 h-24 w-48 rounded-full bg-cyan-500/6 blur-2xl" />
+      </div>
+
+      <div className="relative flex items-center justify-between gap-6">
         <div>
-          <h1 className="text-lg font-bold leading-tight text-white">
-            NEXUS IA{' '}
-            <span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">
-              – CENTRO OPERACIONAL INTELIGENTE
+          <div className="flex items-center gap-3 mb-0.5">
+            <h1 className="text-lg font-bold leading-tight text-white">
+              NEXUS IA{' '}
+              <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 bg-clip-text text-transparent">
+                – CENTRO OPERACIONAL INTELIGENTE
+              </span>
+            </h1>
+            <span className={cn('rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide', p.color)}>
+              {p.label}
             </span>
-          </h1>
+          </div>
           <p className="mt-0.5 text-xs text-zinc-500">
             A IA que entende, analisa, decide e executa. Você conversa, a IA resolve e te leva direto para onde precisa.
           </p>
@@ -111,9 +154,13 @@ function PipelineHeader({ companyName }: { companyName: string }) {
           {PIPELINE_STEPS.map((step, i) => (
             <div key={step.id} className="flex items-center gap-1">
               <div className="flex flex-col items-center gap-1">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 text-[10px] font-bold text-violet-400">
+                <motion.div
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 text-[10px] font-bold text-violet-400"
+                  animate={{ boxShadow: ['0 0 0px #7c3aed00', '0 0 8px #7c3aed40', '0 0 0px #7c3aed00'] }}
+                  transition={{ duration: 2.5, repeat: Infinity, delay: i * 0.4 }}
+                >
                   {step.id}
-                </div>
+                </motion.div>
                 <span className="text-[8px] font-semibold text-zinc-500 uppercase tracking-wide w-16 text-center leading-tight">
                   {step.label}
                 </span>
@@ -124,6 +171,429 @@ function PipelineHeader({ companyName }: { companyName: string }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Upgrade Modal ─────────────────────────────────────────────
+
+const PRO_FEATURES = [
+  'Automações IA avançadas',
+  'Campanhas em massa (WhatsApp + Email)',
+  'Relatórios avançados (DRE, fluxo de caixa)',
+  'Biblioteca de templates completa',
+  'Multi-usuário (até 3 membros)',
+  'Alertas ilimitados',
+  'Diagnósticos ilimitados',
+  'Suporte prioritário',
+]
+
+const SCALE_FEATURES = [
+  'Tudo do PRO, mais:',
+  'IA Multimodal (vídeos + imagens + áudio)',
+  'Geração de imagens IA para marketing',
+  'Voice AI — análise de ligações',
+  'Campanhas 100% automáticas (Autopilot)',
+  'Análise preditiva e IA futurista',
+  'Multi-usuário ilimitado',
+  'Suporte dedicado 24/7',
+]
+
+function UpgradeModal({ state, onClose }: { state: UpgradeModalState; onClose: () => void }) {
+  const isPro   = state.targetPlan === 'pro'
+  const accent  = isPro ? 'violet' : 'emerald'
+  const price   = isPro ? 'R$ 397' : 'R$ 697'
+  const label   = isPro ? 'PRO' : 'SCALE'
+  const features = isPro ? PRO_FEATURES : SCALE_FEATURES
+
+  if (typeof window === 'undefined') return null
+
+  return createPortal(
+    <AnimatePresence>
+      {state.open && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            key="modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+          />
+
+          {/* Modal */}
+          <motion.div
+            key="modal-content"
+            initial={{ opacity: 0, scale: 0.92, y: 24 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 24 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+          >
+            <div
+              className={cn(
+                'pointer-events-auto relative w-full max-w-md rounded-2xl border bg-zinc-900/95 p-7 shadow-2xl',
+                isPro
+                  ? 'border-violet-500/40 shadow-violet-500/10'
+                  : 'border-emerald-500/40 shadow-emerald-500/10',
+              )}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Glow */}
+              <div
+                className={cn(
+                  'absolute -top-16 left-1/2 h-40 w-64 -translate-x-1/2 rounded-full blur-3xl opacity-20',
+                  isPro ? 'bg-violet-500' : 'bg-emerald-500',
+                )}
+              />
+
+              {/* Close */}
+              <button
+                onClick={onClose}
+                className="absolute right-4 top-4 text-zinc-600 transition hover:text-zinc-400"
+              >
+                <X size={16} />
+              </button>
+
+              {/* Badge */}
+              <div className="relative mb-5 text-center">
+                <div
+                  className={cn(
+                    'mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border',
+                    isPro
+                      ? 'border-violet-500/40 bg-violet-500/15'
+                      : 'border-emerald-500/40 bg-emerald-500/15',
+                  )}
+                >
+                  {isPro ? <Crown size={26} className="text-violet-400" /> : <Rocket size={26} className="text-emerald-400" />}
+                </div>
+                <h2 className="text-lg font-bold text-white">
+                  Desbloqueie o plano{' '}
+                  <span className={isPro ? 'text-violet-400' : 'text-emerald-400'}>{label}</span>
+                </h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  {state.featureName} e muito mais pelo preço de um café por dia.
+                </p>
+              </div>
+
+              {/* Price */}
+              <div
+                className={cn(
+                  'mb-5 rounded-xl border p-4 text-center',
+                  isPro
+                    ? 'border-violet-500/20 bg-violet-500/5'
+                    : 'border-emerald-500/20 bg-emerald-500/5',
+                )}
+              >
+                <p className="text-3xl font-black text-white">{price}<span className="text-base font-normal text-zinc-500">/mês</span></p>
+                <p className="mt-0.5 text-xs text-zinc-500">Cancele a qualquer momento · Sem fidelidade</p>
+              </div>
+
+              {/* Features */}
+              <ul className="mb-6 space-y-2">
+                {features.map(f => (
+                  <li key={f} className="flex items-center gap-2 text-xs text-zinc-300">
+                    <CheckCircle2 size={13} className={cn('shrink-0', isPro ? 'text-violet-400' : 'text-emerald-400')} />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+
+              {/* CTA */}
+              <Link
+                href="/dashboard/billing"
+                onClick={onClose}
+                className={cn(
+                  'flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white transition active:scale-95',
+                  isPro
+                    ? 'bg-violet-600 hover:bg-violet-500 shadow-lg shadow-violet-500/20'
+                    : 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-500/20',
+                )}
+              >
+                <Zap size={15} />
+                Fazer Upgrade para {label}
+                <ArrowRight size={14} />
+              </Link>
+
+              <p className="mt-3 text-center text-[11px] text-zinc-600">
+                Pagamento seguro via cartão de crédito ou PIX
+              </p>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>,
+    document.body,
+  )
+}
+
+// ─── Locked Card ───────────────────────────────────────────────
+
+function LockedCard({
+  icon: Icon,
+  label,
+  desc,
+  color,
+  tier,
+  onUnlock,
+}: {
+  icon: React.ElementType
+  label: string
+  desc: string
+  color: string
+  tier: 'pro' | 'scale'
+  onUnlock: (tier: 'pro' | 'scale', label: string) => void
+}) {
+  const isPro = tier === 'pro'
+
+  return (
+    <motion.button
+      onClick={() => onUnlock(tier, label)}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-900/60 p-4 text-left transition-all hover:border-zinc-700"
+    >
+      {/* Blur overlay */}
+      <div className="pointer-events-none absolute inset-0 rounded-xl bg-zinc-950/40 backdrop-blur-[2px] transition-all group-hover:backdrop-blur-[1px]" />
+
+      {/* Lock icon center */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className={cn(
+          'flex h-10 w-10 items-center justify-center rounded-xl border',
+          isPro
+            ? 'border-violet-500/40 bg-violet-500/20'
+            : 'border-emerald-500/40 bg-emerald-500/20',
+        )}>
+          <Lock size={16} className={isPro ? 'text-violet-400' : 'text-emerald-400'} />
+        </div>
+      </div>
+
+      {/* Tier badge */}
+      <div className="absolute right-3 top-3 z-10">
+        <span className={cn(
+          'rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider',
+          isPro
+            ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30'
+            : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+        )}>
+          {isPro ? 'PRO' : 'SCALE'}
+        </span>
+      </div>
+
+      {/* Content (blurred) */}
+      <div
+        className="flex h-9 w-9 items-center justify-center rounded-xl"
+        style={{ background: `${color}15`, border: `1px solid ${color}20` }}
+      >
+        <Icon size={18} style={{ color }} />
+      </div>
+      <div>
+        <p className="text-xs font-semibold text-zinc-400">{label}</p>
+        <p className="mt-0.5 text-[11px] text-zinc-600">{desc}</p>
+      </div>
+    </motion.button>
+  )
+}
+
+// ─── Locked Features Section ───────────────────────────────────
+
+const PRO_LOCKED = [
+  { icon: Workflow,      label: 'Automações IA',      desc: 'Fluxos automáticos inteligentes', color: '#8b5cf6' },
+  { icon: Megaphone,     label: 'Campanhas em Massa',  desc: 'WhatsApp + Email ilimitado',      color: '#10b981' },
+  { icon: FileBarChart,  label: 'Relatórios Avançados',desc: 'DRE, fluxo de caixa, BI',        color: '#06b6d4' },
+  { icon: LayoutTemplate,label: 'Templates Completos', desc: 'Biblioteca com 200+ modelos',     color: '#f59e0b' },
+  { icon: UserPlus,      label: 'Multi-usuário',       desc: 'Até 3 membros da equipe',         color: '#ef4444' },
+]
+
+const SCALE_LOCKED = [
+  { icon: Video,      label: 'IA Multimodal',       desc: 'Analisa vídeo, áudio e imagem',  color: '#ec4899' },
+  { icon: ImageIcon,  label: 'Gera Imagens IA',     desc: 'Criativo de marketing por IA',   color: '#f97316' },
+  { icon: Radio,      label: 'Voice AI',            desc: 'Análise de ligações automática', color: '#06b6d4' },
+  { icon: Zap,        label: 'Autopilot Total',     desc: 'Campanhas 100% automáticas',     color: '#8b5cf6' },
+  { icon: LineChart,  label: 'Análise Preditiva',   desc: 'IA prevê tendências do negócio', color: '#10b981' },
+]
+
+function LockedFeaturesSection({
+  effectivePlan,
+  onUnlock,
+}: {
+  effectivePlan: EffectivePlan
+  onUnlock: (tier: 'pro' | 'scale', label: string) => void
+}) {
+  const showPro   = effectivePlan === 'free' || effectivePlan === 'starter'
+  const showScale = effectivePlan !== 'scale' && effectivePlan !== 'enterprise'
+
+  if (!showPro && !showScale) return null
+
+  return (
+    <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-5">
+      <div className="mb-5 flex items-center gap-2">
+        <Lock size={14} className="text-zinc-500" />
+        <h2 className="text-sm font-semibold text-white">Recursos para Desbloquear</h2>
+        <span className="text-[11px] text-zinc-600">Eleve o poder da sua IA</span>
+      </div>
+
+      {showPro && (
+        <div className="mb-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Crown size={12} className="text-violet-400" />
+            <p className="text-[11px] font-bold uppercase tracking-wider text-violet-400">Plano PRO — R$ 397/mês</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+            {PRO_LOCKED.map((f, i) => (
+              <motion.div
+                key={f.label}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+              >
+                <LockedCard {...f} tier="pro" onUnlock={onUnlock} />
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showScale && (
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <Rocket size={12} className="text-emerald-400" />
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Plano SCALE — R$ 697/mês</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+            {SCALE_LOCKED.map((f, i) => (
+              <motion.div
+                key={f.label}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 + 0.15 }}
+              >
+                <LockedCard {...f} tier="scale" onUnlock={onUnlock} />
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Upgrade nudge */}
+      <div className="mt-4 flex items-center justify-between rounded-xl border border-zinc-800/40 bg-zinc-950/40 px-4 py-3">
+        <p className="text-xs text-zinc-500">
+          <span className="text-zinc-300 font-medium">Mais de 80% dos usuários</span> que fazem upgrade recuperam o investimento no 1º mês.
+        </p>
+        <Link
+          href="/dashboard/billing"
+          className="ml-4 shrink-0 flex items-center gap-1.5 rounded-lg bg-violet-600/15 border border-violet-500/30 px-3 py-1.5 text-[11px] font-semibold text-violet-400 transition hover:bg-violet-600/25"
+        >
+          Ver planos <ArrowRight size={11} />
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+// ─── Opportunity Mini Cards ─────────────────────────────────────
+
+function urgencyDot(urgency: string) {
+  if (urgency === 'alta')  return 'bg-red-400'
+  if (urgency === 'media') return 'bg-amber-400'
+  return 'bg-emerald-400'
+}
+
+function OpportunityMiniCards({ onAskAI }: { onAskAI: (q: string) => void }) {
+  const [cards, setCards]       = useState<OpportunityCard[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [mounted, setMounted]   = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+    fetch('/api/creative/opportunities')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { cards?: OpportunityCard[] } | null) => {
+        if (d?.cards && d.cards.length > 0) setCards(d.cards.slice(0, 3))
+      })
+      .catch(() => {/* silent */ })
+      .finally(() => setLoading(false))
+  }, [mounted])
+
+  if (!loading && cards.length === 0) return null
+
+  return (
+    <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <Sparkles size={14} className="text-amber-400" />
+        <h2 className="text-sm font-semibold text-white">Motor de Oportunidades IA</h2>
+        <span className="text-[11px] text-zinc-600">Identificadas agora para você agir</span>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-3 py-4">
+          <Loader2 size={14} className="animate-spin text-violet-400" />
+          <p className="text-xs text-zinc-500">IA analisando oportunidades…</p>
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map((card, i) => (
+            <motion.div
+              key={card.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.08 }}
+              className="relative rounded-xl border border-zinc-800/60 bg-zinc-900/60 p-4"
+            >
+              {/* Urgency dot */}
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base leading-none">{card.emoji}</span>
+                  <div className="flex items-center gap-1.5">
+                    <motion.span
+                      className={cn('h-1.5 w-1.5 rounded-full', urgencyDot(card.urgency))}
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 1.8, repeat: Infinity }}
+                    />
+                    <span className={cn(
+                      'text-[9px] font-bold uppercase tracking-wider',
+                      card.urgency === 'alta' ? 'text-red-400' :
+                      card.urgency === 'media' ? 'text-amber-400' : 'text-emerald-400',
+                    )}>
+                      {card.urgency}
+                    </span>
+                  </div>
+                </div>
+                {card.value > 0 && (
+                  <span className="text-[11px] font-bold text-emerald-400">{fmtBRL(card.value)}</span>
+                )}
+              </div>
+
+              <p className="mb-1 text-xs font-semibold text-white leading-snug">{card.headline}</p>
+              <p className="text-[10px] text-zinc-500 leading-snug line-clamp-2">{card.description}</p>
+
+              {card.actions.length > 0 && (
+                <button
+                  onClick={() => onAskAI(card.headline)}
+                  className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-violet-400 hover:text-violet-300 transition"
+                >
+                  <Zap size={10} />
+                  {card.actions[0]}
+                </button>
+              )}
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex justify-end">
+        <Link
+          href="/dashboard/creative-ai"
+          className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-violet-400 transition"
+        >
+          Ver todas as oportunidades <ArrowRight size={10} />
+        </Link>
       </div>
     </div>
   )
@@ -187,22 +657,43 @@ function AICockpit({
   const greeting = hora < 12 ? '☀️ Bom dia' : hora < 18 ? '👋 Boa tarde' : '🌙 Boa noite'
   const companyName = session.nomeEmpresa ?? 'sua empresa'
 
+  const QUICK_PROMPTS = [
+    { label: 'Quem me deve dinheiro?',         icon: '💸' },
+    { label: 'Como aumentar meu faturamento?',  icon: '📈' },
+    { label: 'Analise meu negócio hoje',        icon: '🔍' },
+    { label: 'Quais clientes posso reativar?',  icon: '🔄' },
+  ]
+
   return (
-    <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 overflow-hidden">
+    <div className="relative rounded-2xl border border-violet-500/20 bg-zinc-900/40 overflow-hidden shadow-lg shadow-violet-500/5">
+      {/* Glow ring */}
+      <div className="pointer-events-none absolute inset-0 rounded-2xl">
+        <div className="absolute inset-0 rounded-2xl border border-violet-500/10" />
+        <div className="absolute -top-12 left-1/3 h-24 w-48 rounded-full bg-violet-500/8 blur-3xl" />
+      </div>
+
       {/* Top identity bar */}
-      <div className="flex items-center gap-4 border-b border-zinc-800/60 bg-zinc-900/60 px-5 py-3">
+      <div className="relative flex items-center gap-4 border-b border-zinc-800/60 bg-zinc-900/60 px-5 py-3">
         <div className="relative">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/15">
+          <motion.div
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/15"
+            animate={{ boxShadow: ['0 0 0px #7c3aed00', '0 0 12px #7c3aed35', '0 0 0px #7c3aed00'] }}
+            transition={{ duration: 3, repeat: Infinity }}
+          >
             <Bot size={20} className="text-violet-400" />
-          </div>
+          </motion.div>
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-zinc-900 bg-emerald-400" />
         </div>
         <div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-bold text-white">{aiName}</p>
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+            <motion.span
+              className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400"
+              animate={{ opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 2.5, repeat: Infinity }}
+            >
               Online e aprendendo
-            </span>
+            </motion.span>
           </div>
           <p className="text-xs text-zinc-500">Seu COO Inteligente</p>
         </div>
@@ -212,7 +703,7 @@ function AICockpit({
       </div>
 
       {/* Messages area */}
-      <div className="max-h-64 overflow-y-auto px-5 py-4 space-y-3">
+      <div className="relative max-h-64 overflow-y-auto px-5 py-4 space-y-3">
         {messages.map(msg => (
           <div
             key={msg.id}
@@ -293,8 +784,25 @@ function AICockpit({
         <div ref={endRef} />
       </div>
 
+      {/* Quick prompts */}
+      {messages.length <= 1 && (
+        <div className="px-5 pb-2 flex flex-wrap gap-2">
+          {QUICK_PROMPTS.map(p => (
+            <button
+              key={p.label}
+              onClick={() => onSendMessage(p.label)}
+              disabled={sending}
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-700/60 bg-zinc-800/40 px-2.5 py-1.5 text-[11px] text-zinc-400 transition hover:border-violet-500/30 hover:bg-violet-500/5 hover:text-violet-300 disabled:opacity-40"
+            >
+              <span>{p.icon}</span>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Inline input */}
-      <div className="border-t border-zinc-800/60 px-4 py-3 flex items-center gap-3">
+      <div className="relative border-t border-zinc-800/60 px-4 py-3 flex items-center gap-3">
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
@@ -305,7 +813,7 @@ function AICockpit({
         <button
           onClick={handleSend}
           disabled={!input.trim() || sending}
-          className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 text-white transition hover:bg-violet-500 disabled:opacity-40"
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 text-white transition hover:bg-violet-500 disabled:opacity-40 shadow-md shadow-violet-500/20"
         >
           {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
         </button>
@@ -323,6 +831,7 @@ interface ExecMetric {
   color:    string
   trend:    'up' | 'down' | 'neutral'
   desc:     string
+  urgent?:  boolean
 }
 
 function ExecutiveVision({ metrics }: { metrics: ExecMetric[] }) {
@@ -347,15 +856,24 @@ function ExecutiveVision({ metrics }: { metrics: ExecMetric[] }) {
               className="absolute inset-0 opacity-5"
               style={{ background: `radial-gradient(ellipse at top left, ${m.color}, transparent 70%)` }}
             />
+            {/* Pulse on urgent */}
+            {m.urgent && (
+              <motion.div
+                className="absolute inset-0 rounded-xl"
+                style={{ border: `1px solid ${m.color}50` }}
+                animate={{ opacity: [0, 0.6, 0] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
+            )}
             <p className="text-[10px] text-zinc-500 leading-tight mb-1">{m.label}</p>
-            <p className="text-lg font-bold text-white leading-none" style={{ color: m.color }}>
+            <p className="text-lg font-bold leading-none" style={{ color: m.color }}>
               {m.suffix === '' ? m.value : fmtBRL(m.value)}
               {m.suffix && m.suffix !== '' && (
                 <span className="text-xs font-normal text-zinc-500 ml-0.5">{m.suffix}</span>
               )}
             </p>
             <p className="mt-1.5 text-[10px] text-zinc-600 leading-snug">{m.desc}</p>
-            {/* mini sparkline placeholder */}
+            {/* mini sparkline */}
             <div className="mt-2 h-6 overflow-hidden opacity-40">
               <svg viewBox="0 0 60 24" className="w-full h-full" preserveAspectRatio="none">
                 <polyline
@@ -496,7 +1014,6 @@ function MultimodalInputBar({
   const docInputRef      = useRef<HTMLInputElement>(null)
   const sheetInputRef    = useRef<HTMLInputElement>(null)
 
-  // ── Upload one file ─────────────────────────────────────────
   async function uploadOneFile(file: File) {
     const tempId     = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
@@ -523,7 +1040,6 @@ function MultimodalInputBar({
     }
   }
 
-  // ── Handle file list ────────────────────────────────────────
   function handleFiles(files: FileList | File[]) {
     const valid = Array.from(files).filter(f => {
       if (f.type.startsWith('image/') && f.size > 10 * 1024 * 1024) return false
@@ -534,7 +1050,6 @@ function MultimodalInputBar({
     void Promise.all(valid.map(uploadOneFile))
   }
 
-  // ── Voice recording ─────────────────────────────────────────
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -561,14 +1076,12 @@ function MultimodalInputBar({
     mediaRecorderRef.current?.stop()
   }
 
-  // ── Drag & drop ─────────────────────────────────────────────
   function onDrop(e: React.DragEvent) {
     e.preventDefault()
     setIsDragging(false)
     if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files)
   }
 
-  // ── Send ─────────────────────────────────────────────────────
   function handleSend() {
     if (sending) return
     const ready = pendingFiles.filter(f => f.state === 'done' && f.result).map(f => f.result!)
@@ -732,7 +1245,6 @@ function MultimodalInputBar({
       {/* Toolbar */}
       <div className="border-t border-zinc-800/40 px-5 py-2.5">
         <div className="flex flex-wrap items-center gap-1">
-          {/* Image */}
           <button
             onClick={() => imageInputRef.current?.click()}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-300"
@@ -740,8 +1252,6 @@ function MultimodalInputBar({
             <Image size={13} />
             Imagem
           </button>
-
-          {/* Audio file */}
           <button
             onClick={() => audioInputRef.current?.click()}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-300"
@@ -749,8 +1259,6 @@ function MultimodalInputBar({
             <Paperclip size={13} />
             Áudio
           </button>
-
-          {/* Voice record */}
           <button
             onClick={isRecording ? stopRecording : startRecording}
             className={cn(
@@ -763,8 +1271,6 @@ function MultimodalInputBar({
             <Mic size={13} />
             {isRecording ? `Parar (${fmtTime(recordingTime)})` : 'Gravar voz'}
           </button>
-
-          {/* PDF / doc */}
           <button
             onClick={() => docInputRef.current?.click()}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-300"
@@ -772,8 +1278,6 @@ function MultimodalInputBar({
             <FileText size={13} />
             PDF
           </button>
-
-          {/* Spreadsheet */}
           <button
             onClick={() => sheetInputRef.current?.click()}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-300"
@@ -781,56 +1285,21 @@ function MultimodalInputBar({
             <Table size={13} />
             Planilha
           </button>
-
-          {/* Drag hint */}
-          <span className="ml-auto text-[10px] text-zinc-700">
-            ou arraste arquivos aqui
-          </span>
-
-          {/* Processing indicator */}
+          <span className="ml-auto text-[10px] text-zinc-700">ou arraste arquivos aqui</span>
           {uploadingCount > 0 && (
             <div className="flex items-center gap-1.5 rounded-lg bg-violet-500/10 px-2.5 py-1 ml-1">
               <Loader2 size={10} className="animate-spin text-violet-400" />
-              <span className="text-[10px] font-medium text-violet-400">
-                {uploadingCount} processando...
-              </span>
+              <span className="text-[10px] font-medium text-violet-400">{uploadingCount} processando...</span>
             </div>
           )}
         </div>
       </div>
 
       {/* Hidden file inputs */}
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-        multiple
-        className="hidden"
-        onChange={e => e.target.files && handleFiles(e.target.files)}
-      />
-      <input
-        ref={audioInputRef}
-        type="file"
-        accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/m4a,audio/x-m4a,audio/ogg,audio/webm"
-        className="hidden"
-        onChange={e => e.target.files && handleFiles(e.target.files)}
-      />
-      <input
-        ref={docInputRef}
-        type="file"
-        accept=".pdf,.doc,.docx,.txt"
-        multiple
-        className="hidden"
-        onChange={e => e.target.files && handleFiles(e.target.files)}
-      />
-      <input
-        ref={sheetInputRef}
-        type="file"
-        accept=".csv,.xlsx,.xls"
-        multiple
-        className="hidden"
-        onChange={e => e.target.files && handleFiles(e.target.files)}
-      />
+      <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" multiple className="hidden" onChange={e => e.target.files && handleFiles(e.target.files)} />
+      <input ref={audioInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/m4a,audio/x-m4a,audio/ogg,audio/webm" className="hidden" onChange={e => e.target.files && handleFiles(e.target.files)} />
+      <input ref={docInputRef}   type="file" accept=".pdf,.doc,.docx,.txt" multiple className="hidden" onChange={e => e.target.files && handleFiles(e.target.files)} />
+      <input ref={sheetInputRef} type="file" accept=".csv,.xlsx,.xls"      multiple className="hidden" onChange={e => e.target.files && handleFiles(e.target.files)} />
     </div>
   )
 }
@@ -1003,10 +1472,10 @@ function QuickAccess() {
 // ─── Autonomous Panel (right panel) ──────────────────────────
 
 const AUTONOMOUS_TASKS = [
-  { label: 'Monitorando inadimplência', color: '#ef4444' },
+  { label: 'Monitorando inadimplência',      color: '#ef4444' },
   { label: 'Enviando lembretes de cobrança', color: '#f59e0b' },
-  { label: 'Analisando oportunidades', color: '#8b5cf6' },
-  { label: 'Gerando relatórios diários', color: '#10b981' },
+  { label: 'Analisando oportunidades',       color: '#8b5cf6' },
+  { label: 'Gerando relatórios diários',     color: '#10b981' },
 ]
 
 function AutonomousPanel({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
@@ -1017,7 +1486,6 @@ function AutonomousPanel({ enabled, onToggle }: { enabled: boolean; onToggle: ()
           <Bot size={13} className="text-cyan-400" />
           <p className="text-xs font-semibold text-white">IA Autônoma</p>
         </div>
-        {/* Toggle */}
         <button
           onClick={onToggle}
           className={cn(
@@ -1108,23 +1576,23 @@ function buildProactiveMessage(
   let actionCards: AIChatMessage['actionCards'] = []
 
   if (perda > 5000) {
-    content = `Detectei que ${session.nomeEmpresa ?? 'sua empresa'} está com R$ ${Math.round(perda).toLocaleString('pt-BR')} em perdas estimadas. Posso iniciar a cobrança automática ou você deseja analisar primeiro?`
+    content = `Analisei ${session.nomeEmpresa ?? 'sua empresa'} hoje. Detectei R$ ${Math.round(perda).toLocaleString('pt-BR')} em perdas estimadas. Posso iniciar a cobrança automática ou você deseja analisar primeiro?`
     actionCards = [
       { label: 'Iniciar cobrança automática', href: '/dashboard/financeiro?filter=inadimplentes', color: '#ef4444' },
-      { label: 'Ver clientes inadimplentes', href: '/dashboard/financeiro?filter=inadimplentes', color: '#f59e0b' },
-      { label: 'Analisar mais', href: '/dashboard/revenue', color: '#8b5cf6' },
+      { label: 'Ver clientes inadimplentes',  href: '/dashboard/financeiro?filter=inadimplentes', color: '#f59e0b' },
+      { label: 'Analisar mais',               href: '/dashboard/revenue',                         color: '#8b5cf6' },
     ]
   } else if (ganho > 0) {
-    content = `Identifiquei R$ ${Math.round(ganho).toLocaleString('pt-BR')} em oportunidades de crescimento para ${session.nomeEmpresa ?? 'sua empresa'}. Quer que eu analise as melhores ações?`
+    content = `Analisei ${session.nomeEmpresa ?? 'sua empresa'} hoje. Identifiquei R$ ${Math.round(ganho).toLocaleString('pt-BR')} em oportunidades de crescimento. Quer que eu mostre as melhores ações?`
     actionCards = [
       { label: 'Ver oportunidades', href: '/dashboard/growth-map', color: '#10b981' },
-      { label: 'Analisar vendas', href: '/dashboard/sales', color: '#f59e0b' },
+      { label: 'Analisar vendas',   href: '/dashboard/sales',      color: '#f59e0b' },
     ]
   } else {
-    content = `Olá! Sou ${aiName}, seu COO inteligente. Estou monitorando sua operação. Pergunte-me qualquer coisa ou escolha uma das ações abaixo.`
+    content = `Olá! Sou ${aiName}, seu COO inteligente. Estou monitorando sua operação em tempo real. Pergunte-me qualquer coisa — desde "quem me deve dinheiro?" até "como aumentar meu faturamento?"`
     actionCards = [
       { label: 'Ver relatório financeiro', href: '/dashboard/revenue', color: '#8b5cf6' },
-      { label: 'Analisar leads', href: '/dashboard/leads', color: '#06b6d4' },
+      { label: 'Analisar leads',           href: '/dashboard/leads',   color: '#06b6d4' },
     ]
   }
 
@@ -1142,7 +1610,7 @@ function buildProactiveMessage(
 export default function DashboardPage() {
   const router = useRouter()
 
-  const [session, setSession]       = useState<SessionData>({})
+  const [session, setSession]         = useState<SessionData>({})
   const [diagnostico, setDiagnostico] = useState<Diagnostico | null>(null)
   const [alertas, setAlertas]         = useState<Alerta[]>([])
   const [insights, setInsights]       = useState<InsightAcao[]>([])
@@ -1152,6 +1620,10 @@ export default function DashboardPage() {
   const [autonomous, setAutonomous]   = useState(true)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [aiName, setAiName]           = useState('NEXUS IA')
+  const [effectivePlan, setEffectivePlan] = useState<EffectivePlan>('free')
+  const [upgradeModal, setUpgradeModal]   = useState<UpgradeModalState>({
+    open: false, targetPlan: 'pro', featureName: '',
+  })
 
   // ── Load data ──────────────────────────────────────────────
   useEffect(() => {
@@ -1169,6 +1641,14 @@ export default function DashboardPage() {
         }
         setSession(sess)
         if (company.ai_name) setAiName(company.ai_name)
+
+        // Fetch effective plan from auth session
+        try {
+          const authRes  = await fetch('/api/auth/session')
+          const authData = await authRes.json() as { user?: { effectivePlan?: string } }
+          const plan = (authData?.user?.effectivePlan ?? 'free') as EffectivePlan
+          setEffectivePlan(plan)
+        } catch { /* keep default */ }
 
         // Diagnostico + insights + alertas (existing lib)
         const diag = gerarDiagnostico({
@@ -1190,7 +1670,6 @@ export default function DashboardPage() {
         setMessages([proactive])
       } catch (err) {
         console.error('Dashboard load error:', err)
-        // Still show with defaults
         const proactive = buildProactiveMessage({}, null, 'NEXUS IA')
         setMessages([proactive])
       } finally {
@@ -1247,7 +1726,6 @@ export default function DashboardPage() {
 
     // Full AI chat (streaming SSE)
     try {
-      // Build effective message for the AI when file-only (no text)
       const aiMessage = text || (attachments.length
         ? `Analise ${attachments.length === 1 ? 'este arquivo' : 'estes arquivos'}: ${attachments.map(a => a.name).join(', ')}`
         : '')
@@ -1315,6 +1793,15 @@ export default function DashboardPage() {
     }
   }, [sending, conversationId, router])
 
+  // ── Upgrade modal handler ──────────────────────────────────
+  function openUpgrade(tier: 'pro' | 'scale', featureName: string) {
+    setUpgradeModal({ open: true, targetPlan: tier, featureName })
+  }
+
+  function closeUpgrade() {
+    setUpgradeModal(s => ({ ...s, open: false }))
+  }
+
   // ── Executive metrics ──────────────────────────────────────
   const execMetrics: ExecMetric[] = diagnostico ? [
     {
@@ -1323,6 +1810,7 @@ export default function DashboardPage() {
       color:   '#ef4444',
       trend:   'down',
       desc:    'Em atrasos',
+      urgent:  diagnostico.perdaTotalEstimada > 10000,
     },
     {
       label:   'Dinheiro Recuperável',
@@ -1345,6 +1833,7 @@ export default function DashboardPage() {
       color:   '#f59e0b',
       trend:   'neutral',
       desc:    'Precisam atenção',
+      urgent:  true,
     },
     {
       label:   'Oport. Identificadas',
@@ -1383,8 +1872,11 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {/* Upgrade Modal (portal) */}
+      <UpgradeModal state={upgradeModal} onClose={closeUpgrade} />
+
       {/* Pipeline header */}
-      <PipelineHeader companyName={session.nomeEmpresa ?? 'sua empresa'} />
+      <PipelineHeader companyName={session.nomeEmpresa ?? 'sua empresa'} plan={effectivePlan} />
 
       {/* Body: center + right panel */}
       <div className="flex flex-1 overflow-hidden">
@@ -1400,13 +1892,22 @@ export default function DashboardPage() {
             sending={sending}
           />
 
-          {/* 6. Executive Vision */}
+          {/* 2. Opportunity Engine (AI mini-cards) */}
+          <OpportunityMiniCards onAskAI={q => { void sendMessage(q) }} />
+
+          {/* 3. Executive Vision */}
           {execMetrics.length > 0 && <ExecutiveVision metrics={execMetrics} />}
 
-          {/* 3. Smart Action Cards */}
+          {/* 4. Smart Action Cards */}
           <SmartActionCards />
 
-          {/* 7. Multimodal bottom input */}
+          {/* 5. Locked Features */}
+          <LockedFeaturesSection
+            effectivePlan={effectivePlan}
+            onUnlock={openUpgrade}
+          />
+
+          {/* 6. Multimodal bottom input */}
           <MultimodalInputBar onSend={sendMessage} sending={sending} />
         </main>
 
