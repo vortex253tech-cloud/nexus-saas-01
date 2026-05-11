@@ -29,27 +29,41 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // Guard: if Supabase env vars are missing, pass through rather than crash
+  const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseKey) {
+    // Misconfigured environment — let the page handle it gracefully
+    return NextResponse.next()
+  }
+
   // Build a cookie-aware Supabase client to refresh tokens at the edge
   let res = NextResponse.next({ request: req })
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => req.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value))
-          res = NextResponse.next({ request: req })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            res.cookies.set(name, value, options),
-          )
+  let user = null
+  try {
+    const supabase = createServerClient(
+      supabaseUrl,
+      supabaseKey,
+      {
+        cookies: {
+          getAll: () => req.cookies.getAll(),
+          setAll: (cookiesToSet) => {
+            cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value))
+            res = NextResponse.next({ request: req })
+            cookiesToSet.forEach(({ name, value, options }) =>
+              res.cookies.set(name, value, options),
+            )
+          },
         },
       },
-    },
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
+    )
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  } catch {
+    // If Supabase check fails, treat as unauthenticated
+    user = null
+  }
 
   // ── Unauthenticated ──────────────────────────────────────────
   if (!user) {
