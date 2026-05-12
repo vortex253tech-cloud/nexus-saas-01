@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 // Routes accessible without authentication
-const PUBLIC_PATHS = ['/', '/start', '/onboarding', '/resultado', '/planos', '/setup']
+const PUBLIC_PATHS = ['/', '/v1', '/start', '/onboarding', '/resultado', '/planos', '/setup']
 const AUTH_PAGES   = ['/login', '/signup']
 
 // Prefixes that always bypass the middleware
@@ -11,8 +11,31 @@ const PUBLIC_PREFIXES = [
   '/api/check-config', '/_next', '/favicon', '/auth',
 ]
 
+// ─── Domain → Landing Page mapping ───────────────────────────────────────
+// Each domain serves a different landing page via internal rewrite.
+// The URL the visitor sees never changes.
+const DOMAIN_LANDING: Record<string, string> = {
+  // New design (matches screenshots) — production domains
+  'nexusaas.com.br':         '/',
+  'www.nexusaas.com.br':     '/',
+  // Old cinematic design — Vercel preview URL
+  'nexus-saas-theta.vercel.app': '/v1',
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
+  const host = req.headers.get('host') ?? ''
+
+  // ── Domain-based landing page routing ───────────────────────────────────
+  // Only applies to root path so /dashboard, /login etc. are unaffected
+  if (pathname === '/') {
+    const target = DOMAIN_LANDING[host]
+    if (target && target !== '/') {
+      const url = req.nextUrl.clone()
+      url.pathname = target
+      return NextResponse.rewrite(url)
+    }
+  }
 
   // Pass through Next.js internals and static assets
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
