@@ -41,6 +41,7 @@ export async function proxy(req: NextRequest) {
   let res = NextResponse.next({ request: req })
 
   let user = null
+  let authResolved = false
   try {
     const supabase = createServerClient(
       supabaseUrl,
@@ -60,10 +61,15 @@ export async function proxy(req: NextRequest) {
     )
     const { data } = await supabase.auth.getUser()
     user = data.user
+    authResolved = true
   } catch {
-    // If Supabase check fails, treat as unauthenticated
-    user = null
+    // Supabase unreachable — pass through and let the page handle auth
+    authResolved = false
   }
+
+  // If we couldn't verify auth (edge Supabase failure), don't redirect
+  // — prevents redirect loops when the browser client has a valid session
+  if (!authResolved) return NextResponse.next()
 
   // ── Unauthenticated ──────────────────────────────────────────
   if (!user) {
