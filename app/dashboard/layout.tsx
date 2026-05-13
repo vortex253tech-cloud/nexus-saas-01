@@ -886,6 +886,8 @@ function CheckoutSync({ onSuccess }: { onSuccess: () => void }) {
 // ─── Layout ────────────────────────────────────────────────────
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { user, loading: authLoading } = useAuth()
+  const router = useRouter()
   const [sidebarOpen,  setSidebarOpen]  = useState(false)
   const [activeDrawer, setActiveDrawer] = useState<DrawerType | null>(null)
   const [chatOpen,     setChatOpen]     = useState(false)
@@ -898,6 +900,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     effectivePlan: 'free',
     isPastDue: false,
   })
+
+  // Client-side auth guard — belt-and-suspenders behind the edge proxy
+  useEffect(() => {
+    if (!authLoading && !user) {
+      const redirect = typeof window !== 'undefined' ? window.location.pathname : '/dashboard'
+      router.replace(`/login?redirect=${encodeURIComponent(redirect)}`)
+    }
+  }, [authLoading, user, router])
 
   // Resolve company_id once on mount
   useEffect(() => {
