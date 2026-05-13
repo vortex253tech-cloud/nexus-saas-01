@@ -25,6 +25,11 @@ export default function DashboardError({
           <p className="mt-1 text-sm text-zinc-400">
             O painel encontrou um problema inesperado. Tente recarregar.
           </p>
+          {error.message && (
+            <p className="mt-2 font-mono text-xs text-red-400 break-all max-w-sm">
+              {error.message}
+            </p>
+          )}
           {error.digest && (
             <p className="mt-2 font-mono text-[10px] text-zinc-600">
               Ref: {error.digest}

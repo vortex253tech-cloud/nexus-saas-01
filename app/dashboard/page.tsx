@@ -201,13 +201,16 @@ const SCALE_FEATURES = [
 ]
 
 function UpgradeModal({ state, onClose }: { state: UpgradeModalState; onClose: () => void }) {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
   const isPro   = state.targetPlan === 'pro'
   const accent  = isPro ? 'violet' : 'emerald'
   const price   = isPro ? 'R$ 397' : 'R$ 697'
   const label   = isPro ? 'PRO' : 'SCALE'
   const features = isPro ? PRO_FEATURES : SCALE_FEATURES
 
-  if (typeof window === 'undefined') return null
+  if (!mounted) return null
 
   return createPortal(
     <AnimatePresence>
@@ -1472,10 +1475,10 @@ function QuickAccess() {
 // ─── Autonomous Panel (right panel) ──────────────────────────
 
 const AUTONOMOUS_TASKS = [
-  { label: 'Monitorando inadimplência',      color: '#ef4444' },
-  { label: 'Enviando lembretes de cobrança', color: '#f59e0b' },
-  { label: 'Analisando oportunidades',       color: '#8b5cf6' },
-  { label: 'Gerando relatórios diários',     color: '#10b981' },
+  { label: 'Monitorando inadimplência',      color: '#ef4444', delay: 0   },
+  { label: 'Enviando lembretes de cobrança', color: '#f59e0b', delay: 0.5 },
+  { label: 'Analisando oportunidades',       color: '#8b5cf6', delay: 1.0 },
+  { label: 'Gerando relatórios diários',     color: '#10b981', delay: 1.5 },
 ]
 
 function AutonomousPanel({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
@@ -1517,7 +1520,7 @@ function AutonomousPanel({ enabled, onToggle }: { enabled: boolean; onToggle: ()
                 className="h-1.5 w-1.5 rounded-full shrink-0"
                 style={{ background: t.color }}
                 animate={{ opacity: [0.4, 1, 0.4] }}
-                transition={{ duration: 2, repeat: Infinity, delay: Math.random() * 2 }}
+                transition={{ duration: 2, repeat: Infinity, delay: t.delay }}
               />
               <span className="text-[11px] text-zinc-400">{t.label}</span>
             </div>
