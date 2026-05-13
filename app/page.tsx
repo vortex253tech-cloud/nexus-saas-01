@@ -5,47 +5,41 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import {
   Brain, Zap, TrendingUp, Users, MessageSquare, BarChart3,
-  ArrowRight, Check, Shield, Activity, Sparkles, Target,
+  ArrowRight, Shield, Activity, Sparkles, Target,
   DollarSign, Clock, Rocket, X, CheckCircle2,
   Bot, Megaphone, Wallet, Settings, Layout, ShoppingCart,
   GitBranch, FileText, ChevronUp, Cpu, Globe, Layers,
+  LogIn, Eye, EyeOff, Lock, Mail, Check,
 } from 'lucide-react'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface WaitlistEntry { name: string; company: string; ago: string }
 
 // ─── Static Data ──────────────────────────────────────────────────────────────
 
-const NAV_LINKS = ['Produto', 'Solução', 'Como funciona', 'Casos', 'Empresa', 'Recursos']
+const NAV_LINKS = ['Produto', 'Soluções', 'Integrações', 'Casos', 'Segurança', 'Preços']
 
 const AI_ACTIVITIES = [
   { icon: '⚠️', text: 'Cobrança enviada para 23 clientes', time: 'há 1 min', color: '#F59E0B' },
   { icon: '✅', text: 'Campanha de reativação criada', time: 'há 2 min', color: '#22C55E' },
   { icon: '👤', text: 'Novo lead qualificado encontrado', time: 'há 5 min', color: '#6C5CE7' },
   { icon: '📊', text: 'Análise financeira concluída', time: 'há 7 min', color: '#3B82F6' },
-  { icon: '⚠️', text: 'Alerta de fluxo de caixa gerado', time: 'há 9 min', color: '#F59E0B' },
+  { icon: '⚡', text: 'Automação executada com sucesso', time: 'há 9 min', color: '#F59E0B' },
 ]
 
 const TICKER_CARDS = [
   { icon: '💬', color: '#22C55E', label: 'Cobrança enviada', value: 'R$ 4.820 recuperados', time: 'há 1 min' },
   { icon: '📣', color: '#7C3AED', label: 'Campanha criada', value: '12.430 pessoas alcançadas', time: 'há 2 min' },
-  { icon: '👤', color: '#06B6D4', label: 'Novo cliente detectado', value: 'Lead qualificado automaticamente', time: 'há 3 min' },
+  { icon: '👤', color: '#06B6D4', label: 'Lead qualificado', value: 'Detectado automaticamente', time: 'há 3 min' },
   { icon: '📈', color: '#F59E0B', label: 'Oportunidade encontrada', value: 'R$ 18.400 identificados', time: 'há 4 min' },
 ]
 
 const LOGOS = ['AGÊNCIA X', 'PRIME CO.', 'DOCTORS+', 'FIT CLUB', 'DELIVERY KING', 'SHOP TECH', 'CONTABILIZA+']
 
 const STATS = [
-  { label: 'Empresas na waitlist', value: '127+', sub: 'e crescendo rápido', spark: [20, 28, 22, 35, 30, 45, 38, 55, 50, 62, 58, 75, 70, 85, 80, 95], color: '#7C3AED', extra: true },
-  { label: 'Dinheiro recuperado', value: 'R$ 2.4M+', sub: 'em cobranças automáticas', spark: [15, 22, 18, 30, 25, 38, 45, 40, 55, 50, 65, 60, 72, 80, 76, 90], color: '#7C3AED' },
+  { label: 'Empresas ativas', value: '340+', sub: 'operando com NEXUS', spark: [20, 28, 22, 35, 30, 45, 38, 55, 50, 62, 58, 75, 70, 85, 80, 95], color: '#7C3AED' },
+  { label: 'Receita recuperada', value: 'R$ 2.4M+', sub: 'em cobranças automáticas', spark: [15, 22, 18, 30, 25, 38, 45, 40, 55, 50, 65, 60, 72, 80, 76, 90], color: '#7C3AED' },
   { label: 'Tarefas executadas', value: '89.431+', sub: 'pela IA nas últimas 24h', spark: [30, 25, 35, 30, 42, 38, 50, 45, 60, 55, 65, 62, 70, 75, 72, 85], color: '#7C3AED' },
-  { label: 'Tempo economizado', value: '12.843h+', sub: 'de trabalho manual', spark: [10, 18, 14, 25, 20, 32, 28, 40, 35, 48, 44, 55, 50, 62, 58, 70], color: '#00F5D4' },
+  { label: 'Horas economizadas', value: '12.843h+', sub: 'de trabalho manual', spark: [10, 18, 14, 25, 20, 32, 28, 40, 35, 48, 44, 55, 50, 62, 58, 70], color: '#00F5D4' },
   { label: 'Aumento médio', value: '+43%', sub: 'de eficiência operacional', spark: [20, 15, 25, 20, 30, 28, 38, 34, 44, 40, 50, 46, 55, 52, 60, 68], color: '#00F5D4' },
 ]
-
-const PAIN_POINTS = ['Processos manuais e lentos', 'Falta de visibilidade dos dados', 'Perda de vendas todos os dias', 'Equipes sobrecarregadas', 'Decisões baseadas em achismos', 'Ferramentas desconectadas']
-const SOLUTIONS = ['IA executa tarefas críticas 24/7', 'Decisões com base em dados reais', 'Mais vendas, menos esforço', 'Equipes focadas no que importa', 'Previsões, análises e estratégias', 'Todo sistema conectado']
 
 const FEATURES = [
   { icon: MessageSquare, color: '#22C55E', bg: 'rgba(34,197,94,0.1)', title: 'Atendimento e Cobrança', desc: 'Analisa fluxo de caixa, responde e cobra clientes automaticamente pelo WhatsApp.' },
@@ -54,14 +48,6 @@ const FEATURES = [
   { icon: Users, color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', title: 'Vendas e Leads', desc: 'Qualifica leads, faz follow-up e aumenta conversão de vendas automaticamente.' },
   { icon: Bot, color: '#7C3AED', bg: 'rgba(124,58,237,0.1)', title: 'Agentes IA', desc: 'Agentes especializados executam operações complexas por você.' },
   { icon: Zap, color: '#EAB308', bg: 'rgba(234,179,8,0.1)', title: 'Automações', desc: 'Automatiza processos repetitivos e integra todos os setores.' },
-]
-
-const WAITLIST_FEED: WaitlistEntry[] = [
-  { name: 'Agência Growth', company: 'Marketing', ago: 'há 1 minuto' },
-  { name: 'Clínica Vitalis', company: 'Saúde', ago: 'há 2 minutos' },
-  { name: 'Loja Tech Plus', company: 'E-commerce', ago: 'há 3 minutos' },
-  { name: 'Consult Contábil', company: 'Contabilidade', ago: 'há 3 minutos' },
-  { name: 'Delivery Fast', company: 'Logística', ago: 'há 4 minutos' },
 ]
 
 const FLOAT_NOTIFS = [
@@ -87,6 +73,21 @@ const ORBIT_ICONS = [
   { Icon: Megaphone, color: '#22C55E', label: 'Campanhas' },
   { Icon: Users, color: '#06B6D4', label: 'Clientes' },
   { Icon: Globe, color: '#EC4899', label: 'Integrações' },
+]
+
+const LIVE_FEED = [
+  { icon: '💰', text: 'Fatura recuperada — R$ 3.200', time: 'agora mesmo', color: '#22C55E', company: 'Clínica Vitalis' },
+  { icon: '🎯', text: 'Lead qualificado — score 94', time: 'há 12s', color: '#7C3AED', company: 'Agência Growth' },
+  { icon: '📣', text: 'Campanha lançada — 9.400 contatos', time: 'há 28s', color: '#F59E0B', company: 'Delivery Fast' },
+  { icon: '⚡', text: 'Automação executada — 340 tarefas', time: 'há 45s', color: '#06B6D4', company: 'Tech Plus' },
+  { icon: '📊', text: 'Alerta financeiro gerado', time: 'há 1 min', color: '#EC4899', company: 'Prime Co.' },
+]
+
+const TRUST_ITEMS = [
+  { icon: Activity, label: 'IA Operando 24/7', desc: 'Sistemas ativos ininterruptamente', color: '#22C55E' },
+  { icon: Shield, label: 'Infraestrutura Segura', desc: 'Criptografia de ponta a ponta', color: '#3B82F6' },
+  { icon: Cpu, label: 'Inteligência em Tempo Real', desc: 'Decisões em milissegundos', color: '#7C3AED' },
+  { icon: Globe, label: 'Integrado a Tudo', desc: '+120 integrações nativas', color: '#F59E0B' },
 ]
 
 const CHART_BASE = [18, 22, 19, 28, 24, 32, 27, 38, 34, 45, 40, 52, 47, 60, 55, 68, 62, 75, 70, 82, 76, 85, 80, 90, 85, 95, 88, 98, 92, 100]
@@ -313,10 +314,8 @@ function NexusOS() {
         boxShadow: '0 0 0 1px rgba(124,58,237,0.12), 0 40px 120px rgba(0,0,0,0.85), 0 0 80px rgba(124,58,237,0.12), inset 0 1px 0 rgba(255,255,255,0.05)',
       }}
     >
-      {/* Glow bar top */}
       <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(124,58,237,0.6), rgba(0,245,212,0.3), transparent)' }} />
 
-      {/* Title Bar */}
       <div className="flex items-center justify-between px-4 py-2.5"
         style={{ background: 'rgba(4,6,14,0.95)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="flex items-center gap-2">
@@ -335,9 +334,7 @@ function NexusOS() {
         </div>
       </div>
 
-      {/* Body */}
       <div className="flex" style={{ height: 420 }}>
-        {/* Sidebar */}
         <div className="w-36 shrink-0 py-3 flex flex-col"
           style={{ background: 'rgba(4,6,14,0.5)', borderRight: '1px solid rgba(255,255,255,0.05)' }}>
           {SIDEBAR_NAV.map((item, i) => (
@@ -353,14 +350,12 @@ function NexusOS() {
           ))}
         </div>
 
-        {/* Main */}
         <div className="flex-1 p-4 overflow-hidden flex flex-col gap-3">
           <div className="flex items-center justify-between shrink-0">
             <p className="text-xs font-bold text-white/70">Centro Operacional</p>
             <span className="text-[9px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(34,197,94,0.12)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>SISTEMA ONLINE</span>
           </div>
 
-          {/* 4 KPI Cards */}
           <div className="grid grid-cols-4 gap-2">
             {[
               { label: 'FATURAMENTO', value: fmtBRL(faturamento), delta: '+12% vs mês ant.', up: true },
@@ -383,9 +378,7 @@ function NexusOS() {
             ))}
           </div>
 
-          {/* Bottom: Chart + Activity */}
           <div className="grid grid-cols-2 gap-2 flex-1 min-h-0">
-            {/* Chart */}
             <div className="rounded-xl p-3 flex flex-col"
               style={{ background: 'rgba(124,58,237,0.04)', border: '1px solid rgba(124,58,237,0.15)' }}>
               <div className="flex items-center justify-between mb-2 shrink-0">
@@ -402,7 +395,6 @@ function NexusOS() {
               </div>
             </div>
 
-            {/* Activity Feed */}
             <div className="rounded-xl p-3 flex flex-col"
               style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
               <div className="flex items-center justify-between mb-2 shrink-0">
@@ -428,7 +420,6 @@ function NexusOS() {
         </div>
       </div>
 
-      {/* Status Bar */}
       <div className="flex items-center justify-between px-4 py-2"
         style={{ background: 'rgba(4,6,14,0.95)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2">
@@ -439,21 +430,18 @@ function NexusOS() {
         <span className="font-black" style={{ fontSize: '9px', color: '#22C55E', letterSpacing: '0.05em' }}>100% ONLINE</span>
       </div>
 
-      {/* Glow bar bottom */}
       <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(0,245,212,0.3), rgba(124,58,237,0.5), transparent)' }} />
     </div>
   )
 }
 
-// ─── Holographic Brain (Autonomous Section) ───────────────────────────────────
+// ─── Holographic Brain ────────────────────────────────────────────────────────
 
 function HolographicBrain() {
   return (
     <div className="relative flex items-center justify-center" style={{ width: 360, height: 360 }}>
-      {/* Outer glow */}
       <div className="absolute inset-0 rounded-full" style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%)', filter: 'blur(30px)' }} />
 
-      {/* Orbit ring 1 */}
       <motion.div className="absolute rounded-full"
         style={{ width: 300, height: 300, border: '1px solid rgba(124,58,237,0.2)', top: '50%', left: '50%', marginTop: -150, marginLeft: -150 }}
         animate={{ rotate: 360 }} transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}>
@@ -473,7 +461,6 @@ function HolographicBrain() {
         })}
       </motion.div>
 
-      {/* Orbit ring 2 */}
       <motion.div className="absolute rounded-full"
         style={{ width: 200, height: 200, border: '1px solid rgba(0,245,212,0.15)', top: '50%', left: '50%', marginTop: -100, marginLeft: -100 }}
         animate={{ rotate: -360 }} transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}>
@@ -493,7 +480,6 @@ function HolographicBrain() {
         })}
       </motion.div>
 
-      {/* Center brain */}
       <div className="relative z-10 w-24 h-24 rounded-full flex items-center justify-center"
         style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.3), rgba(91,33,182,0.5))', border: '1px solid rgba(124,58,237,0.5)', boxShadow: '0 0 40px rgba(124,58,237,0.4), 0 0 80px rgba(124,58,237,0.15)' }}>
         <motion.div animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
@@ -501,7 +487,6 @@ function HolographicBrain() {
         </motion.div>
       </div>
 
-      {/* Pulsing rings */}
       {[1, 2, 3].map(i => (
         <motion.div key={i} className="absolute rounded-full"
           style={{ border: '1px solid rgba(124,58,237,0.15)', top: '50%', left: '50%' }}
@@ -513,40 +498,208 @@ function HolographicBrain() {
   )
 }
 
-// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+// ─── Login Modal ──────────────────────────────────────────────────────────────
 
-export default function HomePage() {
-  const [name, setName] = useState('')
+function LoginModal({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState('')
-  const [company, setCompany] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [count, setCount] = useState(127)
-  const [feedIdx, setFeedIdx] = useState(0)
+  const [password, setPassword] = useState('')
+  const [showPass, setShowPass] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    const t1 = setInterval(() => setCount(v => v + (Math.random() > 0.75 ? 1 : 0)), 5000)
-    const t2 = setInterval(() => setFeedIdx(i => (i + 1) % WAITLIST_FEED.length), 3500)
-    return () => { clearInterval(t1); clearInterval(t2) }
-  }, [])
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !name) return
-    setSubmitting(true)
-    try {
-      await fetch('/api/waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, company }),
-      })
-    } catch { /* silent */ }
-    setSubmitted(true)
-    setSubmitting(false)
+    setLoading(true)
+    await new Promise(r => setTimeout(r, 800))
+    window.location.href = '/login'
   }
 
   return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)' }}
+      >
+        <motion.div
+          className="relative w-full max-w-sm"
+          initial={{ opacity: 0, y: 24, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.97 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
+          onClick={e => e.stopPropagation()}
+          style={{
+            background: 'rgba(8,11,22,0.98)',
+            border: '1px solid rgba(124,58,237,0.35)',
+            borderRadius: 24,
+            boxShadow: '0 0 0 1px rgba(124,58,237,0.1), 0 40px 100px rgba(0,0,0,0.9), 0 0 80px rgba(124,58,237,0.15)',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Top glow line */}
+          <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(124,58,237,0.8), rgba(0,245,212,0.4), transparent)' }} />
+
+          <div className="p-8">
+            {/* Close */}
+            <button
+              onClick={onClose}
+              className="absolute top-5 right-5 w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}
+            >
+              <X size={14} />
+            </button>
+
+            {/* Logo */}
+            <div className="flex flex-col items-center mb-8">
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', boxShadow: '0 0 28px rgba(124,58,237,0.5)' }}>
+                <Brain size={22} color="#fff" />
+              </div>
+              <h2 className="text-xl font-black text-white mb-1">Entrar no NEXUS</h2>
+              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.38)' }}>Acesse seu sistema operacional de IA</p>
+            </div>
+
+            {/* OAuth buttons */}
+            <div className="space-y-2.5 mb-6">
+              <Link href="/api/auth/google" onClick={onClose}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm text-white transition-all hover:scale-[1.02]"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Continuar com Google
+              </Link>
+
+              <Link href="/api/auth/microsoft" onClick={onClose}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm text-white transition-all hover:scale-[1.02]"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                <svg width="18" height="18" viewBox="0 0 23 23" fill="none">
+                  <path d="M1 1h10v10H1z" fill="#F25022"/>
+                  <path d="M12 1h10v10H12z" fill="#7FBA00"/>
+                  <path d="M1 12h10v10H1z" fill="#00A4EF"/>
+                  <path d="M12 12h10v10H12z" fill="#FFB900"/>
+                </svg>
+                Continuar com Microsoft
+              </Link>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
+              <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.28)' }}>ou acesse com email</span>
+              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleLogin} className="space-y-3">
+              <div className="relative">
+                <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.28)' }} />
+                <input
+                  type="email"
+                  placeholder="seu@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className="w-full pl-10 pr-4 py-3 rounded-xl text-sm text-white outline-none transition-all placeholder:text-white/25"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  onFocus={e => (e.target.style.borderColor = 'rgba(124,58,237,0.6)')}
+                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+                />
+              </div>
+
+              <div className="relative">
+                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.28)' }} />
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  placeholder="Senha"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  className="w-full pl-10 pr-10 py-3 rounded-xl text-sm text-white outline-none transition-all placeholder:text-white/25"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  onFocus={e => (e.target.style.borderColor = 'rgba(124,58,237,0.6)')}
+                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+                />
+                <button type="button" onClick={() => setShowPass(v => !v)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-80"
+                  style={{ color: 'rgba(255,255,255,0.28)' }}>
+                  {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+
+              <div className="flex justify-end">
+                <Link href="/login#forgot" onClick={onClose} className="text-xs transition-colors hover:opacity-80" style={{ color: '#A78BFA' }}>
+                  Esqueci minha senha
+                </Link>
+              </div>
+
+              <motion.button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-70"
+                style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', color: '#fff', boxShadow: '0 0 28px rgba(124,58,237,0.45)' }}
+                whileHover={{ scale: 1.02, boxShadow: '0 0 40px rgba(124,58,237,0.6)' }}
+                whileTap={{ scale: 0.98 }}
+              >
+                {loading ? (
+                  <motion.div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                    animate={{ rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }} />
+                ) : (
+                  <><LogIn size={14} /> Entrar no NEXUS</>
+                )}
+              </motion.button>
+            </form>
+
+            {/* Footer */}
+            <p className="text-center text-xs mt-5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              Não tem conta?{' '}
+              <Link href="/signup" onClick={onClose} className="font-semibold transition-colors hover:opacity-80" style={{ color: '#A78BFA' }}>
+                Criar conta
+              </Link>
+            </p>
+
+            {/* Security badge */}
+            <div className="flex items-center justify-center gap-2 mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <Shield size={11} style={{ color: 'rgba(255,255,255,0.22)' }} />
+              <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.22)' }}>Conexão criptografada · SSL · LGPD Compliant</span>
+            </div>
+          </div>
+
+          {/* Bottom glow line */}
+          <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(0,245,212,0.3), rgba(124,58,237,0.5), transparent)' }} />
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+
+export default function HomePage() {
+  const [loginOpen, setLoginOpen] = useState(false)
+  const [liveFeedIdx, setLiveFeedIdx] = useState(0)
+
+  useEffect(() => {
+    const t = setInterval(() => setLiveFeedIdx(i => (i + 1) % LIVE_FEED.length), 2800)
+    return () => clearInterval(t)
+  }, [])
+
+  // Lock body scroll when modal open
+  useEffect(() => {
+    document.body.style.overflow = loginOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [loginOpen])
+
+  return (
     <div style={{ background: '#05070E', color: '#EAEAF0', minHeight: '100vh', overflowX: 'hidden' }}>
+
+      {/* ── LOGIN MODAL ───────────────────────────────────────────────────────── */}
+      {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
 
       {/* ── NAV ──────────────────────────────────────────────────────────────── */}
       <motion.nav
@@ -571,15 +724,21 @@ export default function HomePage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Link href="/login" className="text-sm text-white/45 hover:text-white/80 transition-colors px-3 py-2 rounded-lg hidden md:block"
-            style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+          <button
+            onClick={() => setLoginOpen(true)}
+            className="text-sm text-white/55 hover:text-white/90 transition-all px-3.5 py-2 rounded-xl hidden md:flex items-center gap-1.5"
+            style={{ border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)' }}
+          >
+            <LogIn size={13} />
             Entrar
-          </Link>
-          <a href="#waitlist"
+          </button>
+          <button
+            onClick={() => setLoginOpen(true)}
             className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl transition-all hover:scale-105 hover:shadow-lg"
-            style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', color: '#fff', boxShadow: '0 0 24px rgba(124,58,237,0.4)' }}>
-            Entrar na lista de espera <ArrowRight size={14} />
-          </a>
+            style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', color: '#fff', boxShadow: '0 0 24px rgba(124,58,237,0.4)' }}
+          >
+            Entrar no Nexus <ArrowRight size={14} />
+          </button>
         </div>
       </motion.nav>
 
@@ -589,7 +748,6 @@ export default function HomePage() {
         <GlowBg />
         <Particles />
 
-        {/* Animated gradient sweep */}
         <motion.div className="absolute inset-0 pointer-events-none"
           style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.04) 0%, transparent 50%, rgba(0,245,212,0.03) 100%)' }}
           animate={{ opacity: [0.6, 1, 0.6] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }} />
@@ -599,21 +757,21 @@ export default function HomePage() {
           <div>
             <motion.div
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-6"
-              style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.4)' }}
+              style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)' }}
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.05 }}
             >
-              <motion.span className="w-1.5 h-1.5 rounded-full" style={{ background: '#7C3AED' }}
+              <motion.span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22C55E' }}
                 animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity }} />
-              <span className="text-xs font-black tracking-widest" style={{ color: '#A78BFA' }}>BETA LIMITADO</span>
+              <span className="text-xs font-black tracking-widest" style={{ color: '#4ADE80' }}>SISTEMA IA ONLINE</span>
             </motion.div>
 
             <motion.h1
               className="text-4xl md:text-5xl font-black leading-[1.05] mb-5"
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.65, delay: 0.1 }}
             >
-              <span className="text-white">O primeiro sistema<br />operacional empresarial<br />com </span>
+              <span className="text-white">O sistema operacional<br />inteligente para<br /></span>
               <span style={{ background: 'linear-gradient(90deg,#7C3AED,#A78BFA,#00F5D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundSize: '200% 100%' }}>
-                IA executiva.
+                sua empresa.
               </span>
             </motion.h1>
 
@@ -622,19 +780,20 @@ export default function HomePage() {
               style={{ color: 'rgba(255,255,255,0.5)', maxWidth: 440 }}
               initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}
             >
-              O NEXUS entende, decide e executa operações críticas da sua empresa em tempo real. Mais vendas, menos trabalho manual, mais resultados.
+              O NEXUS entende, decide e executa operações críticas da sua empresa em tempo real. IA executiva que nunca para.
             </motion.p>
 
             <motion.div
               className="flex flex-wrap items-center gap-3 mb-8"
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.3 }}
             >
-              <a href="#waitlist"
+              <button
+                onClick={() => setLoginOpen(true)}
                 className="flex items-center gap-2 px-6 py-3.5 rounded-xl font-bold text-sm transition-all hover:scale-105"
                 style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', color: '#fff', boxShadow: '0 0 32px rgba(124,58,237,0.5), 0 4px 24px rgba(0,0,0,0.3)' }}>
-                Entrar na lista de espera <ArrowRight size={15} />
-              </a>
-              <a href="#features"
+                <LogIn size={15} /> Acessar o NEXUS
+              </button>
+              <a href="#demo"
                 className="flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-sm text-white/55 hover:text-white/90 transition-all"
                 style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)' }}>
                 <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.08)' }}>▶</span>
@@ -655,7 +814,7 @@ export default function HomePage() {
                 ))}
               </div>
               <span className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                <span className="text-white font-semibold">+{count} empresas</span> já garantiram acesso antecipado
+                <span className="text-white font-semibold">+340 empresas</span> já operam com NEXUS
               </span>
             </motion.div>
 
@@ -664,7 +823,7 @@ export default function HomePage() {
                 { icon: '🤖', label: 'IA 24/7 Operando' },
                 { icon: '🔒', label: 'Dados 100% Seguros' },
                 { icon: '⚡', label: 'Setup em Minutos' },
-                { icon: '💳', label: 'Sem cartão de crédito' },
+                { icon: '🌐', label: '+120 Integrações' },
               ].map(b => (
                 <div key={b.label} className="flex items-center gap-1.5">
                   <span style={{ fontSize: 13 }}>{b.icon}</span>
@@ -681,11 +840,8 @@ export default function HomePage() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.85, delay: 0.2, ease: 'easeOut' }}
           >
-            {/* Dashboard glow aura */}
             <div className="absolute -inset-8 rounded-3xl pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, rgba(124,58,237,0.15) 0%, transparent 70%)', filter: 'blur(20px)' }} />
-
             <FloatingNotification />
-
             <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}>
               <NexusOS />
             </motion.div>
@@ -704,7 +860,7 @@ export default function HomePage() {
               transition={{ delay: i * 0.07, duration: 0.4 }}
               whileHover={{ borderColor: `${c.color}40`, boxShadow: `0 0 24px ${c.color}12` }}
             >
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 transition-all"
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0"
                 style={{ background: `${c.color}18`, border: `1px solid ${c.color}30` }}>
                 {c.icon}
               </div>
@@ -721,7 +877,7 @@ export default function HomePage() {
       {/* ── LOGO BAR ─────────────────────────────────────────────────────────── */}
       <section className="px-6 py-8" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <p className="text-center text-[10px] font-black tracking-widest mb-6" style={{ color: 'rgba(255,255,255,0.25)' }}>
-          EMPRESAS QUE ACREDITAM NO FUTURO
+          EMPRESAS QUE JÁ OPERAM COM NEXUS
         </p>
         <div className="flex flex-wrap items-center justify-center gap-10">
           {LOGOS.map((l, i) => (
@@ -748,19 +904,6 @@ export default function HomePage() {
                   <p className="text-[10px] mb-2" style={{ color: 'rgba(255,255,255,0.38)' }}>{s.label}</p>
                   <p className="font-black text-2xl text-white leading-none mb-1" style={{ color: s.color === '#00F5D4' ? '#00F5D4' : '#fff' }}>{s.value}</p>
                   <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{s.sub}</p>
-                  {s.extra && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="flex -space-x-1.5">
-                        {['#7C3AED', '#06B6D4', '#22C55E'].map((c, idx) => (
-                          <div key={idx} className="w-5 h-5 rounded-full border-2 text-[8px] font-bold text-white flex items-center justify-center"
-                            style={{ background: c, borderColor: '#05070E' }}>
-                            {String.fromCharCode(65 + idx)}
-                          </div>
-                        ))}
-                      </div>
-                      <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>+12 hoje</span>
-                    </div>
-                  )}
                 </div>
                 <Sparkline data={s.spark} color={s.color} />
               </div>
@@ -814,14 +957,12 @@ export default function HomePage() {
         <GlowBg />
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, rgba(124,58,237,0.08) 0%, transparent 65%)' }} />
         <div className="relative z-10 max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
-          {/* Left: Holographic brain */}
           <Reveal>
             <div className="flex justify-center lg:justify-start">
               <HolographicBrain />
             </div>
           </Reveal>
 
-          {/* Right: content */}
           <div>
             <Reveal>
               <p className="text-xs font-black tracking-widest mb-4" style={{ color: '#7C3AED' }}>A NOVA ERA</p>
@@ -832,7 +973,7 @@ export default function HomePage() {
                 </span>
               </h2>
               <p className="text-sm leading-relaxed mb-8" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: 420 }}>
-                O NEXUS não é mais uma ferramenta. É o sistema operacional da sua empresa — com IA que entende, decide, executa e aprende sozinha.
+                O NEXUS não é uma ferramenta. É o sistema operacional da sua empresa — com IA que entende, decide, executa e aprende sozinha.
               </p>
             </Reveal>
 
@@ -858,7 +999,7 @@ export default function HomePage() {
         <GridBackground />
         <div className="relative z-10 max-w-7xl mx-auto">
           <Reveal className="mb-3">
-            <p className="text-xs font-black tracking-widest" style={{ color: '#7C3AED' }}>O QUE O NEXUS EXECUTA NA SUA EMPRESA</p>
+            <p className="text-xs font-black tracking-widest" style={{ color: '#7C3AED' }}>O QUE O NEXUS EXECUTA</p>
           </Reveal>
           <Reveal delay={0.05} className="mb-10">
             <h2 className="text-3xl font-black text-white">Módulos de IA para cada setor.</h2>
@@ -880,7 +1021,7 @@ export default function HomePage() {
                     e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
                   }}
                 >
-                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-4 transition-all duration-300"
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-4"
                     style={{ background: f.bg, boxShadow: `0 0 16px ${f.color}20` }}>
                     <f.icon size={18} style={{ color: f.color }} />
                   </div>
@@ -901,13 +1042,13 @@ export default function HomePage() {
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at bottom, rgba(0,245,212,0.05) 0%, transparent 60%)' }} />
         <div className="relative z-10 max-w-7xl mx-auto">
           <Reveal className="text-center mb-12">
-            <p className="text-xs font-black tracking-widest mb-3" style={{ color: '#00F5D4' }}>RESULTADOS REAIS EM TEMPO REAL</p>
+            <p className="text-xs font-black tracking-widest mb-3" style={{ color: '#00F5D4' }}>INTELIGÊNCIA OPERACIONAL</p>
             <h2 className="text-3xl font-black text-white">Números que provam o impacto.</h2>
           </Reveal>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             {[
-              { label: 'Empresas na waitlist', num: 127, suffix: '+', color: '#7C3AED', spark: STATS[0].spark },
-              { label: 'Receita recuperada', prefix: 'R$ ', num: 2400000, suffix: '+', display: 'R$ 2.4M+', color: '#7C3AED', spark: STATS[1].spark },
+              { label: 'Empresas ativas', num: 340, suffix: '+', color: '#7C3AED', spark: STATS[0].spark },
+              { label: 'Receita recuperada', num: 2400000, display: 'R$ 2.4M+', color: '#7C3AED', spark: STATS[1].spark },
               { label: 'Tarefas pela IA /24h', num: 89431, suffix: '+', color: '#7C3AED', spark: STATS[2].spark },
               { label: 'Horas economizadas', num: 12843, suffix: 'h+', color: '#00F5D4', spark: STATS[3].spark },
               { label: 'Eficiência média', prefix: '+', num: 43, suffix: '%', color: '#00F5D4', spark: STATS[4].spark },
@@ -931,184 +1072,292 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── WAITLIST ─────────────────────────────────────────────────────────── */}
-      <section id="waitlist" className="px-6 lg:px-12 py-20 relative overflow-hidden">
-        <GlowBg />
+      {/* ── LIVE OPERATIONAL SYSTEM ──────────────────────────────────────────── */}
+      <section id="demo" className="px-6 lg:px-12 py-20 relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.012)' }}>
         <GridBackground />
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at top, rgba(124,58,237,0.07) 0%, transparent 60%)' }} />
 
-        {/* Neon border glow */}
-        <div className="absolute inset-4 rounded-3xl pointer-events-none" style={{ border: '1px solid rgba(124,58,237,0.2)', boxShadow: '0 0 60px rgba(124,58,237,0.08) inset' }} />
+        <div className="relative z-10 max-w-7xl mx-auto">
+          <Reveal className="text-center mb-14">
+            <p className="text-xs font-black tracking-widest mb-3" style={{ color: '#7C3AED' }}>SISTEMA AO VIVO</p>
+            <h2 className="text-3xl md:text-4xl font-black text-white mb-4">A IA operando agora.</h2>
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.45)', maxWidth: 480, margin: '0 auto' }}>
+              Em tempo real, o NEXUS está executando tarefas, gerando insights e operando empresas ao redor do Brasil.
+            </p>
+          </Reveal>
 
-        <div className="relative z-10 max-w-7xl mx-auto grid lg:grid-cols-3 gap-10 items-start">
-          {/* Left copy */}
-          <Reveal>
-            <div>
-              <motion.div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-5"
-                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}
-                animate={{ boxShadow: ['0 0 12px rgba(239,68,68,0.2)', '0 0 24px rgba(239,68,68,0.35)', '0 0 12px rgba(239,68,68,0.2)'] } as any}
-                transition={{ duration: 2, repeat: Infinity }}>
-                <motion.span className="w-1.5 h-1.5 rounded-full bg-red-400"
-                  animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1, repeat: Infinity }} />
-                <span className="text-xs font-black tracking-widest" style={{ color: '#F87171' }}>VAGAS LIMITADAS</span>
-              </motion.div>
+          <div className="grid lg:grid-cols-3 gap-6 items-start">
+            {/* Left: Live feed */}
+            <Reveal className="lg:col-span-2">
+              <div className="rounded-2xl overflow-hidden"
+                style={{ background: '#080B16', border: '1px solid rgba(124,58,237,0.2)', boxShadow: '0 0 60px rgba(124,58,237,0.08)' }}>
+                <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(124,58,237,0.6), transparent)' }} />
 
-              <h2 className="text-3xl font-black leading-tight mb-4 text-white">
-                Junte-se ao grupo seleto que está{' '}
-                <span style={{ background: 'linear-gradient(90deg,#7C3AED,#00F5D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                  construindo o futuro.
-                </span>
-              </h2>
-              <p className="text-sm leading-relaxed mb-8" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                O beta é limitado. Garanta seu acesso antecipado antes que as vagas acabem.
-              </p>
-
-              {/* FOMO counter */}
-              <div className="p-4 rounded-2xl" style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <motion.span className="w-2 h-2 rounded-full bg-violet-400"
-                    animate={{ scale: [1, 1.4, 1] }} transition={{ duration: 1.5, repeat: Infinity }} />
-                  <span className="text-xs font-black text-violet-300 tracking-wider">AO VIVO AGORA</span>
+                <div className="flex items-center justify-between px-5 py-3.5"
+                  style={{ background: 'rgba(4,6,14,0.9)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="flex items-center gap-2">
+                    <motion.span className="w-1.5 h-1.5 rounded-full bg-green-400"
+                      animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1, repeat: Infinity }} />
+                    <span className="text-xs font-black text-white/70 tracking-wider">FEED OPERACIONAL — AO VIVO</span>
+                  </div>
+                  <span className="text-[9px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(124,58,237,0.15)', color: '#A78BFA', border: '1px solid rgba(124,58,237,0.3)' }}>
+                    {LIVE_FEED.length} eventos agora
+                  </span>
                 </div>
-                <p className="text-2xl font-black text-white mb-0.5">{count} <span className="text-sm font-normal text-white/50">empresas na fila</span></p>
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>+12 entraram nas últimas 2 horas</p>
-              </div>
-            </div>
-          </Reveal>
 
-          {/* Center form */}
-          <Reveal delay={0.1}>
-            <div className="p-6 rounded-2xl relative"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(124,58,237,0.3)' }}>
-              {/* Neon top line */}
-              <div style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: 1, background: 'linear-gradient(90deg, transparent, rgba(124,58,237,0.8), transparent)' }} />
-
-              <p className="font-black text-white text-sm mb-5">Garanta seu acesso antecipado ao NEXUS.</p>
-
-              <AnimatePresence mode="wait">
-                {submitted ? (
-                  <motion.div key="ok" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                    className="text-center py-8">
-                    <div className="text-5xl mb-4">🎉</div>
-                    <p className="font-black text-white text-lg mb-1">Você está na lista!</p>
-                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>Enviaremos seu acesso em breve.</p>
-                  </motion.div>
-                ) : (
-                  <motion.form key="form" onSubmit={handleSubmit} className="space-y-3" initial={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    {[
-                      { ph: 'Seu nome', val: name, set: setName, type: 'text', req: true },
-                      { ph: 'Seu e-mail', val: email, set: setEmail, type: 'email', req: true },
-                      { ph: 'Nome da sua empresa', val: company, set: setCompany, type: 'text', req: false },
-                    ].map(field => (
-                      <input key={field.ph} type={field.type} placeholder={field.ph} value={field.val}
-                        onChange={e => field.set(e.target.value)} required={field.req}
-                        className="w-full px-3.5 py-3 rounded-xl text-sm text-white outline-none transition-all"
-                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
-                        onFocus={e => (e.target.style.borderColor = 'rgba(124,58,237,0.5)')}
-                        onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
-                      />
+                <div className="p-5 space-y-3">
+                  <AnimatePresence>
+                    {LIVE_FEED.map((item, i) => (
+                      <motion.div
+                        key={`${liveFeedIdx}-${i}`}
+                        className="flex items-center gap-4 p-4 rounded-xl"
+                        style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${item.color}18` }}
+                        initial={{ opacity: 0, x: -16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.09, duration: 0.4 }}
+                      >
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
+                          style={{ background: `${item.color}12`, border: `1px solid ${item.color}25` }}>
+                          {item.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-xs font-bold text-white truncate">{item.text}</span>
+                          </div>
+                          <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{item.company}</span>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <motion.span className="w-1.5 h-1.5 rounded-full"
+                              style={{ background: item.color }}
+                              animate={{ opacity: [1, 0.3, 1] }}
+                              transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }} />
+                            <span style={{ fontSize: '9px', color: item.color, fontWeight: 700 }}>{item.time}</span>
+                          </div>
+                        </div>
+                      </motion.div>
                     ))}
-                    <motion.button type="submit" disabled={submitting}
-                      className="w-full py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-70 transition-all"
-                      style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', color: '#fff', boxShadow: '0 0 28px rgba(124,58,237,0.45)' }}
-                      whileHover={{ scale: 1.02, boxShadow: '0 0 40px rgba(124,58,237,0.6)' }}
-                      whileTap={{ scale: 0.98 }}>
-                      {submitting ? (
-                        <motion.div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
-                          animate={{ rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }} />
-                      ) : (
-                        <>Quero garantir meu acesso <ArrowRight size={14} /></>
-                      )}
-                    </motion.button>
-                    <div className="flex items-center justify-center gap-4 text-[10px]" style={{ color: 'rgba(255,255,255,0.28)' }}>
-                      <span>✓ Sem spam</span>
-                      <span>✓ Sem cartão de crédito</span>
-                      <span>✓ Cancelamento fácil</span>
+                  </AnimatePresence>
+                </div>
+
+                <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(0,245,212,0.3), transparent)' }} />
+              </div>
+            </Reveal>
+
+            {/* Right: Operational stats */}
+            <Reveal delay={0.1}>
+              <div className="space-y-4">
+                {[
+                  { label: 'Tarefas executadas agora', value: '2.431', unit: 'esta sessão', color: '#7C3AED', icon: Cpu },
+                  { label: 'Receita gerada hoje', value: 'R$ 94.200', unit: 'em tempo real', color: '#22C55E', icon: TrendingUp },
+                  { label: 'Clientes atendidos', value: '1.847', unit: 'nas últimas 2h', color: '#06B6D4', icon: Users },
+                  { label: 'Automações rodando', value: '340', unit: 'empresas ativas', color: '#F59E0B', icon: Zap },
+                ].map((item, i) => (
+                  <Reveal key={item.label} delay={i * 0.08}>
+                    <div className="p-4 rounded-2xl transition-all duration-300 hover:scale-[1.02]"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${item.color}20` }}
+                      onMouseEnter={e => (e.currentTarget.style.borderColor = `${item.color}45`)}
+                      onMouseLeave={e => (e.currentTarget.style.borderColor = `${item.color}20`)}>
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                          style={{ background: `${item.color}15`, border: `1px solid ${item.color}30` }}>
+                          <item.icon size={16} style={{ color: item.color }} />
+                        </div>
+                        <div>
+                          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.38)', marginBottom: 2 }}>{item.label}</p>
+                          <p className="font-black text-xl text-white leading-none">{item.value}</p>
+                          <p style={{ fontSize: '10px', color: item.color, marginTop: 2, fontWeight: 600 }}>{item.unit}</p>
+                        </div>
+                      </div>
                     </div>
-                  </motion.form>
-                )}
-              </AnimatePresence>
-            </div>
+                  </Reveal>
+                ))}
+
+                <Reveal delay={0.35}>
+                  <button
+                    onClick={() => setLoginOpen(true)}
+                    className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+                    style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', color: '#fff', boxShadow: '0 0 28px rgba(124,58,237,0.4)' }}
+                  >
+                    <LogIn size={14} /> Começar agora
+                  </button>
+                </Reveal>
+              </div>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ── TRUST & AUTHORITY ────────────────────────────────────────────────── */}
+      <section className="px-6 lg:px-12 py-16 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, rgba(34,197,94,0.04) 0%, transparent 60%)' }} />
+        <div className="relative z-10 max-w-7xl mx-auto">
+          <Reveal className="text-center mb-12">
+            <p className="text-xs font-black tracking-widest mb-3" style={{ color: '#22C55E' }}>INFRAESTRUTURA DE NÍVEL ENTERPRISE</p>
+            <h2 className="text-3xl font-black text-white">Construído para operar.<br />Projetado para confiar.</h2>
           </Reveal>
 
-          {/* Right live feed */}
-          <Reveal delay={0.2}>
-            <div className="p-5 rounded-2xl"
-              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
-              <div className="flex items-center gap-2 mb-4">
-                <motion.span className="w-1.5 h-1.5 rounded-full bg-red-400"
-                  animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 0.8, repeat: Infinity }} />
-                <span className="text-[10px] font-black tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>ENTRADAS EM TEMPO REAL</span>
-              </div>
-              <div className="space-y-2">
-                <AnimatePresence>
-                  {WAITLIST_FEED.map((entry, i) => (
-                    <motion.div key={`${feedIdx}-${i}`}
-                      className="flex items-center gap-3 p-3 rounded-xl"
-                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
-                      initial={{ opacity: 0, x: 14 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.08, duration: 0.35 }}
-                    >
-                      <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black text-white shrink-0"
-                        style={{ background: `hsl(${i * 65},60%,42%)`, boxShadow: `0 0 10px hsl(${i * 65},60%,42%)40` }}>
-                        {entry.name[0]}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-white truncate">{entry.name}</p>
-                        <p className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                          entrou na waitlist {entry.ago}
-                        </p>
-                      </div>
-                      <CheckCircle2 size={12} color="#22C55E" className="shrink-0" />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+            {TRUST_ITEMS.map((item, i) => (
+              <Reveal key={item.label} delay={i * 0.08}>
+                <div className="p-6 rounded-2xl text-center transition-all duration-300 hover:scale-[1.02]"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${item.color}20` }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = `${item.color}45`
+                    e.currentTarget.style.boxShadow = `0 0 30px ${item.color}10`
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = `${item.color}20`
+                    e.currentTarget.style.boxShadow = 'none'
+                  }}>
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                    style={{ background: `${item.color}12`, border: `1px solid ${item.color}30`, boxShadow: `0 0 20px ${item.color}15` }}>
+                    <item.icon size={22} style={{ color: item.color }} />
+                  </div>
+                  <h3 className="font-black text-white text-sm mb-1.5">{item.label}</h3>
+                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>{item.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
 
-              {/* Bottom FOMO bar */}
-              <div className="mt-4 p-3 rounded-xl text-center" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
-                <p className="text-xs font-black" style={{ color: '#22C55E' }}>🔥 Alta demanda hoje</p>
-                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>Não perca sua vaga no beta</p>
+          {/* System status bar */}
+          <Reveal>
+            <div className="p-5 rounded-2xl"
+              style={{ background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)' }}>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <motion.span className="w-2.5 h-2.5 rounded-full bg-green-400"
+                    animate={{ scale: [1, 1.3, 1], opacity: [1, 0.7, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }} />
+                  <span className="text-sm font-black text-white">Todos os sistemas operacionais</span>
+                </div>
+                <div className="flex flex-wrap gap-6">
+                  {[
+                    { label: 'API', value: '99.98%' },
+                    { label: 'IA Engine', value: '100%' },
+                    { label: 'Automações', value: '99.95%' },
+                    { label: 'Dados', value: '100%' },
+                  ].map(s => (
+                    <div key={s.label} className="text-center">
+                      <p className="text-[10px] font-black" style={{ color: '#22C55E' }}>{s.value}</p>
+                      <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{s.label}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </Reveal>
         </div>
       </section>
 
+      {/* ── FINAL CTA ────────────────────────────────────────────────────────── */}
+      <section className="px-6 lg:px-12 py-24 relative overflow-hidden">
+        <GlowBg />
+        <GridBackground />
+        <div className="absolute inset-4 rounded-3xl pointer-events-none"
+          style={{ border: '1px solid rgba(124,58,237,0.15)', boxShadow: '0 0 80px rgba(124,58,237,0.06) inset' }} />
+
+        <div className="relative z-10 max-w-3xl mx-auto text-center">
+          <Reveal>
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-8"
+              style={{ background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.35)' }}>
+              <motion.span className="w-1.5 h-1.5 rounded-full bg-violet-400"
+                animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity }} />
+              <span className="text-xs font-black tracking-widest" style={{ color: '#A78BFA' }}>PORTAL DE ACESSO</span>
+            </div>
+
+            <h2 className="text-4xl md:text-5xl font-black leading-tight mb-6">
+              <span className="text-white">Sua empresa merece um<br /></span>
+              <span style={{ background: 'linear-gradient(90deg,#7C3AED,#A78BFA,#00F5D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                sistema operacional inteligente.
+              </span>
+            </h2>
+
+            <p className="text-base leading-relaxed mb-10" style={{ color: 'rgba(255,255,255,0.48)', maxWidth: 480, margin: '0 auto 40px' }}>
+              Junte-se a centenas de empresas que já operam com inteligência artificial executiva. Comece hoje.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <motion.button
+                onClick={() => setLoginOpen(true)}
+                className="flex items-center gap-2 px-8 py-4 rounded-xl font-black text-base transition-all"
+                style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', color: '#fff', boxShadow: '0 0 40px rgba(124,58,237,0.5)' }}
+                whileHover={{ scale: 1.04, boxShadow: '0 0 60px rgba(124,58,237,0.65)' }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <LogIn size={16} /> Acessar o NEXUS
+              </motion.button>
+
+              <motion.a
+                href="#"
+                className="flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-base transition-all"
+                style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.65)', background: 'rgba(255,255,255,0.03)' }}
+                whileHover={{ scale: 1.03, color: 'rgba(255,255,255,0.9)', borderColor: 'rgba(255,255,255,0.3)' }}
+              >
+                Agendar uma demo <ArrowRight size={15} />
+              </motion.a>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-6 mt-10">
+              {[
+                { icon: <Shield size={13} />, label: 'SSL & LGPD' },
+                { icon: <Activity size={13} />, label: 'Uptime 99.98%' },
+                { icon: <Cpu size={13} />, label: 'IA 24/7' },
+                { icon: <Globe size={13} />, label: '+120 integrações' },
+              ].map(b => (
+                <div key={b.label} className="flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  {b.icon}
+                  <span style={{ fontSize: '11px' }}>{b.label}</span>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* ── FOOTER ───────────────────────────────────────────────────────────── */}
-      <footer className="px-6 lg:px-12 py-12" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(3,4,10,0.95)' }}>
+      <footer className="px-6 lg:px-12 py-14" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(3,4,10,0.97)' }}>
         <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-5 gap-10 mb-10">
+          <div className="grid md:grid-cols-6 gap-10 mb-12">
             <div className="md:col-span-2">
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center"
                   style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', boxShadow: '0 0 12px rgba(124,58,237,0.35)' }}>
                   <Brain size={15} color="#fff" />
                 </div>
-                <span className="font-black text-white">NEXUS</span>
+                <span className="font-black text-white text-lg">NEXUS</span>
               </div>
-              <p className="text-xs leading-relaxed mb-4" style={{ color: 'rgba(255,255,255,0.3)', maxWidth: 220 }}>
-                O primeiro sistema operacional empresarial com IA executiva.
+              <p className="text-xs leading-relaxed mb-5" style={{ color: 'rgba(255,255,255,0.3)', maxWidth: 220 }}>
+                O sistema operacional inteligente para empresas que querem operar no futuro.
               </p>
-              <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.15)' }}>
-                <motion.span className="w-1.5 h-1.5 rounded-full bg-green-400"
-                  animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.3, repeat: Infinity }} />
-                <span className="text-[10px] font-black" style={{ color: '#22C55E' }}>NEXUS IA OPERANDO 24/7</span>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.15)' }}>
+                  <motion.span className="w-1.5 h-1.5 rounded-full bg-green-400"
+                    animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.3, repeat: Infinity }} />
+                  <span className="text-[10px] font-black" style={{ color: '#22C55E' }}>IA OPERANDO 24/7</span>
+                </div>
+                <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>Todos os sistemas funcionando</p>
               </div>
-              <p className="text-[10px] mt-2" style={{ color: 'rgba(255,255,255,0.2)' }}>Todos os sistemas funcionando perfeitamente</p>
             </div>
 
             {[
-              { title: 'Produto', links: ['Recursos', 'Preços', 'Integrações'] },
-              { title: 'Solução', links: ['Por Segmento', 'Casos de Uso', 'Benefícios'] },
-              { title: 'Empresa', links: ['Sobre nós', 'Carreiras', 'Contato'] },
-              { title: 'Legal', links: ['Privacidade', 'Termos', 'Segurança'] },
+              { title: 'Produto', links: ['Visão Geral', 'Módulos', 'Preços', 'Roadmap'] },
+              { title: 'Soluções', links: ['Por Segmento', 'Agências', 'Saúde', 'E-commerce'] },
+              { title: 'Plataforma', links: ['API', 'Integrações', 'Documentação', 'Status'] },
+              { title: 'Empresa', links: ['Sobre', 'Segurança', 'Login', 'Suporte'] },
             ].map(col => (
               <div key={col.title}>
-                <p className="text-xs font-black text-white/40 mb-3 uppercase tracking-wider">{col.title}</p>
-                <ul className="space-y-2">
+                <p className="text-xs font-black text-white/40 mb-4 uppercase tracking-wider">{col.title}</p>
+                <ul className="space-y-2.5">
                   {col.links.map(l => (
-                    <li key={l}><a href="#" className="text-xs text-white/22 hover:text-white/55 transition-colors">{l}</a></li>
+                    <li key={l}>
+                      <a href={l === 'Login' ? '#' : '#'}
+                        onClick={l === 'Login' ? (e) => { e.preventDefault(); setLoginOpen(true) } : undefined}
+                        className="text-xs text-white/22 hover:text-white/60 transition-colors">
+                        {l}
+                      </a>
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -1118,9 +1367,11 @@ export default function HomePage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-6 text-[11px]"
             style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.18)' }}>
             <p>© 2026 NEXUS IA. Todos os direitos reservados.</p>
-            <div className="flex gap-4">
-              <span>🔒 SSL Secured</span>
-              <span>🇧🇷 LGPD Compliant</span>
+            <div className="flex gap-5">
+              <a href="#" className="hover:text-white/40 transition-colors">Privacidade</a>
+              <a href="#" className="hover:text-white/40 transition-colors">Termos</a>
+              <span>🔒 SSL</span>
+              <span>🇧🇷 LGPD</span>
               <span>Feito no Brasil</span>
             </div>
           </div>
