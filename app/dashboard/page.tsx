@@ -676,18 +676,21 @@ function AICockpit({
   sending: boolean
 }) {
   const [input, setInput] = useState('')
+  const [greeting, setGreeting] = useState('👋 Olá')
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+
+  useEffect(() => {
+    const hora = new Date().getHours()
+    setGreeting(hora < 12 ? '☀️ Bom dia' : hora < 18 ? '👋 Boa tarde' : '🌙 Boa noite')
+  }, [])
 
   function handleSend() {
     if (!input.trim() || sending) return
     onSendMessage(input.trim())
     setInput('')
   }
-
-  const hora = new Date().getHours()
-  const greeting = hora < 12 ? '☀️ Bom dia' : hora < 18 ? '👋 Boa tarde' : '🌙 Boa noite'
   const companyName = session.nomeEmpresa ?? 'sua empresa'
 
   const QUICK_PROMPTS = [
