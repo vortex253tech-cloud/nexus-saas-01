@@ -1,0 +1,129 @@
+{
+  "name": "NEXUS - Email D+9 Urgência",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c3d4e5f6-0003-0003-0003-000000000001",
+      "name": "Todo dia 10h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://nexusaas.com.br/api/waitlist/send-sequence",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer nexus_cron_2025"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"step\": 4, \"days_ago\": 9, \"remaining_spots\": 23}"
+      },
+      "id": "c3d4e5f6-0003-0003-0003-000000000002",
+      "name": "Disparar Email Urgência",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "notes": "Atualize remaining_spots conforme as vagas reais diminuem"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-3",
+              "leftValue": "={{ $json.failed }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "c3d4e5f6-0003-0003-0003-000000000003",
+      "name": "Houve falhas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "message": "=NEXUS Email D+9: {{ $json.sent }} enviados, {{ $json.failed }} falhas.\n\nDetalhes: {{ JSON.stringify($json.results) }}"
+      },
+      "id": "c3d4e5f6-0003-0003-0003-000000000004",
+      "name": "Log de Erro",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "notes": "Substitua por Slack/email de alerta se quiser notificação de erros"
+    }
+  ],
+  "connections": {
+    "Todo dia 10h": {
+      "main": [
+        [
+          {
+            "node": "Disparar Email Urgência",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Disparar Email Urgência": {
+      "main": [
+        [
+          {
+            "node": "Houve falhas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Houve falhas?": {
+      "main": [
+        [
+          {
+            "node": "Log de Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["NEXUS", "waitlist", "email"]
+}

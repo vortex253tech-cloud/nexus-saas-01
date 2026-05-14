@@ -8,6 +8,7 @@ import {
   Bot, Rocket, BarChart3, Shield, Target, Activity,
   DollarSign, RefreshCw, Layers, Sparkles, Play,
   AlertTriangle, Clock, GitBranch, Loader2, CheckCircle,
+  Copy, Share2, Gift, Award,
 } from 'lucide-react'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -811,6 +812,185 @@ function SocialProofSection() {
 
 // ─── WAITLIST ──────────────────────────────────────────────────────────────
 
+// ─── Referral tiers ───────────────────────────────────────────────────────
+const REFERRAL_TIERS = [
+  { count: 1,  label: 'Sobe 10 posições',     icon: TrendingUp, color: '#a855f7' },
+  { count: 3,  label: 'Beta garantido',        icon: Award,      color: '#06b6d4' },
+  { count: 10, label: 'Acesso imediato',       icon: Gift,       color: '#10b981' },
+]
+
+interface WaitlistResult {
+  position: number
+  referral_code: string
+  referrals_count: number
+  name: string
+}
+
+// ─── Referral success card ─────────────────────────────────────────────────
+function ReferralSuccess({ result }: { result: WaitlistResult }) {
+  const [copied, setCopied] = useState(false)
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const referralUrl = `${baseUrl}/v1?ref=${result.referral_code}`
+
+  function copyLink() {
+    navigator.clipboard.writeText(referralUrl).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  function shareWhatsApp() {
+    const text = encodeURIComponent(
+      `Entrei na waitlist do NEXUS — o Sistema Operacional Empresarial com IA. Automatiza operações inteiras, decide e executa sozinho. Use meu link para entrar antes:\n${referralUrl}`
+    )
+    window.open(`https://wa.me/?text=${text}`, '_blank')
+  }
+
+  function shareLinkedIn() {
+    const url = encodeURIComponent(referralUrl)
+    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank')
+  }
+
+  const nextTier = REFERRAL_TIERS.find(t => t.count > result.referrals_count)
+  const progressPct = nextTier
+    ? Math.min(100, (result.referrals_count / nextTier.count) * 100)
+    : 100
+
+  return (
+    <motion.div
+      key="success"
+      initial={{ opacity: 0, scale: 0.94 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.35 }}
+      className="p-8 space-y-6"
+    >
+      {/* Header */}
+      <div className="text-center">
+        <motion.div
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 280, damping: 18, delay: 0.1 }}
+          className="mx-auto mb-4 h-14 w-14 rounded-full bg-emerald-500/12 border border-emerald-500/25 flex items-center justify-center"
+        >
+          <CheckCircle size={26} className="text-emerald-400" />
+        </motion.div>
+        <h3 className="text-xl font-bold text-white mb-1">
+          {result.name.split(' ')[0]}, você está na lista!
+        </h3>
+        <p className="text-white/40 text-sm">Posição confirmada. Agora acelere seu acesso.</p>
+      </div>
+
+      {/* Position badge */}
+      <div className="flex items-center justify-center">
+        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/6 px-8 py-4 text-center">
+          <p className="text-[10px] uppercase tracking-widest text-white/30 mb-1">Sua posição atual</p>
+          <motion.p
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="text-5xl font-black"
+            style={{ background: 'linear-gradient(135deg, #a855f7, #06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+          >
+            #{result.position}
+          </motion.p>
+          <p className="text-[10px] text-white/25 mt-1">de {result.position + 43} na lista</p>
+        </div>
+      </div>
+
+      {/* Tier progress */}
+      {nextTier && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-white/40">
+              {result.referrals_count}/{nextTier.count} indicações para <span className="text-violet-300">{nextTier.label}</span>
+            </span>
+            <span className="text-white/25">{Math.round(progressPct)}%</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-white/5 overflow-hidden">
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: 'linear-gradient(90deg, #7c3aed, #06b6d4)' }}
+              initial={{ width: 0 }}
+              animate={{ width: `${progressPct}%` }}
+              transition={{ duration: 0.8, delay: 0.4, ease: 'easeOut' }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Tiers list */}
+      <div className="space-y-2">
+        {REFERRAL_TIERS.map((tier, i) => {
+          const done = result.referrals_count >= tier.count
+          const Icon = tier.icon
+          return (
+            <div
+              key={i}
+              className={`flex items-center gap-3 rounded-xl border px-4 py-2.5 transition-all ${
+                done
+                  ? 'border-emerald-500/25 bg-emerald-500/6'
+                  : 'border-white/5 bg-white/[0.015]'
+              }`}
+            >
+              <div
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                style={{ background: done ? `${tier.color}18` : 'transparent', border: `1px solid ${tier.color}30` }}
+              >
+                <Icon size={13} style={{ color: done ? tier.color : '#ffffff40' }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-medium ${done ? 'text-white' : 'text-white/40'}`}>
+                  {tier.count} indicaç{tier.count === 1 ? 'ão' : 'ões'} — {tier.label}
+                </p>
+              </div>
+              {done && <CheckCircle size={13} className="text-emerald-400 flex-shrink-0" />}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Referral link */}
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-widest text-white/30">Seu link de indicação</p>
+        <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3">
+          <p className="flex-1 truncate text-xs text-white/50 font-mono">{referralUrl}</p>
+          <button
+            onClick={copyLink}
+            className="flex-shrink-0 flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition-all hover:bg-violet-500/20 active:scale-95"
+          >
+            {copied ? <CheckCircle size={12} className="text-emerald-400" /> : <Copy size={12} />}
+            {copied ? 'Copiado!' : 'Copiar'}
+          </button>
+        </div>
+      </div>
+
+      {/* Share buttons */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={shareWhatsApp}
+          className="flex items-center justify-center gap-2 rounded-xl border border-emerald-600/25 bg-emerald-600/8 py-3 text-xs font-semibold text-emerald-400 transition-all hover:bg-emerald-600/15 active:scale-[0.98]"
+        >
+          <Share2 size={13} />
+          Compartilhar no WhatsApp
+        </button>
+        <button
+          onClick={shareLinkedIn}
+          className="flex items-center justify-center gap-2 rounded-xl border border-blue-600/25 bg-blue-600/8 py-3 text-xs font-semibold text-blue-400 transition-all hover:bg-blue-600/15 active:scale-[0.98]"
+        >
+          <Share2 size={13} />
+          Compartilhar no LinkedIn
+        </button>
+      </div>
+
+      <p className="text-center text-xs text-white/18">
+        Cada indicação sobe você 10 posições na fila.
+      </p>
+    </motion.div>
+  )
+}
+
+// ─── WaitlistSection ───────────────────────────────────────────────────────
+
 function WaitlistSection() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: '-80px' })
@@ -818,6 +998,15 @@ function WaitlistSection() {
   const [form, setForm]     = useState<WaitlistForm>({ name: '', email: '', company: '', teamSize: '' })
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errMsg, setErrMsg] = useState('')
+  const [result, setResult] = useState<WaitlistResult | null>(null)
+  const [refCode, setRefCode] = useState<string>('')
+
+  // Read ?ref= from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const r = params.get('ref')
+    if (r) setRefCode(r.toUpperCase())
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -828,13 +1017,38 @@ function WaitlistSection() {
     setStatus('loading')
     setErrMsg('')
     try {
-      const res  = await fetch('/api/waitlist', {
+      const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, email: form.email, company: form.company, team_size: form.teamSize }),
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          company: form.company,
+          team_size: form.teamSize,
+          ref: refCode || undefined,
+          source: refCode ? 'referral' : 'organic',
+        }),
       })
-      const data = await res.json() as { error?: string }
-      if (!res.ok) { setStatus('error'); setErrMsg(data.error ?? 'Erro ao cadastrar.'); return }
+      const json = await res.json() as {
+        error?: string
+        success?: boolean
+        already_registered?: boolean
+        data?: WaitlistResult
+      }
+
+      if (!res.ok) {
+        // If already registered, show their referral card anyway
+        if (json.already_registered && json.data) {
+          setResult(json.data)
+          setStatus('success')
+          return
+        }
+        setStatus('error')
+        setErrMsg(json.error ?? 'Erro ao cadastrar.')
+        return
+      }
+
+      if (json.data) setResult(json.data)
       setStatus('success')
     } catch {
       setStatus('error')
@@ -893,9 +1107,18 @@ function WaitlistSection() {
             <motion.div className="h-1.5 w-1.5 rounded-full bg-emerald-400" animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }} />
             <span>Na lista: <span className="text-emerald-400 font-semibold">127</span> empresas</span>
           </div>
+          {refCode && (
+            <>
+              <div className="h-3 w-px bg-white/8" />
+              <div className="flex items-center gap-1.5">
+                <Gift size={10} className="text-violet-400" />
+                <span className="text-violet-400">Indicado por alguém da lista</span>
+              </div>
+            </>
+          )}
         </motion.div>
 
-        {/* Form card */}
+        {/* Form / Success card */}
         <motion.div
           initial={{ opacity: 0, y: 26 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
@@ -905,25 +1128,8 @@ function WaitlistSection() {
           <div className="pointer-events-none absolute top-0 right-0 h-40 w-40 rounded-full bg-violet-600/7 blur-3xl" />
 
           <AnimatePresence mode="wait">
-            {status === 'success' ? (
-              <motion.div
-                key="success"
-                initial={{ opacity: 0, scale: 0.94 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-col items-center justify-center py-16 px-8 text-center"
-              >
-                <div className="mb-5 h-14 w-14 rounded-full bg-emerald-500/12 border border-emerald-500/25 flex items-center justify-center">
-                  <CheckCircle size={26} className="text-emerald-400" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">Você está na lista!</h3>
-                <p className="text-white/42 text-sm max-w-xs leading-relaxed">
-                  Vamos te avisar assim que o beta abrir. Fique de olho no seu e-mail.
-                </p>
-                <div className="mt-7 inline-flex items-center gap-2 text-xs text-violet-400/60">
-                  <Sparkles size={12} />
-                  <span>Acesso prioritário garantido — você é um dos primeiros</span>
-                </div>
-              </motion.div>
+            {status === 'success' && result ? (
+              <ReferralSuccess key="success" result={result} />
             ) : (
               <motion.form key="form" onSubmit={handleSubmit} className="p-8 space-y-4">
                 <div className="grid sm:grid-cols-2 gap-4">
