@@ -74,15 +74,23 @@ interface AIChatMessage {
   timestamp:    Date
 }
 
+interface OpportunityAction {
+  label:   string
+  href?:   string
+  action?: string
+  tab?:    string
+  obj?:    string
+}
+
 interface OpportunityCard {
   id:          string
-  type:        'cobranca' | 'reativacao' | 'risco' | 'crescimento'
+  type:        'cobranca' | 'reativacao' | 'risco' | 'crescimento' | 'lancamento'
   emoji:       string
   headline:    string
-  value:       number
+  value:       string | number
   description: string
-  urgency:     'alta' | 'media' | 'baixa'
-  actions:     string[]
+  urgency:     'alta' | 'media' | 'baixa' | 'critical' | 'high' | 'medium'
+  actions:     OpportunityAction[] | string[]
 }
 
 interface UpgradeModalState {
@@ -501,9 +509,35 @@ function LockedFeaturesSection({
 // ─── Opportunity Mini Cards ─────────────────────────────────────
 
 function urgencyDot(urgency: string) {
-  if (urgency === 'alta')  return 'bg-red-400'
-  if (urgency === 'media') return 'bg-amber-400'
+  if (urgency === 'alta'  || urgency === 'critical') return 'bg-red-400'
+  if (urgency === 'media' || urgency === 'high')     return 'bg-amber-400'
   return 'bg-emerald-400'
+}
+
+function urgencyText(urgency: string) {
+  if (urgency === 'alta'  || urgency === 'critical') return 'text-red-400'
+  if (urgency === 'media' || urgency === 'high')     return 'text-amber-400'
+  return 'text-emerald-400'
+}
+
+function actionLabel(action: OpportunityAction | string): string {
+  if (typeof action === 'string') return action
+  return action.label
+}
+
+function actionHref(action: OpportunityAction | string): string | undefined {
+  if (typeof action === 'string') return undefined
+  return action.href
+}
+
+function fmtCardValue(v: string | number): string {
+  if (typeof v === 'string') return v
+  return fmtBRL(v)
+}
+
+function cardValuePositive(v: string | number): boolean {
+  if (typeof v === 'string') return v.trim() !== '' && v !== '0'
+  return v > 0
 }
 
 function OpportunityMiniCards({ onAskAI }: { onAskAI: (q: string) => void }) {
@@ -559,17 +593,13 @@ function OpportunityMiniCards({ onAskAI }: { onAskAI: (q: string) => void }) {
                       animate={{ opacity: [0.4, 1, 0.4] }}
                       transition={{ duration: 1.8, repeat: Infinity }}
                     />
-                    <span className={cn(
-                      'text-[9px] font-bold uppercase tracking-wider',
-                      card.urgency === 'alta' ? 'text-red-400' :
-                      card.urgency === 'media' ? 'text-amber-400' : 'text-emerald-400',
-                    )}>
+                    <span className={cn('text-[9px] font-bold uppercase tracking-wider', urgencyText(card.urgency))}>
                       {card.urgency}
                     </span>
                   </div>
                 </div>
-                {card.value > 0 && (
-                  <span className="text-[11px] font-bold text-emerald-400">{fmtBRL(card.value)}</span>
+                {cardValuePositive(card.value) && (
+                  <span className="text-[11px] font-bold text-emerald-400">{fmtCardValue(card.value)}</span>
                 )}
               </div>
 
@@ -582,7 +612,7 @@ function OpportunityMiniCards({ onAskAI }: { onAskAI: (q: string) => void }) {
                   className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-violet-400 hover:text-violet-300 transition"
                 >
                   <Zap size={10} />
-                  {card.actions[0]}
+                  {actionLabel(card.actions[0])}
                 </button>
               )}
             </motion.div>
