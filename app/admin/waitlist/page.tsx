@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import {
-  Users, TrendingUp, Gift, Search, ArrowUp, ArrowDown,
-  Copy, Mail, RefreshCw, CheckCircle, Clock, ChevronUp, ChevronDown,
+  Users, TrendingUp, Gift, Search,
+  Copy, Mail, RefreshCw, CheckCircle, ChevronUp, ChevronDown,
 } from 'lucide-react'
 
 interface WaitlistEntry {
