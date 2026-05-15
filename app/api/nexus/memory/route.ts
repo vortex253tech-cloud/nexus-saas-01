@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   if (!companyId) return NextResponse.json({ error: 'company_id required' }, { status: 400 })
 
   const { data, error } = await db()
-    .from('ai_memory')
+    .from('nexus_memory')
     .select('*')
     .eq('company_id', companyId)
     .maybeSingle()
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   // Check if row exists
   const { data: existing } = await supabase
-    .from('ai_memory')
+    .from('nexus_memory')
     .select('id')
     .eq('company_id', company_id as string)
     .maybeSingle()
@@ -61,14 +61,14 @@ export async function POST(req: NextRequest) {
   let data, error
   if (existing?.id) {
     ;({ data, error } = await supabase
-      .from('ai_memory')
+      .from('nexus_memory')
       .update(payload)
       .eq('company_id', company_id as string)
       .select()
       .single())
   } else {
     ;({ data, error } = await supabase
-      .from('ai_memory')
+      .from('nexus_memory')
       .insert(payload)
       .select()
       .single())

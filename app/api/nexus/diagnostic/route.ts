@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     supabase.from('ai_tasks').select('status, tipo').eq('company_id', company_id),
     supabase.from('seller_events').select('tipo, created_at').eq('company_id', company_id).order('created_at', { ascending: false }).limit(100),
     supabase.from('ai_personas').select('is_active, objetivo').eq('company_id', company_id).maybeSingle(),
-    supabase.from('ai_memory').select('taxa_conversao, taxa_resposta').eq('company_id', company_id).maybeSingle(),
+    supabase.from('nexus_memory').select('taxa_conversao, taxa_resposta').eq('company_id', company_id).maybeSingle(),
   ])
 
   const leads   = leadsRes.data   ?? []
