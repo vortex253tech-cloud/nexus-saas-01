@@ -26,6 +26,7 @@ import { ChatPanel } from '@/components/ai-chat/ChatPanel'
 
 const NAV = [
   { href: '/dashboard',            label: 'Dashboard',          icon: LayoutDashboard, exact: true, tourId: 'nav-dashboard' },
+  { href: '/dashboard/nexus',      label: 'NEXUS AI',           icon: Bot },
   { href: '/dashboard/financeiro', label: 'Financeiro',         icon: DollarSign },
   { href: '/dashboard/clients',    label: 'Clientes',           icon: Users,           tourId: 'nav-clients' },
   { href: '/dashboard/messages',   label: 'Mensagens',          icon: Mail },
