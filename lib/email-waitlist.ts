@@ -334,6 +334,60 @@ export function buildAccessEmail(data: AccessEmailData): string {
   `)
 }
 
+// ─── Email 6: Pós-onboarding — sistema configurado ───────────────────────────
+
+export interface OnboardingWelcomeEmailData {
+  name: string
+  email: string
+  empresa: string
+}
+
+export function buildOnboardingWelcomeEmail(data: OnboardingWelcomeEmailData): string {
+  const firstName = data.name.split(' ')[0]
+  const dashUrl   = `${BASE_URL}/dashboard`
+
+  return layout(`
+    ${badge('🚀 Sistema ativo')}
+    <div style="height:16px;"></div>
+    ${h1(`${firstName}, o NEXUS está operando na ${data.empresa}.`)}
+    ${p(`Seu sistema está configurado e a IA já começou a monitorar sua operação. Aqui está o que está ativo agora:`)}
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:0 8px;margin:4px 0 24px;">
+      ${[
+        ['🧠', 'IA Operacional', 'Análise contínua da sua operação em tempo real'],
+        ['📊', 'Analytics', 'Dashboard com KPIs e insights automáticos'],
+        ['🔔', 'Alertas Inteligentes', 'Notificações quando algo exigir sua atenção'],
+        ['⚡', 'Automações', 'Fluxos prontos para ativar na sua empresa'],
+      ].map(([emoji, title, desc]) => `
+        <tr>
+          <td style="background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:14px 16px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="width:32px;font-size:18px;vertical-align:middle;">${emoji}</td>
+                <td style="padding-left:12px;vertical-align:middle;">
+                  <p style="margin:0 0 2px;font-size:13px;font-weight:600;color:#fff;">${title}</p>
+                  <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.35);">${desc}</p>
+                </td>
+                <td style="width:20px;text-align:right;vertical-align:middle;">
+                  <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 6px rgba(16,185,129,0.6);"></span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`).join('')}
+    </table>
+
+    ${p(`Primeiro passo recomendado: adicione seus dados financeiros na seção <strong style="color:#a855f7;">Dados</strong> para a IA começar a gerar insights personalizados.`)}
+
+    <div style="text-align:center;margin-top:8px;">
+      ${btn('Abrir meu sistema NEXUS', dashUrl)}
+    </div>
+
+    ${divider()}
+    ${p(`Qualquer dúvida, responda este email diretamente. Queremos garantir que você tire o máximo do NEXUS.`, true)}
+  `)
+}
+
 // ─── Send helpers ─────────────────────────────────────────────────────────────
 
 interface SendResult { success: boolean; id?: string; error?: string }
@@ -407,6 +461,22 @@ export async function sendAccessEmail(data: AccessEmailData): Promise<SendResult
     to:      data.email,
     subject: '🎉 Seu acesso ao NEXUS está pronto',
     html:    buildAccessEmail(data),
+  })
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, id: sent?.id }
+}
+
+export async function sendOnboardingWelcomeEmail(data: OnboardingWelcomeEmailData): Promise<SendResult> {
+  const resend = getResend()
+  if (!resend) return { success: false, error: 'RESEND_API_KEY not set' }
+
+  const firstName = data.name.split(' ')[0]
+  const { data: sent, error } = await resend.emails.send({
+    from:    FROM,
+    to:      data.email,
+    subject: `${firstName}, seu sistema NEXUS está operando`,
+    html:    buildOnboardingWelcomeEmail(data),
   })
 
   if (error) return { success: false, error: error.message }
