@@ -1,16 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
-// NEXUS WhatsApp AI Engine
+// NEXUS WhatsApp AI Engine — OpenAI gpt-4.1-mini
 // Server-side only. Full pipeline: receive → validate → AI → respond.
 // ═══════════════════════════════════════════════════════════════════
 
-import Anthropic          from '@anthropic-ai/sdk'
-import { createClient }   from '@supabase/supabase-js'
+import OpenAI            from 'openai'
+import { createClient }  from '@supabase/supabase-js'
 import { zapiSendText, resolveZApiConfig } from '@/lib/zapi'
 
 // ── Types ────────────────────────────────────────────────────────
 
 export interface ZApiWebhookPayload {
-  type?:             string   // 'ReceivedCallback' | 'DeliveryCallback' | 'ReadCallback' etc.
+  type?:             string
   isGroup?:          boolean
   isStatusReply?:    boolean
   waitingMessage?:   boolean
@@ -26,13 +26,12 @@ export interface ZApiWebhookPayload {
   image?: { caption?: string; imageUrl?: string }
   audio?: { audioUrl?: string }
   document?: { fileName?: string }
-  // N8N wraps the body under body.*
   body?: ZApiWebhookPayload
 }
 
 export interface ProcessResult {
   ok:       boolean
-  skipped?: string   // reason if ignored
+  skipped?: string
   phone?:   string
   reply?:   string
   error?:   string
@@ -40,32 +39,32 @@ export interface ProcessResult {
 
 // ── Constants ────────────────────────────────────────────────────
 
-const MAX_CONTEXT_MESSAGES = 12
-const MAX_REPLY_TOKENS      = 350
-const TYPING_DELAY_MS       = 1200
+const MAX_CONTEXT_MESSAGES = 10
+const MAX_REPLY_TOKENS      = 300
+const AI_TIMEOUT_MS         = 15000
+const TYPING_DELAY_MS       = 800
 
-const NEXUS_SYSTEM_PROMPT = `Você é o assistente oficial do NEXUS — o sistema operacional empresarial com IA mais avançado do Brasil.
+const SYSTEM_PROMPT = `Você é o NEXUS AI — COO executivo especialista em vendas, automação e crescimento empresarial.
 
 SOBRE O NEXUS:
-- Plataforma de IA que opera o negócio 24/7 (vendas, atendimento, financeiro, operações)
+- Sistema operacional empresarial com IA que automatiza vendas, atendimento, financeiro e operações 24/7
 - Beta fechado — fase fundadores, vagas extremamente limitadas
 - Comunidade exclusiva: NEXUS AI OPERATORS
 - Link da comunidade: https://chat.whatsapp.com/IxLlbI3MTvn5ZPnAswGYXW
 
 COMO RESPONDER:
-- Sempre em português, tom profissional mas próximo e humano
-- Máximo 3-4 frases curtas por mensagem — sem enrolação
-- Nunca inventar recursos, preços ou datas específicas
-- Sempre finalizar com uma ação clara
+- Sempre em português, tom executivo mas próximo e direto
+- Máximo 2-3 frases curtas — estilo WhatsApp, sem enrolação
+- Nunca inventar preços, datas ou recursos específicos
+- Sempre finalizar com uma ação clara ou pergunta
 
 REGRAS:
 - Preço → "será comunicado no momento do convite"
 - Quando acesso → "convites em ordem da fila, em breve"
 - Saber mais → convidar para a comunidade NEXUS AI OPERATORS
-- O que é NEXUS → sistema operacional IA que automatiza toda a operação da empresa
 - Concorrentes → não comentar, focar no valor do NEXUS`
 
-// ── Supabase client (server-side, service role) ──────────────────
+// ── Clients ──────────────────────────────────────────────────────
 
 function getDb() {
   return createClient(
@@ -74,14 +73,14 @@ function getDb() {
   )
 }
 
-// ── Anthropic client ─────────────────────────────────────────────
-
-function getAI() {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+function getOpenAI() {
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY!,
+    timeout: AI_TIMEOUT_MS,
+  })
 }
 
 // ── Payload normalizer ────────────────────────────────────────────
-// Z-API can send fields at root OR nested under body (when via N8N webhook)
 
 function normalizePayload(raw: ZApiWebhookPayload): ZApiWebhookPayload {
   if (raw.body && typeof raw.body === 'object') {
@@ -90,36 +89,30 @@ function normalizePayload(raw: ZApiWebhookPayload): ZApiWebhookPayload {
   return raw
 }
 
-// ── Anti-loop & validation ────────────────────────────────────────
+// ── Validation & anti-loop ────────────────────────────────────────
 
 interface ValidationResult { valid: boolean; reason?: string }
 
 function validateMessage(p: ZApiWebhookPayload): ValidationResult {
-  // Only process text messages received from leads
-  if (p.fromMe)                             return { valid: false, reason: 'fromMe' }
-  if (p.isGroup)                            return { valid: false, reason: 'group' }
-  if (p.isStatusReply)                      return { valid: false, reason: 'statusReply' }
-  if (p.waitingMessage)                     return { valid: false, reason: 'waitingMessage' }
-  if (p.isEdit)                             return { valid: false, reason: 'isEdit' }
-  if (p.type && p.type !== 'ReceivedCallback') return { valid: false, reason: `type:${p.type}` }
+  if (p.fromMe)                                      return { valid: false, reason: 'fromMe' }
+  if (p.isGroup)                                     return { valid: false, reason: 'group' }
+  if (p.isStatusReply)                               return { valid: false, reason: 'statusReply' }
+  if (p.waitingMessage)                              return { valid: false, reason: 'waitingMessage' }
+  if (p.isEdit)                                      return { valid: false, reason: 'isEdit' }
+  if (p.type && p.type !== 'ReceivedCallback')       return { valid: false, reason: `type:${p.type}` }
 
   const text = extractText(p)
-  if (!text || text.trim().length === 0)   return { valid: false, reason: 'emptyText' }
-  if (!p.phone)                             return { valid: false, reason: 'noPhone' }
+  if (!text || text.trim().length === 0)             return { valid: false, reason: 'emptyText' }
+  if (!p.phone)                                      return { valid: false, reason: 'noPhone' }
 
   return { valid: true }
 }
 
 function extractText(p: ZApiWebhookPayload): string {
-  return (
-    p.text?.message ??
-    p.image?.caption ??
-    ''
-  ).trim()
+  return (p.text?.message ?? p.image?.caption ?? '').trim()
 }
 
 function normalizePhone(raw: string): string {
-  // Strip everything except digits
   return raw.replace(/\D/g, '')
 }
 
@@ -166,13 +159,13 @@ async function upsertConversation(params: {
 
 // ── Context retrieval ─────────────────────────────────────────────
 
-interface ContextMessage { role: 'user' | 'assistant'; content: string; created_at: string }
+interface ContextMessage { role: 'user' | 'assistant'; content: string }
 
 async function getRecentContext(conversationId: string): Promise<ContextMessage[]> {
   const db = getDb()
   const { data } = await db
     .from('whatsapp_messages')
-    .select('direction, content, created_at')
+    .select('direction, content')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: false })
     .limit(MAX_CONTEXT_MESSAGES)
@@ -182,13 +175,12 @@ async function getRecentContext(conversationId: string): Promise<ContextMessage[
   return data
     .reverse()
     .map(m => ({
-      role:       m.direction === 'incoming' ? 'user' : 'assistant',
-      content:    m.content,
-      created_at: m.created_at,
+      role:    m.direction === 'incoming' ? 'user' : 'assistant',
+      content: m.content,
     })) as ContextMessage[]
 }
 
-// ── AI response generation ────────────────────────────────────────
+// ── AI response generation (OpenAI) ──────────────────────────────
 
 interface AIResult { text: string; tokensUsed: number; processingMs: number }
 
@@ -196,23 +188,24 @@ async function generateAIResponse(
   userMessage: string,
   context:     ContextMessage[],
 ): Promise<AIResult> {
-  const ai    = getAI()
+  const ai    = getOpenAI()
   const start = Date.now()
 
-  const messages: Anthropic.MessageParam[] = [
-    ...context.map(m => ({ role: m.role, content: m.content })),
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    ...context.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
     { role: 'user', content: userMessage },
   ]
 
-  const response = await ai.messages.create({
-    model:      'claude-haiku-4-5-20251001',
-    max_tokens: MAX_REPLY_TOKENS,
-    system:     NEXUS_SYSTEM_PROMPT,
+  const response = await ai.chat.completions.create({
+    model:       'gpt-4.1-mini',
     messages,
+    max_tokens:  MAX_REPLY_TOKENS,
+    temperature: 0.7,
   })
 
-  const text       = response.content[0].type === 'text' ? response.content[0].text : ''
-  const tokensUsed = response.usage.input_tokens + response.usage.output_tokens
+  const text       = response.choices[0]?.message?.content?.trim() ?? ''
+  const tokensUsed = response.usage?.total_tokens ?? 0
   const processingMs = Date.now() - start
 
   return { text, tokensUsed, processingMs }
@@ -232,6 +225,7 @@ async function saveMessage(params: {
   tokensUsed?:    number
   processingMs?:  number
   rawPayload?:    Record<string, unknown>
+  error?:         string
 }): Promise<void> {
   const db = getDb()
 
@@ -248,73 +242,49 @@ async function saveMessage(params: {
     processing_ms:   params.processingMs ?? null,
     raw_payload:     params.rawPayload ?? {},
     status:          params.direction === 'outgoing' ? 'sent' : 'delivered',
+    error:           params.error ?? null,
   })
 
-  // Update conversation counters
   const rpcResult = await db.rpc('increment_conversation_count', {
     p_conversation_id: params.conversationId,
     p_last_message_at: new Date().toISOString(),
   })
   if (rpcResult.error) {
-    // RPC not critical — update manually
     await db.from('whatsapp_conversations')
-      .update({
-        last_message_at: new Date().toISOString(),
-        updated_at:      new Date().toISOString(),
-      })
+      .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', params.conversationId)
   }
 }
 
-// ── Analytics upsert ──────────────────────────────────────────────
+// ── Analytics ─────────────────────────────────────────────────────
 
 async function updateAnalytics(params: {
-  companyId:      string
-  direction:      'in' | 'out'
-  tokensUsed?:    number
-  processingMs?:  number
-  isNew?:         boolean
-  error?:         boolean
+  companyId:     string
+  direction:     'in' | 'out'
+  tokensUsed?:   number
+  processingMs?: number
+  isNew?:        boolean
+  error?:        boolean
 }): Promise<void> {
   const db   = getDb()
   const date = new Date().toISOString().slice(0, 10)
 
-  const increment: Record<string, unknown> = {}
-  if (params.direction === 'in')  increment.messages_in  = 1
-  if (params.direction === 'out') increment.messages_out = 1
-  if (params.tokensUsed)          increment.tokens_used  = params.tokensUsed
-  if (params.isNew)               increment.new_conversations = 1
-  if (params.error)               increment.errors = 1
-
   await db.from('whatsapp_analytics')
     .upsert(
       {
-        company_id:       params.companyId,
+        company_id:        params.companyId,
         date,
-        messages_in:      params.direction === 'in'  ? 1 : 0,
-        messages_out:     params.direction === 'out' ? 1 : 0,
+        messages_in:       params.direction === 'in'  ? 1 : 0,
+        messages_out:      params.direction === 'out' ? 1 : 0,
         new_conversations: params.isNew ? 1 : 0,
-        tokens_used:      params.tokensUsed ?? 0,
-        errors:           params.error ? 1 : 0,
-        avg_response_ms:  params.processingMs ?? null,
-        updated_at:       new Date().toISOString(),
+        tokens_used:       params.tokensUsed ?? 0,
+        errors:            params.error ? 1 : 0,
+        avg_response_ms:   params.processingMs ?? null,
+        updated_at:        new Date().toISOString(),
       },
       { onConflict: 'company_id,date', ignoreDuplicates: false }
     )
-    .then(() => {}) // analytics are non-critical
-}
-
-// ── Typing simulation ─────────────────────────────────────────────
-
-async function sendTypingAndDelay(phone: string, zapiConfig: ReturnType<typeof resolveZApiConfig>): Promise<void> {
-  if (!zapiConfig) return
-  try {
-    await fetch(
-      `https://api.z-api.io/instances/${zapiConfig.instanceId}/token/${zapiConfig.token}/send-option-list`,
-      { method: 'GET' } // Just a warmup ping; typing via delay
-    ).catch(() => {})
-  } catch { /* ignore */ }
-  await new Promise(r => setTimeout(r, TYPING_DELAY_MS))
+    .then(() => {})
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -323,49 +293,55 @@ async function sendTypingAndDelay(phone: string, zapiConfig: ReturnType<typeof r
 
 export async function processWhatsAppMessage(
   rawPayload: ZApiWebhookPayload,
-  companyId?: string,  // if null, uses platform-level Z-API
+  companyId?: string,
 ): Promise<ProcessResult> {
   const startTime = Date.now()
 
   try {
-    // 1. Normalize (handle N8N body wrapping)
+    // 1. Normalize
     const payload = normalizePayload(rawPayload)
 
     // 2. Validate & anti-loop
     const validation = validateMessage(payload)
     if (!validation.valid) {
+      console.log('[WA Engine] Skipped:', validation.reason)
       return { ok: true, skipped: validation.reason }
     }
 
-    const phone   = normalizePhone(payload.phone!)
-    const text    = extractText(payload)
-    const msgId   = payload.messageId
+    const phone = normalizePhone(payload.phone!)
+    const text  = extractText(payload)
+    const msgId = payload.messageId
+
+    console.log('MESSAGE RECEIVED', { phone, text: text.slice(0, 80), msgId })
 
     // 3. Deduplication
     if (msgId && await isAlreadyProcessed(msgId)) {
+      console.log('[WA Engine] Duplicate, skipping:', msgId)
       return { ok: true, skipped: 'duplicate', phone }
     }
 
-    // 4. Resolve Z-API config
+    // 4. Z-API config
     const zapiConfig = resolveZApiConfig()
     if (!zapiConfig) {
+      console.error('[WA Engine] Z-API not configured')
       return { ok: false, error: 'Z-API not configured', phone }
     }
 
-    // 5. Use platform company if no companyId given
+    // 5. Company ID
     const effectiveCompanyId = companyId ?? process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
 
     // 6. Upsert conversation
     let conversationId: string
     let isNewConversation = false
     try {
-      const existing = effectiveCompanyId ? await getDb()
-        .from('whatsapp_conversations')
-        .select('id')
-        .eq('company_id', effectiveCompanyId)
-        .eq('phone', phone)
-        .maybeSingle()
-        .then(r => r.data)
+      const existing = effectiveCompanyId
+        ? await getDb()
+            .from('whatsapp_conversations')
+            .select('id')
+            .eq('company_id', effectiveCompanyId)
+            .eq('phone', phone)
+            .maybeSingle()
+            .then(r => r.data)
         : null
 
       conversationId = effectiveCompanyId
@@ -385,40 +361,72 @@ export async function processWhatsAppMessage(
     if (effectiveCompanyId) {
       await saveMessage({
         conversationId,
-        companyId:      effectiveCompanyId,
+        companyId:     effectiveCompanyId,
         phone,
-        zapiMessageId:  msgId,
-        direction:      'incoming',
-        content:        text,
-        fromMe:         false,
-        aiGenerated:    false,
-        rawPayload:     payload as Record<string, unknown>,
+        zapiMessageId: msgId,
+        direction:     'incoming',
+        content:       text,
+        fromMe:        false,
+        aiGenerated:   false,
+        rawPayload:    payload as Record<string, unknown>,
       }).catch(() => {})
 
-      await updateAnalytics({
-        companyId:  effectiveCompanyId,
-        direction:  'in',
-        isNew:      isNewConversation,
-      })
+      await updateAnalytics({ companyId: effectiveCompanyId, direction: 'in', isNew: isNewConversation })
     }
 
-    // 8. Load context
+    // 8. Load conversation context
     const context = effectiveCompanyId
-      ? await getRecentContext(conversationId)
+      ? await getRecentContext(conversationId).catch(() => [])
       : []
 
     // 9. Generate AI response
-    const aiResult = await generateAIResponse(text, context)
+    let aiText: string
+    let tokensUsed = 0
+    let processingMs = 0
 
-    // 10. Typing simulation
-    await sendTypingAndDelay(phone, zapiConfig)
+    try {
+      const aiResult = await generateAIResponse(text, context)
+      aiText       = aiResult.text
+      tokensUsed   = aiResult.tokensUsed
+      processingMs = aiResult.processingMs
 
-    // 11. Send response via Z-API
-    const sendResult = await zapiSendText({
-      to:     phone,
-      body:   aiResult.text,
-      config: zapiConfig,
-    })
+      console.log('OPENAI RESPONSE', {
+        phone,
+        tokens: tokensUsed,
+        ms:     processingMs,
+        reply:  aiText.slice(0, 100),
+      })
+    } catch (aiErr) {
+      const errMsg = aiErr instanceof Error ? aiErr.message : 'AI error'
+      console.error('[WA Engine] OpenAI failed:', errMsg)
+
+      aiText = 'Recebi sua mensagem. Um especialista irá continuar o atendimento.'
+
+      if (effectiveCompanyId) {
+        await saveMessage({
+          conversationId,
+          companyId:   effectiveCompanyId,
+          phone,
+          direction:   'outgoing',
+          content:     aiText,
+          fromMe:      true,
+          aiGenerated: true,
+          error:       errMsg,
+        }).catch(() => {})
+        await updateAnalytics({ companyId: effectiveCompanyId, direction: 'out', error: true })
+      }
+
+      // Still send fallback via Z-API
+      await new Promise(r => setTimeout(r, TYPING_DELAY_MS))
+      await zapiSendText({ to: phone, body: aiText, config: zapiConfig })
+      return { ok: true, phone, reply: aiText }
+    }
+
+    // 10. Typing delay
+    await new Promise(r => setTimeout(r, TYPING_DELAY_MS))
+
+    // 11. Send via Z-API
+    const sendResult = await zapiSendText({ to: phone, body: aiText, config: zapiConfig })
 
     if (!sendResult.success) {
       console.error('[WA Engine] Z-API send failed:', sendResult.error)
@@ -428,54 +436,51 @@ export async function processWhatsAppMessage(
       return { ok: false, phone, error: sendResult.error }
     }
 
+    console.log('MESSAGE SENT', { phone, ms: Date.now() - startTime })
+
     // 12. Save outgoing message
     if (effectiveCompanyId) {
       await saveMessage({
         conversationId,
-        companyId:     effectiveCompanyId,
+        companyId:    effectiveCompanyId,
         phone,
-        direction:     'outgoing',
-        content:       aiResult.text,
-        fromMe:        true,
-        aiGenerated:   true,
-        tokensUsed:    aiResult.tokensUsed,
-        processingMs:  Date.now() - startTime,
+        direction:    'outgoing',
+        content:      aiText,
+        fromMe:       true,
+        aiGenerated:  true,
+        tokensUsed,
+        processingMs: Date.now() - startTime,
       }).catch(() => {})
 
       await updateAnalytics({
         companyId:    effectiveCompanyId,
         direction:    'out',
-        tokensUsed:   aiResult.tokensUsed,
-        processingMs: aiResult.processingMs,
+        tokensUsed,
+        processingMs,
       })
     }
 
-    return { ok: true, phone, reply: aiResult.text }
+    return { ok: true, phone, reply: aiText }
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error'
-    console.error('[WA Engine] processWhatsAppMessage error:', msg)
+    console.error('[WA Engine] Fatal error:', msg)
     return { ok: false, error: msg }
   }
 }
 
-// ── Conversation list (for dashboard) ────────────────────────────
+// ── Dashboard helpers ─────────────────────────────────────────────
 
 export async function getConversations(companyId: string, limit = 50) {
   const db = getDb()
   const { data } = await db
     .from('whatsapp_conversations')
-    .select(`
-      id, phone, contact_name, status, last_message_at,
-      message_count, ai_enabled, created_at
-    `)
+    .select('id, phone, contact_name, status, last_message_at, message_count, ai_enabled, created_at')
     .eq('company_id', companyId)
     .order('last_message_at', { ascending: false })
     .limit(limit)
   return data ?? []
 }
-
-// ── Message history (for dashboard thread view) ───────────────────
 
 export async function getMessages(conversationId: string, limit = 50) {
   const db = getDb()
@@ -487,8 +492,6 @@ export async function getMessages(conversationId: string, limit = 50) {
     .limit(limit)
   return data ?? []
 }
-
-// ── Analytics (for dashboard) ────────────────────────────────────
 
 export async function getAnalytics(companyId: string, days = 7) {
   const db = getDb()

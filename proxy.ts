@@ -8,7 +8,7 @@ const AUTH_PAGES   = ['/login', '/signup']
 // Prefixes that always bypass the middleware
 const PUBLIC_PREFIXES = [
   '/api/auth', '/api/leads', '/api/company', '/api/webhook', '/api/waitlist',
-  '/api/check-config', '/_next', '/favicon', '/auth',
+  '/api/check-config', '/api/whatsapp/webhook', '/_next', '/favicon', '/auth',
 ]
 
 // ─── Domain → Landing Page mapping ───────────────────────────────────────
