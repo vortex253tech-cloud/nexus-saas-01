@@ -13,6 +13,7 @@ import {
   TrendingUp, AlertTriangle, Loader2, RefreshCw,
   CheckCircle2, AlertCircle, ExternalLink, Activity,
   Moon, Brain, UserPlus, BarChart3, Package, Bot, Wallet, Sparkles,
+  MessageCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -28,6 +29,7 @@ const NAV = [
   { href: '/dashboard/financeiro', label: 'Financeiro',         icon: DollarSign },
   { href: '/dashboard/clients',    label: 'Clientes',           icon: Users,           tourId: 'nav-clients' },
   { href: '/dashboard/messages',   label: 'Mensagens',          icon: Mail },
+  { href: '/dashboard/whatsapp',   label: 'WhatsApp AI',         icon: MessageCircle },
   { href: '/dashboard/projects',   label: 'Projetos',           icon: FolderOpen },
   { href: '/dashboard/growth-map', label: 'Mapa de Crescimento',icon: Map,             tourId: 'nav-growth-map' },
   { href: '/dashboard/assistant',  label: 'Assistente IA',      icon: MessageSquare },
