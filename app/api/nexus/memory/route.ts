@@ -49,11 +49,30 @@ export async function POST(req: NextRequest) {
     if (key in fields) payload[key] = fields[key]
   }
 
-  const { data, error } = await db()
+  const supabase = db()
+
+  // Check if row exists
+  const { data: existing } = await supabase
     .from('ai_memory')
-    .upsert(payload, { onConflict: 'company_id', ignoreDuplicates: false })
-    .select()
-    .single()
+    .select('id')
+    .eq('company_id', company_id as string)
+    .maybeSingle()
+
+  let data, error
+  if (existing?.id) {
+    ;({ data, error } = await supabase
+      .from('ai_memory')
+      .update(payload)
+      .eq('company_id', company_id as string)
+      .select()
+      .single())
+  } else {
+    ;({ data, error } = await supabase
+      .from('ai_memory')
+      .insert(payload)
+      .select()
+      .single())
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
