@@ -9,6 +9,7 @@ const AUTH_PAGES   = ['/login', '/signup']
 const PUBLIC_PREFIXES = [
   '/api/auth', '/api/leads', '/api/company', '/api/webhook', '/api/waitlist',
   '/api/check-config', '/api/whatsapp/webhook', '/api/test-openai', '/_next', '/favicon', '/auth',
+  '/api/nexus/', '/api/cron/',
 ]
 
 // ─── Domain → Landing Page mapping ───────────────────────────────────────
