@@ -909,6 +909,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [authLoading, user, router])
 
+  // First-time user → onboarding
+  useEffect(() => {
+    if (!authLoading && user && !user.user_metadata?.onboarding_completed) {
+      router.replace('/onboarding/welcome')
+    }
+  }, [authLoading, user, router])
+
   // Resolve company_id once on mount
   useEffect(() => {
     resolveCompanyId().then(cid => setCompanyId(cid))
