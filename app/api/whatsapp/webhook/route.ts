@@ -305,9 +305,77 @@ Estágio:
       { onConflict: 'conversation_id', ignoreDuplicates: false }
     )
 
+    // Sync to leads table (upsert by phone + company)
+    await syncToLeads({ supabase, companyId, phone, merged })
+
     console.log('LEAD CONTEXT UPDATED', { phone, estagio: merged.estagio, score: merged.score })
   } catch (err) {
     console.error('LEAD EXTRACTION ERROR:', String(err))
+  }
+}
+
+// ── Sync lead_context → leads table ───────────────────────────────
+
+async function syncToLeads(params: {
+  supabase:  ReturnType<typeof db>
+  companyId: string
+  phone:     string
+  merged:    LeadContext
+}): Promise<void> {
+  const { supabase, companyId, phone, merged } = params
+
+  // Check if lead exists by phone
+  const { data: existing } = await supabase
+    .from('leads')
+    .select('id, score, stage')
+    .eq('company_id', companyId)
+    .eq('phone', phone)
+    .maybeSingle()
+
+  const stageMap: Record<string, string> = {
+    novo:        'novo',
+    qualificado: 'qualificado',
+    interessado: 'qualificado',
+    negociando:  'negociando',
+    cliente:     'fechado',
+    perdido:     'perdido',
+  }
+
+  const stage = stageMap[merged.estagio ?? 'novo'] ?? 'novo'
+
+  const temperatura =
+    (merged.score ?? 0) >= 70 ? 'quente' :
+    (merged.score ?? 0) >= 40 ? 'morno'  : 'frio'
+
+  if (existing?.id) {
+    // Update only if score improved or stage advanced
+    await supabase.from('leads').update({
+      name:            merged.nome     ?? existing.id,
+      empresa:         merged.empresa  ?? null,
+      nicho:           merged.nicho    ?? null,
+      score:           Math.max(merged.score ?? 0, existing.score ?? 0),
+      stage,
+      temperatura,
+      canal:           'whatsapp',
+      ultima_interacao: new Date().toISOString(),
+      updated_at:      new Date().toISOString(),
+    }).eq('id', existing.id)
+  } else {
+    // Create new lead
+    await supabase.from('leads').insert({
+      company_id:      companyId,
+      name:            merged.nome || `WhatsApp ${phone.slice(-4)}`,
+      phone,
+      empresa:         merged.empresa  ?? null,
+      nicho:           merged.nicho    ?? null,
+      score:           merged.score    ?? 0,
+      stage,
+      temperatura,
+      canal:           'whatsapp',
+      origem:          'whatsapp',
+      ultima_interacao: new Date().toISOString(),
+    })
+    console.log('NEW LEAD CREATED', { phone, nome: merged.nome, stage })
   }
 }
 
