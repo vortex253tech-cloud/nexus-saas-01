@@ -6,14 +6,14 @@ import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard, Database, Zap, Bell, History,
-  CreditCard, Menu, X, Building2, ChevronRight,
-  DollarSign, MessageSquare, LogOut, Users, Clock,
-  ArrowRight, Mail, FolderOpen, Map, Settings,
-  TrendingUp, AlertTriangle, Loader2, RefreshCw,
-  CheckCircle2, AlertCircle, ExternalLink, Activity,
-  Moon, Brain, UserPlus, BarChart3, Package, Bot, Wallet, Sparkles,
-  MessageCircle,
+  LayoutDashboard, Zap, Bell, CreditCard,
+  Menu, X, Building2, ChevronRight,
+  DollarSign, MessageSquare, LogOut, Clock,
+  ArrowRight, Settings, TrendingUp, AlertTriangle,
+  Loader2, RefreshCw, CheckCircle2, AlertCircle,
+  ExternalLink, Activity, Moon, Brain, BarChart3,
+  Package, Bot, Wallet, Sparkles, MessageCircle,
+  Users, Database, Wand2, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -22,31 +22,86 @@ import { TourProvider } from '@/lib/tour/context'
 import { TourEngine } from '@/components/tour/TourEngine'
 import { ChatPanel } from '@/components/ai-chat/ChatPanel'
 
-// ─── Nav ───────────────────────────────────────────────────────
+// ─── Nav Structure ─────────────────────────────────────────────
 
-const NAV = [
-  { href: '/dashboard',            label: 'Dashboard',          icon: LayoutDashboard, exact: true, tourId: 'nav-dashboard' },
-  { href: '/dashboard/nexus',      label: 'NEXUS AI',           icon: Bot },
-  { href: '/dashboard/financeiro', label: 'Financeiro',         icon: DollarSign },
-  { href: '/dashboard/clients',    label: 'Clientes',           icon: Users,           tourId: 'nav-clients' },
-  { href: '/dashboard/messages',   label: 'Mensagens',          icon: Mail },
-  { href: '/dashboard/whatsapp',   label: 'WhatsApp AI',         icon: MessageCircle },
-  { href: '/dashboard/projects',   label: 'Projetos',           icon: FolderOpen },
-  { href: '/dashboard/growth-map', label: 'Mapa de Crescimento',icon: Map,             tourId: 'nav-growth-map' },
-  { href: '/dashboard/assistant',  label: 'Assistente IA',      icon: MessageSquare },
-  { href: '/dashboard/revenue',    label: 'Receita',            icon: BarChart3,       tourId: 'nav-revenue' },
-  { href: '/dashboard/advisor',      label: 'Consultor IA',       icon: Brain },
-  { href: '/dashboard/creative-ai', label: 'Creative AI',        icon: Sparkles },
-  { href: '/dashboard/leads',       label: 'Leads',              icon: UserPlus },
-  { href: '/dashboard/sales',      label: 'Vendas IA',          icon: TrendingUp },
-  { href: '/dashboard/suppliers',   label: 'Custos',             icon: Package },
-  { href: '/dashboard/dados',      label: 'Dados',              icon: Database,        tourId: 'nav-dados' },
-  { href: '/dashboard/actions',    label: 'Ações',              icon: Zap,             tourId: 'nav-actions' },
-  { href: '/dashboard/alerts',     label: 'Alertas',            icon: Bell },
-  { href: '/dashboard/history',    label: 'Histórico',          icon: History },
-  { href: '/dashboard/billing',            label: 'Plano',              icon: CreditCard },
-  { href: '/dashboard/settings/payments', label: 'Pagamentos',         icon: Wallet },
-  { href: '/dashboard/settings',          label: 'Configurações',      icon: Settings },
+interface NavChild {
+  href:   string
+  label:  string
+  icon:   React.ElementType
+}
+
+interface NavGroup {
+  href:     string
+  label:    string
+  icon:     React.ElementType
+  exact?:   boolean
+  children?: NavChild[]
+  tourId?:  string
+}
+
+const NAV: NavGroup[] = [
+  {
+    href:   '/dashboard',
+    label:  'Home',
+    icon:   LayoutDashboard,
+    exact:  true,
+    tourId: 'nav-dashboard',
+  },
+  {
+    href:  '/dashboard/messages',
+    label: 'Conversas',
+    icon:  MessageCircle,
+    children: [
+      { href: '/dashboard/messages',  label: 'Mensagens',    icon: MessageSquare },
+      { href: '/dashboard/whatsapp',  label: 'WhatsApp AI',  icon: MessageCircle },
+      { href: '/dashboard/assistant', label: 'Assistente',   icon: Bot },
+    ],
+  },
+  {
+    href:  '/dashboard/leads',
+    label: 'Pipeline',
+    icon:  TrendingUp,
+    children: [
+      { href: '/dashboard/leads',       label: 'Leads',        icon: Users },
+      { href: '/dashboard/clients',     label: 'Clientes',     icon: Building2 },
+      { href: '/dashboard/sales',       label: 'Vendas',       icon: BarChart3 },
+      { href: '/dashboard/growth-map',  label: 'Crescimento',  icon: TrendingUp },
+    ],
+  },
+  {
+    href:  '/dashboard/financeiro',
+    label: 'Financeiro',
+    icon:  DollarSign,
+    children: [
+      { href: '/dashboard/financeiro', label: 'Visão Geral', icon: DollarSign },
+      { href: '/dashboard/revenue',    label: 'Receita',     icon: BarChart3 },
+      { href: '/dashboard/suppliers',  label: 'Custos',      icon: Package },
+      { href: '/dashboard/dados',      label: 'Dados',       icon: Database },
+    ],
+  },
+  {
+    href:  '/dashboard/nexus',
+    label: 'IA NEXUS',
+    icon:  Bot,
+    children: [
+      { href: '/dashboard/nexus',          label: 'Painel IA',    icon: Bot },
+      { href: '/dashboard/advisor',        label: 'Consultor',    icon: Brain },
+      { href: '/dashboard/creative-ai',    label: 'Criativos',    icon: Sparkles },
+      { href: '/dashboard/automations',    label: 'Automações',   icon: Wand2 },
+      { href: '/dashboard/actions',        label: 'Ações',        icon: Zap },
+      { href: '/dashboard/alerts',         label: 'Alertas',      icon: Bell },
+    ],
+  },
+  {
+    href:  '/dashboard/settings',
+    label: 'Configurações',
+    icon:  Settings,
+    children: [
+      { href: '/dashboard/settings',          label: 'Geral',       icon: Settings },
+      { href: '/dashboard/billing',           label: 'Plano',       icon: CreditCard },
+      { href: '/dashboard/settings/payments', label: 'Pagamentos',  icon: Wallet },
+    ],
+  },
 ]
 
 // ─── Quick Drawer Types ─────────────────────────────────────────
@@ -81,25 +136,13 @@ function DrawerEmpty({ message }: { message: string }) {
 }
 
 function DrawerShell({
-  title,
-  icon,
-  href,
-  hrefLabel = 'Ver tudo',
-  onClose,
-  onRefresh,
-  children,
+  title, icon, href, hrefLabel = 'Ver tudo', onClose, onRefresh, children,
 }: {
-  title: string
-  icon: React.ReactNode
-  href: string
-  hrefLabel?: string
-  onClose: () => void
-  onRefresh?: () => void
-  children: React.ReactNode
+  title: string; icon: React.ReactNode; href: string; hrefLabel?: string
+  onClose: () => void; onRefresh?: () => void; children: React.ReactNode
 }) {
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-zinc-800/70 px-5 py-4">
         <div className="flex items-center gap-2.5">
           {icon}
@@ -107,34 +150,19 @@ function DrawerShell({
         </div>
         <div className="flex items-center gap-1">
           {onRefresh && (
-            <button
-              onClick={onRefresh}
-              className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-800 hover:text-white"
-            >
+            <button onClick={onRefresh} className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-800 hover:text-white">
               <RefreshCw size={13} />
             </button>
           )}
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-800 hover:text-white"
-          >
+          <button onClick={onClose} className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-800 hover:text-white">
             <X size={14} />
           </button>
         </div>
       </div>
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        {children}
-      </div>
-
-      {/* Footer */}
+      <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
       <div className="shrink-0 border-t border-zinc-800/70 px-5 py-3">
-        <Link
-          href={href}
-          onClick={onClose}
-          className="flex items-center justify-center gap-2 rounded-xl border border-zinc-700/50 bg-zinc-800/50 py-2.5 text-xs font-medium text-zinc-300 transition hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300"
-        >
+        <Link href={href} onClick={onClose}
+          className="flex items-center justify-center gap-2 rounded-xl border border-zinc-700/50 bg-zinc-800/50 py-2.5 text-xs font-medium text-zinc-300 transition hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300">
           <ExternalLink size={11} />
           {hrefLabel}
         </Link>
@@ -145,15 +173,7 @@ function DrawerShell({
 
 // ─── Growth Panel ───────────────────────────────────────────────
 
-interface AIAction {
-  id?: string
-  title?: string
-  description?: string
-  priority?: string
-  estimated_impact?: string | number
-  category?: string
-  status?: string
-}
+interface AIAction { id?: string; title?: string; description?: string; priority?: string; estimated_impact?: string | number; category?: string; status?: string }
 
 function GrowthPanel({ companyId, onClose }: { companyId: string; onClose: () => void }) {
   const [data, setData] = useState<AIAction[]>([])
@@ -173,27 +193,17 @@ function GrowthPanel({ companyId, onClose }: { companyId: string; onClose: () =>
   const priorityBadge = (p?: string) => {
     if (!p) return null
     const map: Record<string, string> = {
-      high:     'bg-red-500/20 text-red-400 border-red-500/20',
+      high: 'bg-red-500/20 text-red-400 border-red-500/20',
       critical: 'bg-red-500/20 text-red-400 border-red-500/20',
-      medium:   'bg-amber-500/20 text-amber-400 border-amber-500/20',
-      low:      'bg-emerald-500/20 text-emerald-400 border-emerald-500/20',
+      medium: 'bg-amber-500/20 text-amber-400 border-amber-500/20',
+      low: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20',
     }
-    return (
-      <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase', map[p] ?? 'bg-zinc-700 text-zinc-400 border-zinc-600')}>
-        {p}
-      </span>
-    )
+    return <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase', map[p] ?? 'bg-zinc-700 text-zinc-400 border-zinc-600')}>{p}</span>
   }
 
   return (
-    <DrawerShell
-      title="Insights de Crescimento"
-      icon={<TrendingUp size={15} className="text-emerald-400" />}
-      href="/dashboard/growth-map"
-      hrefLabel="Abrir Mapa de Crescimento"
-      onClose={onClose}
-      onRefresh={load}
-    >
+    <DrawerShell title="Insights de Crescimento" icon={<TrendingUp size={15} className="text-emerald-400" />}
+      href="/dashboard/growth-map" hrefLabel="Abrir Mapa de Crescimento" onClose={onClose} onRefresh={load}>
       {loading ? <DrawerLoader /> : data.length === 0 ? (
         <DrawerEmpty message="Nenhum insight disponível. Adicione dados financeiros para a IA gerar recomendações." />
       ) : (
@@ -201,21 +211,15 @@ function GrowthPanel({ companyId, onClose }: { companyId: string; onClose: () =>
           {data.slice(0, 10).map((a, i) => (
             <li key={a.id ?? i} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3.5 space-y-1.5 transition hover:border-zinc-700">
               <p className="text-sm font-medium text-white leading-snug">{a.title ?? 'Ação recomendada'}</p>
-              {a.description && (
-                <p className="text-xs text-zinc-400 leading-relaxed">{a.description}</p>
-              )}
+              {a.description && <p className="text-xs text-zinc-400 leading-relaxed">{a.description}</p>}
               <div className="flex flex-wrap items-center gap-2">
                 {priorityBadge(a.priority)}
                 {a.estimated_impact != null && (
                   <span className="text-[10px] font-semibold text-emerald-400">
-                    {typeof a.estimated_impact === 'number'
-                      ? `+R$ ${a.estimated_impact.toLocaleString('pt-BR')}`
-                      : a.estimated_impact}
+                    {typeof a.estimated_impact === 'number' ? `+R$ ${a.estimated_impact.toLocaleString('pt-BR')}` : a.estimated_impact}
                   </span>
                 )}
-                {a.category && (
-                  <span className="text-[10px] text-zinc-600">{a.category}</span>
-                )}
+                {a.category && <span className="text-[10px] text-zinc-600">{a.category}</span>}
               </div>
             </li>
           ))}
@@ -227,14 +231,7 @@ function GrowthPanel({ companyId, onClose }: { companyId: string; onClose: () =>
 
 // ─── Alerts Panel ───────────────────────────────────────────────
 
-interface AlertRow {
-  id?: string
-  message?: string
-  severity?: string
-  type?: string
-  lido?: boolean
-  created_at?: string
-}
+interface AlertRow { id?: string; message?: string; severity?: string; type?: string; lido?: boolean; created_at?: string }
 
 function AlertsPanel({ companyId, onClose }: { companyId: string; onClose: () => void }) {
   const [data, setData] = useState<AlertRow[]>([])
@@ -263,14 +260,8 @@ function AlertsPanel({ companyId, onClose }: { companyId: string; onClose: () =>
   })
 
   return (
-    <DrawerShell
-      title="Alertas Ativos"
-      icon={<AlertTriangle size={15} className="text-amber-400" />}
-      href="/dashboard/alerts"
-      hrefLabel="Ver todos os alertas"
-      onClose={onClose}
-      onRefresh={load}
-    >
+    <DrawerShell title="Alertas Ativos" icon={<AlertTriangle size={15} className="text-amber-400" />}
+      href="/dashboard/alerts" hrefLabel="Ver todos os alertas" onClose={onClose} onRefresh={load}>
       {loading ? <DrawerLoader /> : sorted.length === 0 ? (
         <DrawerEmpty message="Nenhum alerta ativo. O sistema está monitorando continuamente." />
       ) : (
@@ -302,15 +293,7 @@ function AlertsPanel({ companyId, onClose }: { companyId: string; onClose: () =>
 
 // ─── Financial Panel ────────────────────────────────────────────
 
-interface FinRow {
-  id?: string
-  revenue?: number
-  costs?: number
-  profit?: number
-  period_label?: string
-  period_date?: string
-  note?: string
-}
+interface FinRow { id?: string; revenue?: number; costs?: number; profit?: number; period_label?: string; period_date?: string; note?: string }
 
 function FinancialPanel({ companyId, onClose }: { companyId: string; onClose: () => void }) {
   const [data, setData] = useState<FinRow[]>([])
@@ -327,85 +310,57 @@ function FinancialPanel({ companyId, onClose }: { companyId: string; onClose: ()
 
   useEffect(() => { load() }, [load])
 
-  const fmt = (n?: number) => n != null
-    ? `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-    : '—'
-
+  const fmt = (n?: number) => n != null ? `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—'
   const totRevenue = data.reduce((s, r) => s + (r.revenue ?? 0), 0)
   const totCosts   = data.reduce((s, r) => s + (r.costs ?? 0), 0)
   const totProfit  = data.reduce((s, r) => s + (r.profit ?? 0), 0)
-
   const latest = data[0]
 
   return (
-    <DrawerShell
-      title="Resumo Financeiro"
-      icon={<DollarSign size={15} className="text-violet-400" />}
-      href="/dashboard/financeiro"
-      hrefLabel="Ver financeiro completo"
-      onClose={onClose}
-      onRefresh={load}
-    >
+    <DrawerShell title="Resumo Financeiro" icon={<DollarSign size={15} className="text-violet-400" />}
+      href="/dashboard/financeiro" hrefLabel="Ver financeiro completo" onClose={onClose} onRefresh={load}>
       {loading ? <DrawerLoader /> : data.length === 0 ? (
         <DrawerEmpty message="Nenhum dado financeiro cadastrado ainda." />
       ) : (
         <div className="space-y-4">
-          {/* KPI Cards */}
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: 'Receita', value: fmt(totRevenue), color: 'text-emerald-400', glow: 'rgba(52,211,153,0.4)' },
-              { label: 'Custos',  value: fmt(totCosts),   color: 'text-red-400',     glow: 'rgba(248,113,113,0.4)' },
-              { label: 'Lucro',   value: fmt(totProfit),  color: totProfit >= 0 ? 'text-violet-400' : 'text-red-400', glow: totProfit >= 0 ? 'rgba(124,58,237,0.4)' : 'rgba(248,113,113,0.4)' },
+              { label: 'Receita', value: fmt(totRevenue), color: 'text-emerald-400' },
+              { label: 'Custos',  value: fmt(totCosts),   color: 'text-red-400' },
+              { label: 'Lucro',   value: fmt(totProfit),  color: totProfit >= 0 ? 'text-violet-400' : 'text-red-400' },
             ].map(k => (
               <div key={k.label} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-center">
                 <p className="text-[10px] text-zinc-500 mb-1">{k.label}</p>
-                <p
-                  className={cn('text-xs font-bold leading-tight', k.color)}
-                  style={{ textShadow: `0 0 10px ${k.glow}` }}
-                >
-                  {k.value}
-                </p>
+                <p className={cn('text-xs font-bold leading-tight', k.color)}>{k.value}</p>
               </div>
             ))}
           </div>
-
-          {/* Latest period */}
           {latest && (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3.5">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Período mais recente</p>
               <p className="text-sm font-semibold text-white">{latest.period_label ?? '—'}</p>
               <div className="mt-2 space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Receita</span>
-                  <span className="text-emerald-400 font-medium">{fmt(latest.revenue)}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Custos</span>
-                  <span className="text-red-400 font-medium">{fmt(latest.costs)}</span>
-                </div>
+                {[{ l: 'Receita', v: fmt(latest.revenue), c: 'text-emerald-400' }, { l: 'Custos', v: fmt(latest.costs), c: 'text-red-400' }].map(row => (
+                  <div key={row.l} className="flex justify-between text-xs">
+                    <span className="text-zinc-500">{row.l}</span>
+                    <span className={cn('font-medium', row.c)}>{row.v}</span>
+                  </div>
+                ))}
                 <div className="flex justify-between text-xs border-t border-zinc-800 pt-1 mt-1">
                   <span className="text-zinc-400 font-semibold">Lucro</span>
-                  <span className={cn('font-bold', (latest.profit ?? 0) >= 0 ? 'text-violet-400' : 'text-red-400')}>
-                    {fmt(latest.profit)}
-                  </span>
+                  <span className={cn('font-bold', (latest.profit ?? 0) >= 0 ? 'text-violet-400' : 'text-red-400')}>{fmt(latest.profit)}</span>
                 </div>
               </div>
-              {latest.note && (
-                <p className="mt-2 text-[11px] text-zinc-600 italic">{latest.note}</p>
-              )}
+              {latest.note && <p className="mt-2 text-[11px] text-zinc-600 italic">{latest.note}</p>}
             </div>
           )}
-
-          {/* History list */}
           <div>
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Histórico ({data.length} períodos)</p>
             <ul className="space-y-1.5">
               {data.slice(0, 6).map((r, i) => (
                 <li key={r.id ?? i} className="flex items-center justify-between rounded-lg border border-zinc-800/50 px-3 py-2">
                   <span className="text-xs text-zinc-400">{r.period_label ?? '—'}</span>
-                  <span className={cn('text-xs font-semibold', (r.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400')}>
-                    {fmt(r.profit)}
-                  </span>
+                  <span className={cn('text-xs font-semibold', (r.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400')}>{fmt(r.profit)}</span>
                 </li>
               ))}
             </ul>
@@ -418,13 +373,7 @@ function FinancialPanel({ companyId, onClose }: { companyId: string; onClose: ()
 
 // ─── Notifications Panel ────────────────────────────────────────
 
-interface ExecRow {
-  id?: string
-  titulo?: string
-  execution_type?: string
-  ganho_realizado?: number
-  executed_at?: string
-}
+interface ExecRow { id?: string; titulo?: string; execution_type?: string; ganho_realizado?: number; executed_at?: string }
 
 function NotificationsPanel({ companyId, onClose }: { companyId: string; onClose: () => void }) {
   const [data, setData] = useState<ExecRow[]>([])
@@ -449,14 +398,8 @@ function NotificationsPanel({ companyId, onClose }: { companyId: string; onClose
   }
 
   return (
-    <DrawerShell
-      title="Eventos Recentes"
-      icon={<Bell size={15} className="text-blue-400" />}
-      href="/dashboard/history"
-      hrefLabel="Ver histórico completo"
-      onClose={onClose}
-      onRefresh={load}
-    >
+    <DrawerShell title="Eventos Recentes" icon={<Bell size={15} className="text-blue-400" />}
+      href="/dashboard/history" hrefLabel="Ver histórico completo" onClose={onClose} onRefresh={load}>
       {loading ? <DrawerLoader /> : data.length === 0 ? (
         <DrawerEmpty message="Nenhum evento registrado ainda." />
       ) : (
@@ -470,10 +413,7 @@ function NotificationsPanel({ companyId, onClose }: { companyId: string; onClose
                 <p className="text-xs font-medium text-zinc-200 leading-snug truncate">{e.titulo ?? 'Evento executado'}</p>
                 <div className="mt-0.5 flex items-center gap-2">
                   {e.ganho_realizado != null && e.ganho_realizado > 0 && (
-                    <span className="text-[10px] font-semibold text-emerald-400"
-                      style={{ textShadow: '0 0 8px rgba(52,211,153,0.4)' }}>
-                      +R$ {e.ganho_realizado.toLocaleString('pt-BR')}
-                    </span>
+                    <span className="text-[10px] font-semibold text-emerald-400">+R$ {e.ganho_realizado.toLocaleString('pt-BR')}</span>
                   )}
                   {e.executed_at && (
                     <span className="text-[10px] text-zinc-600">
@@ -493,10 +433,10 @@ function NotificationsPanel({ companyId, onClose }: { companyId: string; onClose
 // ─── Settings Panel ─────────────────────────────────────────────
 
 const QUICK_THEMES = [
-  { key: 'default', name: 'Nexus Dark',   color: '#7c3aed' },
-  { key: 'emerald', name: 'Emerald Pro',  color: '#10b981' },
-  { key: 'ocean',   name: 'Ocean Blue',   color: '#3b82f6' },
-  { key: 'rose',    name: 'Rose Gold',    color: '#f43f5e' },
+  { key: 'default', name: 'Nexus Dark',  color: '#7c3aed' },
+  { key: 'emerald', name: 'Emerald Pro', color: '#10b981' },
+  { key: 'ocean',   name: 'Ocean Blue',  color: '#3b82f6' },
+  { key: 'rose',    name: 'Rose Gold',   color: '#f43f5e' },
 ]
 
 function SettingsPanel({ onClose }: { onClose: () => void }) {
@@ -508,74 +448,49 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
   function applyTheme(key: string) {
     setActiveTheme(key)
     localStorage.setItem('nexus_theme', key)
-    // Dispatch custom event so settings page stays in sync
     window.dispatchEvent(new CustomEvent('nexus-theme-change', { detail: key }))
-    // Apply CSS variable immediately
     const theme = QUICK_THEMES.find(t => t.key === key)
-    if (theme) {
-      document.documentElement.style.setProperty('--nexus-primary', theme.color)
-    }
-    // Persist to server
+    if (theme) document.documentElement.style.setProperty('--nexus-primary', theme.color)
     fetch('/api/user/preferences', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ themeKey: key }),
-    }).catch(() => {/* ok */})
+    }).catch(() => {})
   }
 
   const links = [
-    { href: '/dashboard/settings',                        label: 'Configurações gerais',  icon: <Settings size={13} className="text-zinc-400" /> },
-    { href: '/dashboard/settings/payments',               label: 'Métodos de pagamento',  icon: <CreditCard size={13} className="text-emerald-400" /> },
-    { href: '/dashboard/settings/business-identity',      label: 'Identidade da empresa', icon: <Mail size={13} className="text-violet-400" /> },
-    { href: '/dashboard/billing',            label: 'Gerenciar plano',      icon: <CreditCard size={13} className="text-violet-400" /> },
-    { href: '/dashboard/dados',              label: 'Dados financeiros',    icon: <Database size={13} className="text-blue-400" /> },
+    { href: '/dashboard/settings',                   label: 'Configurações gerais',  icon: <Settings size={13} className="text-zinc-400" /> },
+    { href: '/dashboard/settings/payments',          label: 'Métodos de pagamento',  icon: <CreditCard size={13} className="text-emerald-400" /> },
+    { href: '/dashboard/settings/business-identity', label: 'Identidade da empresa', icon: <Building2 size={13} className="text-violet-400" /> },
+    { href: '/dashboard/billing',                    label: 'Gerenciar plano',       icon: <CreditCard size={13} className="text-violet-400" /> },
   ]
 
   return (
-    <DrawerShell
-      title="Configurações Rápidas"
-      icon={<Settings size={15} className="text-zinc-300" />}
-      href="/dashboard/settings"
-      hrefLabel="Abrir configurações completas"
-      onClose={onClose}
-    >
+    <DrawerShell title="Configurações Rápidas" icon={<Settings size={15} className="text-zinc-300" />}
+      href="/dashboard/settings" hrefLabel="Abrir configurações completas" onClose={onClose}>
       <div className="space-y-5">
-        {/* Theme picker */}
         <div>
           <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Tema</p>
           <div className="grid grid-cols-2 gap-2">
             {QUICK_THEMES.map(t => (
-              <button
-                key={t.key}
-                onClick={() => applyTheme(t.key)}
+              <button key={t.key} onClick={() => applyTheme(t.key)}
                 className={cn(
                   'flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all',
-                  activeTheme === t.key
-                    ? 'border-violet-500/60 bg-violet-500/10 ring-1 ring-violet-500/30'
-                    : 'border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-800/60',
-                )}
-              >
-                <span
-                  className="h-4 w-4 shrink-0 rounded-full"
-                  style={{ backgroundColor: t.color, boxShadow: activeTheme === t.key ? `0 0 8px ${t.color}` : 'none' }}
-                />
+                  activeTheme === t.key ? 'border-violet-500/60 bg-violet-500/10 ring-1 ring-violet-500/30' : 'border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-800/60',
+                )}>
+                <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: t.color, boxShadow: activeTheme === t.key ? `0 0 8px ${t.color}` : 'none' }} />
                 <span className="text-xs font-medium text-zinc-300 leading-tight">{t.name}</span>
               </button>
             ))}
           </div>
         </div>
-
-        {/* Quick links */}
         <div>
           <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Acesso Rápido</p>
           <ul className="space-y-1.5">
             {links.map(l => (
               <li key={l.href}>
-                <Link
-                  href={l.href}
-                  onClick={onClose}
-                  className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-3.5 py-3 transition hover:border-zinc-700 hover:bg-zinc-800/60"
-                >
+                <Link href={l.href} onClick={onClose}
+                  className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-3.5 py-3 transition hover:border-zinc-700 hover:bg-zinc-800/60">
                   {l.icon}
                   <span className="text-xs text-zinc-300">{l.label}</span>
                   <ChevronRight size={12} className="ml-auto text-zinc-600" />
@@ -584,12 +499,10 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
             ))}
           </ul>
         </div>
-
-        {/* Display info */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3.5 space-y-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Sistema</p>
           <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 ai-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-xs text-zinc-400">IA Ativa — Monitoramento em tempo real</span>
           </div>
           <div className="flex items-center gap-2">
@@ -604,39 +517,17 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
 
 // ─── Quick Drawer Overlay ───────────────────────────────────────
 
-function QuickDrawerOverlay({
-  type,
-  companyId,
-  onClose,
-}: {
-  type: DrawerType | null
-  companyId: string | null
-  onClose: () => void
-}) {
+function QuickDrawerOverlay({ type, companyId, onClose }: { type: DrawerType | null; companyId: string | null; onClose: () => void }) {
   return (
     <AnimatePresence>
       {type && (
         <>
-          {/* Backdrop */}
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
-            onClick={onClose}
-          />
-
-          {/* Drawer */}
-          <motion.div
-            key="drawer"
-            initial={{ x: '100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '100%', opacity: 0 }}
+          <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" onClick={onClose} />
+          <motion.div key="drawer"
+            initial={{ x: '100%', opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: '100%', opacity: 0 }}
             transition={{ type: 'spring', stiffness: 340, damping: 30 }}
-            className="fixed right-0 top-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/60"
-          >
+            className="fixed right-0 top-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/60">
             {companyId ? (
               <>
                 {type === 'growth'        && <GrowthPanel        companyId={companyId} onClose={onClose} />}
@@ -671,12 +562,10 @@ function TrialBanner({ trial }: { trial: TrialInfo }) {
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-red-500/30 bg-red-500/10 text-xs text-red-300">
         <div className="flex items-center gap-2">
           <AlertTriangle size={12} className="shrink-0" />
-          <span>Pagamento com problema — acesso limitado ao plano Free. Regularize para restaurar seus recursos.</span>
+          <span>Pagamento com problema — acesso limitado. Regularize para restaurar seus recursos.</span>
         </div>
-        <Link
-          href="/dashboard/billing"
-          className="flex items-center gap-1 rounded-full bg-red-500 px-2.5 py-0.5 font-semibold whitespace-nowrap text-white transition-colors hover:bg-red-400"
-        >
+        <Link href="/dashboard/billing"
+          className="flex items-center gap-1 rounded-full bg-red-500 px-2.5 py-0.5 font-semibold whitespace-nowrap text-white transition-colors hover:bg-red-400">
           Regularizar <ArrowRight size={10} />
         </Link>
       </div>
@@ -684,15 +573,12 @@ function TrialBanner({ trial }: { trial: TrialInfo }) {
   }
 
   if (!trial.isTrialActive || trial.trialDaysLeft === null) return null
-
   const urgent = trial.trialDaysLeft <= 2
 
   return (
     <div className={cn(
       'flex items-center justify-between gap-3 px-4 py-2.5 border-b text-xs',
-      urgent
-        ? 'bg-orange-500/10 border-orange-500/30 text-orange-300'
-        : 'bg-violet-500/10 border-violet-500/30 text-violet-300',
+      urgent ? 'bg-orange-500/10 border-orange-500/30 text-orange-300' : 'bg-violet-500/10 border-violet-500/30 text-violet-300',
     )}>
       <div className="flex items-center gap-2">
         <Clock size={12} className="shrink-0" />
@@ -702,44 +588,126 @@ function TrialBanner({ trial }: { trial: TrialInfo }) {
             : `Trial: ${trial.trialDaysLeft} dias restantes — todos os recursos PRO liberados`}
         </span>
       </div>
-      <Link
-        href="/dashboard/billing"
-        className={cn(
-          'flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold whitespace-nowrap transition-colors',
-          urgent
-            ? 'bg-orange-500 text-white hover:bg-orange-400'
-            : 'bg-violet-600 text-white hover:bg-violet-500',
-        )}
-      >
+      <Link href="/dashboard/billing"
+        className={cn('flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold whitespace-nowrap transition-colors',
+          urgent ? 'bg-orange-500 text-white hover:bg-orange-400' : 'bg-violet-600 text-white hover:bg-violet-500')}>
         Ativar plano <ArrowRight size={10} />
       </Link>
     </div>
   )
 }
 
+// ─── Nav Item (group with optional children) ────────────────────
+
+function NavItem({
+  group,
+  pathname,
+  onClose,
+}: {
+  group: NavGroup
+  pathname: string
+  onClose: () => void
+}) {
+  const isParentActive = group.exact
+    ? pathname === group.href
+    : pathname.startsWith(group.href)
+
+  const hasChildren = !!group.children?.length
+
+  // Auto-expand when any child is active
+  const [open, setOpen] = useState(isParentActive)
+  useEffect(() => {
+    if (isParentActive) setOpen(true)
+  }, [isParentActive])
+
+  return (
+    <div>
+      {hasChildren ? (
+        <button
+          onClick={() => setOpen(o => !o)}
+          className={cn(
+            'w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
+            isParentActive
+              ? 'bg-violet-600/15 text-violet-300'
+              : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200',
+          )}
+        >
+          <group.icon size={16} className={cn('shrink-0', isParentActive ? 'text-violet-400' : 'text-zinc-500')} />
+          <span className="flex-1 text-left">{group.label}</span>
+          {isParentActive && <span className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0" />}
+          <ChevronDown
+            size={12}
+            className={cn('text-zinc-600 transition-transform duration-200 shrink-0', open ? 'rotate-180' : '')}
+          />
+        </button>
+      ) : (
+        <Link
+          href={group.href}
+          onClick={onClose}
+          {...(group.tourId ? { 'data-tour': group.tourId } : {})}
+          className={cn(
+            'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
+            isParentActive
+              ? 'bg-violet-600/15 text-violet-300'
+              : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200',
+          )}
+        >
+          <group.icon size={16} className={cn('shrink-0', isParentActive ? 'text-violet-400' : 'text-zinc-500')} />
+          <span className="flex-1">{group.label}</span>
+          {isParentActive && <span className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0" />}
+        </Link>
+      )}
+
+      {/* Children */}
+      <AnimatePresence initial={false}>
+        {hasChildren && open && (
+          <motion.div
+            key="children"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="ml-4 mt-0.5 pl-3 border-l border-zinc-800/60 space-y-0.5 pb-1">
+              {group.children!.map(child => {
+                const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
+                return (
+                  <Link
+                    key={child.href}
+                    href={child.href}
+                    onClick={onClose}
+                    className={cn(
+                      'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-all',
+                      childActive
+                        ? 'bg-violet-600/20 text-violet-300'
+                        : 'text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300',
+                    )}
+                  >
+                    <child.icon size={13} className={cn('shrink-0', childActive ? 'text-violet-400' : 'text-zinc-600')} />
+                    {child.label}
+                  </Link>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // ─── Sidebar ───────────────────────────────────────────────────
 
-function Sidebar({
-  open,
-  onClose,
-  trial,
-  brandName,
-  logoUrl,
-}: {
-  open: boolean
-  onClose: () => void
-  trial: TrialInfo
-  brandName: string
-  logoUrl: string | null
+function Sidebar({ open, onClose, trial, brandName, logoUrl }: {
+  open: boolean; onClose: () => void; trial: TrialInfo; brandName: string; logoUrl: string | null
 }) {
   const pathname = usePathname()
   const { user, signOut } = useAuth()
   const [nomeEmpresa, setNomeEmpresa] = useState('Minha Empresa')
   const [userEmail,   setUserEmail]   = useState('')
 
-  useEffect(() => {
-    if (user?.email) setUserEmail(user.email)
-  }, [user])
+  useEffect(() => { if (user?.email) setUserEmail(user.email) }, [user])
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -761,49 +729,41 @@ function Sidebar({
       })
   }, [])
 
-  function isActive(item: typeof NAV[number]) {
-    if (item.exact) return pathname === item.href
-    return pathname.startsWith(item.href)
-  }
-
   return (
     <>
-      {open && (
-        <div className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden" onClick={onClose} />
-      )}
+      {open && <div className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden" onClick={onClose} />}
 
       <aside className={cn(
-        'fixed inset-y-0 left-0 z-40 flex w-60 flex-col bg-zinc-950 border-r border-zinc-800/60',
+        'fixed inset-y-0 left-0 z-40 flex w-56 flex-col bg-zinc-950 border-r border-zinc-800/50',
         'transition-transform duration-200 ease-in-out',
         open ? 'translate-x-0' : '-translate-x-full',
         'lg:translate-x-0',
       )}>
         {/* Logo */}
-        <div className="flex items-center justify-between px-5 py-5 border-b border-zinc-800/60">
-          <div className="flex items-center gap-2.5">
-            {logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt={brandName} className="h-8 w-8 rounded-lg object-contain" />
-            ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white font-bold text-sm">
-                {brandName.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div>
-              <p className="text-xs font-bold text-white tracking-wide">{brandName}</p>
-              <p className="text-[10px] text-zinc-500 truncate max-w-[100px]">{nomeEmpresa}</p>
+        <div className="flex items-center gap-3 px-4 py-5 border-b border-zinc-800/50">
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoUrl} alt={brandName} className="h-8 w-8 rounded-lg object-contain shrink-0" />
+          ) : (
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white font-bold text-sm shrink-0">
+              {brandName.charAt(0).toUpperCase()}
             </div>
+          )}
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-white truncate">{brandName}</p>
+            <p className="text-[10px] text-zinc-500 truncate">{nomeEmpresa}</p>
           </div>
-          <button onClick={onClose} className="lg:hidden p-1 text-zinc-500 hover:text-white">
-            <X size={16} />
+          <button onClick={onClose} className="lg:hidden ml-auto p-1 text-zinc-600 hover:text-white">
+            <X size={15} />
           </button>
         </div>
 
         {/* Trial indicator */}
         {trial.isTrialActive && trial.trialDaysLeft !== null && (
           <div className="px-3 pt-3">
-            <Link href="/dashboard/billing" className="flex items-center gap-2 rounded-lg bg-violet-600/15 border border-violet-600/30 px-3 py-2 hover:bg-violet-600/25 transition-colors">
-              <Clock size={12} className="text-violet-400 shrink-0" />
+            <Link href="/dashboard/billing"
+              className="flex items-center gap-2 rounded-xl bg-violet-600/10 border border-violet-600/20 px-3 py-2 hover:bg-violet-600/20 transition-colors">
+              <Clock size={11} className="text-violet-400 shrink-0" />
               <div className="min-w-0">
                 <p className="text-[10px] font-bold text-violet-300 uppercase tracking-wide">Trial PRO</p>
                 <p className="text-[11px] text-violet-400">{trial.trialDaysLeft} dias restantes</p>
@@ -814,57 +774,37 @@ function Sidebar({
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
-          {NAV.map((item) => {
-            const active = isActive(item)
-            return (
-              <Link key={item.href} href={item.href} onClick={onClose}
-                {...(item.tourId ? { 'data-tour': item.tourId } : {})}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  active
-                    ? 'bg-violet-600/20 text-violet-400 border border-violet-600/30'
-                    : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-white border border-transparent',
-                )}>
-                <item.icon size={16} className={active ? 'text-violet-400' : 'text-zinc-500'} />
-                <span className="flex-1">{item.label}</span>
-                {active && <ChevronRight size={12} className="text-violet-400/60" />}
-              </Link>
-            )
-          })}
+          {NAV.map(group => (
+            <NavItem key={group.href} group={group} pathname={pathname} onClose={onClose} />
+          ))}
         </nav>
 
-        {/* AI Active Indicator */}
-        <div className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-3 py-2">
-          <span className="h-2 w-2 rounded-full bg-emerald-400 ai-pulse shrink-0" />
+        {/* AI status pill */}
+        <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-emerald-500/15 bg-emerald-500/5 px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
           <div className="min-w-0">
             <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">IA Ativa</p>
-            <p className="truncate text-[10px] text-zinc-500">Monitorando continuamente</p>
+            <p className="truncate text-[10px] text-zinc-600">Monitorando continuamente</p>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-zinc-800/60 space-y-2">
-          {userEmail && (
-            <p className="text-[10px] text-zinc-600 px-2 truncate">{userEmail}</p>
-          )}
+        <div className="px-4 py-3 border-t border-zinc-800/50 space-y-2">
+          {userEmail && <p className="text-[10px] text-zinc-700 px-1 truncate">{userEmail}</p>}
           <button
             onClick={signOut}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-red-400 transition-colors"
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-red-400 transition-colors"
           >
             <LogOut size={13} />
             Sair
           </button>
-          <div className="flex items-center gap-2 px-2">
-            <Building2 size={13} className="text-zinc-700" />
-            <p className="text-[11px] text-zinc-700">COO de IA · NEXUS</p>
-          </div>
         </div>
       </aside>
     </>
   )
 }
 
-// ─── Checkout Sync (needs Suspense because of useSearchParams) ──
+// ─── Checkout Sync ──────────────────────────────────────────────
 
 function CheckoutSync({ onSuccess }: { onSuccess: () => void }) {
   const router       = useRouter()
@@ -904,7 +844,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     isPastDue: false,
   })
 
-  // Client-side auth guard — belt-and-suspenders behind the edge proxy
   useEffect(() => {
     if (!authLoading && !user) {
       const redirect = typeof window !== 'undefined' ? window.location.pathname : '/dashboard'
@@ -912,14 +851,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [authLoading, user, router])
 
-  // First-time user → onboarding
   useEffect(() => {
     if (!authLoading && user && !user.user_metadata?.onboarding_completed) {
       router.replace('/onboarding/welcome')
     }
   }, [authLoading, user, router])
 
-  // Resolve company_id once on mount
   useEffect(() => {
     resolveCompanyId().then(cid => setCompanyId(cid))
   }, [])
@@ -930,8 +867,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .then((data: unknown) => {
         if (!data || typeof data !== 'object') return
         const d = data as {
-          isTrialActive?: boolean
-          trialDaysLeft?: number | null
+          isTrialActive?: boolean; trialDaysLeft?: number | null
           subscription?: { status?: string } | null
           user?: { effectivePlan?: string }
           company?: { name?: string | null }
@@ -944,12 +880,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         })
         if (d.company?.name) setBrandName(d.company.name)
       })
-      .catch(() => { /* ok */ })
+      .catch(() => {})
   }, [])
 
   useEffect(() => { fetchSession() }, [fetchSession])
 
-  // Listen for drawer events dispatched by icon rail in page.tsx
   useEffect(() => {
     function onDrawerEvent(e: Event) {
       const type = (e as CustomEvent<string>).detail as DrawerType
@@ -959,7 +894,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => window.removeEventListener('nexus:drawer', onDrawerEvent)
   }, [])
 
-  // Close drawer on Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setActiveDrawer(null)
@@ -987,8 +921,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
 
-        <div className="lg:pl-60">
+        <div className="lg:pl-56">
           <TrialBanner trial={trial} />
+
+          {/* Mobile header */}
           <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-zinc-800/60 bg-zinc-950/95 px-4 py-3 backdrop-blur lg:hidden">
             <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white">
               <Menu size={18} />
@@ -1004,7 +940,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
               <span className="text-sm font-semibold text-white">{brandName}</span>
             </div>
-            {/* AI chat toggle */}
             <button
               onClick={() => setChatOpen(v => !v)}
               className="relative rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-violet-300"
@@ -1014,13 +949,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
             </button>
           </header>
+
           <Suspense fallback={null}>
             <CheckoutSync onSuccess={fetchSession} />
           </Suspense>
+
           <main>{children}</main>
         </div>
 
-        {/* Floating AI chat button — desktop only */}
+        {/* Floating AI chat — desktop */}
         <button
           onClick={() => setChatOpen(v => !v)}
           title="NEXUS IA"
@@ -1040,7 +977,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         </button>
 
-        {/* Interactive product tour — renders as a portal over everything */}
         <TourEngine />
       </div>
     </TourProvider>
