@@ -1,15 +1,16 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { createClient }            from '@supabase/supabase-js'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   MessageCircle, Bot, Zap, Sparkles, Send, Phone,
-  Search, Filter, Star, MoreHorizontal, ChevronRight,
-  CheckCircle2, Clock, Users, TrendingUp, Flame,
-  Target, Bell, RefreshCw, Settings, Plus, Wifi,
-  WifiOff, ArrowUpRight, Activity, Circle,
+  Search, Star, MoreHorizontal, ChevronRight,
+  CheckCircle2, Users, TrendingUp, Flame,
+  Target, Bell, RefreshCw, Settings, Plus,
+  ArrowUpRight, Activity, Circle,
   MessageSquare, X, Loader2, Check, AlertTriangle,
-  Smile, Archive, Tag,
+  Smile, Archive, Tag, Wifi, WifiOff,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -45,11 +46,21 @@ interface WAStatus {
   status:    string
 }
 
-interface ActivityItem {
+interface ActivityEvent {
+  id:    string
   icon:  string
   label: string
   time:  string
   color: string
+}
+
+// ─── Supabase browser client (anon key — for Realtime only) ──────────
+
+function getSupabaseBrowser() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -70,7 +81,9 @@ function formatRelative(iso: string | null) {
 }
 
 function initials(conv: Conversation) {
-  if (conv.contact_name) return conv.contact_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  if (conv.contact_name) {
+    return conv.contact_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  }
   return conv.phone.slice(-2)
 }
 
@@ -78,12 +91,11 @@ function displayName(conv: Conversation) {
   return conv.contact_name ?? `+${conv.phone}`
 }
 
-// Map label → display
 const LABEL_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  lead:        { label: 'Lead quente',  color: 'text-orange-400', bg: 'bg-orange-500/15 border-orange-500/20' },
-  cliente:     { label: 'Cliente',      color: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/20' },
-  negociacao:  { label: 'Negociação',   color: 'text-violet-400', bg: 'bg-violet-500/15 border-violet-500/20' },
-  recuperacao: { label: 'Recuperação',  color: 'text-amber-400', bg: 'bg-amber-500/15 border-amber-500/20' },
+  lead:        { label: 'Lead quente', color: 'text-orange-400',  bg: 'bg-orange-500/15 border-orange-500/20'  },
+  cliente:     { label: 'Cliente',     color: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/20' },
+  negociacao:  { label: 'Negociação',  color: 'text-violet-400',  bg: 'bg-violet-500/15 border-violet-500/20'  },
+  recuperacao: { label: 'Recuperação', color: 'text-amber-400',   bg: 'bg-amber-500/15 border-amber-500/20'    },
 }
 
 // ─── QR Connect Modal ─────────────────────────────────────────────────
@@ -91,18 +103,32 @@ const LABEL_CONFIG: Record<string, { label: string; color: string; bg: string }>
 type ConnectStep = 'loading' | 'qr' | 'scanning' | 'success'
 
 function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnected: () => void }) {
-  const [step,       setStep]       = useState<ConnectStep>('loading')
-  const [qrError,    setQrError]    = useState(false)
-  const [qrTs,       setQrTs]       = useState(Date.now())
-  const pollRef = useRef<NodeJS.Timeout | null>(null)
+  const [step,    setStep]    = useState<ConnectStep>('loading')
+  const [qrError, setQrError] = useState(false)
+  const [qrTs,    setQrTs]    = useState(Date.now())
+  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null)
+  const qrTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Load QR
+  // Simulate brief load then show QR
   useEffect(() => {
-    const t = setTimeout(() => setStep('qr'), 800)
+    const t = setTimeout(() => setStep('qr'), 900)
     return () => clearTimeout(t)
   }, [])
 
-  // Poll connection status
+  // Auto-refresh QR every 55s (before Z-API ~60s expiry)
+  useEffect(() => {
+    if (step !== 'qr' && step !== 'scanning') {
+      if (qrTimerRef.current) clearInterval(qrTimerRef.current)
+      return
+    }
+    qrTimerRef.current = setInterval(() => {
+      setQrTs(Date.now())
+      setQrError(false)
+    }, 55_000)
+    return () => { if (qrTimerRef.current) clearInterval(qrTimerRef.current) }
+  }, [step])
+
+  // Poll connection status every 3s
   useEffect(() => {
     if (step !== 'qr' && step !== 'scanning') return
 
@@ -111,8 +137,10 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
         const res  = await fetch('/api/nexus/whatsapp/status?company_id=check')
         const data = await res.json() as WAStatus
         if (data.connected) {
-          setStep('success')
           clearInterval(pollRef.current!)
+          setStep('success')
+          // Auto-configure webhook in background
+          fetch('/api/nexus/whatsapp/setup', { method: 'POST' }).catch(() => {})
           setTimeout(onConnected, 1800)
         } else if (step === 'qr') {
           setStep('scanning')
@@ -120,7 +148,7 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
       } catch { /* ignore */ }
     }, 3000)
 
-    return () => clearInterval(pollRef.current!)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [step, onConnected])
 
   function refreshQr() {
@@ -128,6 +156,9 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
     setQrError(false)
     setStep('qr')
   }
+
+  const STEPS: ConnectStep[] = ['loading', 'qr', 'scanning', 'success']
+  const stepIdx = STEPS.indexOf(step)
 
   return (
     <AnimatePresence>
@@ -140,12 +171,11 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.92, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 10 }}
+          animate={{ opacity: 1, scale: 1,    y: 0  }}
+          exit={{ opacity: 0,   scale: 0.95,  y: 10 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           className="relative bg-zinc-950 border border-zinc-800 rounded-3xl p-8 w-full max-w-md shadow-2xl"
         >
-          {/* Close */}
           <button
             onClick={onClose}
             className="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition"
@@ -167,7 +197,6 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
           {/* QR Area */}
           <div className="flex flex-col items-center gap-6">
 
-            {/* Loading */}
             {step === 'loading' && (
               <motion.div
                 initial={{ opacity: 0 }}
@@ -179,7 +208,6 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
               </motion.div>
             )}
 
-            {/* QR Code */}
             {(step === 'qr' || step === 'scanning') && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -190,7 +218,9 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
                   {qrError ? (
                     <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center gap-3">
                       <AlertTriangle className="w-8 h-8 text-amber-400" />
-                      <p className="text-xs text-zinc-500 text-center px-4">QR não disponível.<br />Configure Z-API primeiro.</p>
+                      <p className="text-xs text-zinc-500 text-center px-4">
+                        QR não disponível.<br />Configure Z-API primeiro.
+                      </p>
                     </div>
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -217,7 +247,6 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
               </motion.div>
             )}
 
-            {/* Success */}
             {step === 'success' && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -234,12 +263,11 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
                 </motion.div>
                 <div className="text-center">
                   <p className="text-sm font-semibold text-emerald-400">Conectado!</p>
-                  <p className="text-xs text-zinc-500 mt-1">Ativando IA NEXUS…</p>
+                  <p className="text-xs text-zinc-500 mt-1">Ativando NEXUS AI…</p>
                 </div>
               </motion.div>
             )}
 
-            {/* Instructions */}
             {(step === 'qr' || step === 'scanning') && (
               <div className="text-center space-y-2">
                 <p className="text-xs text-zinc-400">
@@ -255,18 +283,18 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
                 )}
               </div>
             )}
-
           </div>
 
-          {/* Progress steps */}
+          {/* Progress bar */}
           <div className="flex items-center gap-2 mt-8">
-            {(['loading', 'qr', 'scanning', 'success'] as ConnectStep[]).map((s, i) => (
-              <div key={s} className={cn(
-                'h-1 rounded-full flex-1 transition-all duration-500',
-                ['loading', 'qr', 'scanning', 'success'].indexOf(step) >= i
-                  ? 'bg-violet-500'
-                  : 'bg-zinc-800',
-              )} />
+            {STEPS.map((s, i) => (
+              <div
+                key={s}
+                className={cn(
+                  'h-1 rounded-full flex-1 transition-all duration-500',
+                  stepIdx >= i ? 'bg-violet-500' : 'bg-zinc-800',
+                )}
+              />
             ))}
           </div>
         </motion.div>
@@ -275,13 +303,13 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
   )
 }
 
-// ─── Onboarding (before connection) ──────────────────────────────────
+// ─── Onboarding ───────────────────────────────────────────────────────
 
 const MOCK_CONVS = [
-  { name: 'João Silva', tag: 'Lead quente', tagColor: 'text-orange-400', msg: 'Olá! Tenho interesse nos seus serviços', time: '14:32', unread: 2 },
-  { name: 'Maria Oliveira', tag: 'Cliente', tagColor: 'text-emerald-400', msg: 'Perfeito! Vamos fechar então', time: '14:28', unread: 0 },
-  { name: 'Carlos Mendes', tag: 'Negociação', tagColor: 'text-violet-400', msg: 'Pode me enviar a proposta?', time: '14:20', unread: 3 },
-  { name: 'Ana Costa', tag: 'Aguardando IA', tagColor: 'text-amber-400', msg: 'Qual o valor do pacote?', time: '14:15', unread: 1 },
+  { name: 'João Silva',    tag: 'Lead quente', tagColor: 'text-orange-400',  msg: 'Olá! Tenho interesse nos seus serviços', time: '14:32', unread: 2 },
+  { name: 'Maria Oliveira', tag: 'Cliente',    tagColor: 'text-emerald-400', msg: 'Perfeito! Vamos fechar então',           time: '14:28', unread: 0 },
+  { name: 'Carlos Mendes', tag: 'Negociação',  tagColor: 'text-violet-400',  msg: 'Pode me enviar a proposta?',            time: '14:20', unread: 3 },
+  { name: 'Ana Costa',     tag: 'Aguardando IA', tagColor: 'text-amber-400', msg: 'Qual o valor do pacote?',               time: '14:15', unread: 1 },
 ]
 
 function OnboardingView({ onConnect }: { onConnect: () => void }) {
@@ -293,12 +321,11 @@ function OnboardingView({ onConnect }: { onConnect: () => void }) {
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center relative overflow-hidden px-4">
-
       {/* Ambient glows */}
       <div className="fixed top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-3xl pointer-events-none" />
       <div className="fixed bottom-1/4 left-1/3 w-[400px] h-[200px] bg-emerald-600/6 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Mock conversations (faded, background) */}
+      {/* Mock conversations (faded background) */}
       <div className="absolute inset-y-0 right-0 w-80 flex flex-col gap-2 p-6 opacity-20 pointer-events-none hidden lg:flex">
         {MOCK_CONVS.map((c, i) => (
           <motion.div
@@ -323,8 +350,6 @@ function OnboardingView({ onConnect }: { onConnect: () => void }) {
             )}
           </motion.div>
         ))}
-
-        {/* Mock AI response */}
         <motion.div
           initial={{ opacity: 0, x: 40 }}
           animate={{ opacity: 1, x: 0 }}
@@ -335,23 +360,21 @@ function OnboardingView({ onConnect }: { onConnect: () => void }) {
             <Bot className="w-3.5 h-3.5 text-violet-400" />
             <p className="text-[10px] text-violet-400 font-medium">NEXUS AI · Resposta automática</p>
           </div>
-          <p className="text-[11px] text-zinc-300 leading-relaxed">Olá João! 👋 Que bom ter você por aqui! Posso te mostrar como podemos ajudar sua empresa a vender mais…</p>
+          <p className="text-[11px] text-zinc-300 leading-relaxed">Olá João! 👋 Posso te mostrar como podemos ajudar sua empresa a vender mais…</p>
         </motion.div>
       </div>
 
-      {/* Hero content */}
+      {/* Hero */}
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
         className="relative z-10 flex flex-col items-center text-center max-w-lg gap-6"
       >
-        {/* Bot icon */}
         <div className="relative">
           <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-violet-600/30 to-violet-800/20 border border-violet-500/30 flex items-center justify-center shadow-xl shadow-violet-500/20">
             <Bot className="w-12 h-12 text-violet-400" />
           </div>
-          {/* Pulse ring */}
           <div className="absolute inset-0 rounded-3xl border border-violet-500/20 animate-ping" style={{ animationDuration: '2s' }} />
           <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 border-2 border-zinc-950 flex items-center justify-center">
             <span className="text-[8px] font-bold text-white">AI</span>
@@ -361,14 +384,15 @@ function OnboardingView({ onConnect }: { onConnect: () => void }) {
         <div className="space-y-3">
           <h1 className="text-4xl font-bold text-white tracking-tight leading-tight">
             Seu WhatsApp<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400">operado por IA.</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400">
+              operado por IA.
+            </span>
           </h1>
           <p className="text-zinc-400 text-base leading-relaxed max-w-sm">
-            O NEXUS responde, organiza, recupera clientes e identifica oportunidades automaticamente — sem você precisar fazer nada.
+            O NEXUS responde, organiza, recupera clientes e identifica oportunidades automaticamente.
           </p>
         </div>
 
-        {/* Features */}
         <div className="flex flex-col gap-2 w-full max-w-xs">
           {features.map(({ icon: Icon, text }, i) => (
             <motion.div
@@ -386,7 +410,6 @@ function OnboardingView({ onConnect }: { onConnect: () => void }) {
           ))}
         </div>
 
-        {/* CTA */}
         <motion.button
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -414,8 +437,8 @@ function ConvItem({
   active:  boolean
   onClick: () => void
 }) {
-  const cfg = conv.label ? LABEL_CONFIG[conv.label] : null
-  const heat = conv.temperatura === 'quente' || conv.temperatura === 'urgente'
+  const cfg    = conv.label ? LABEL_CONFIG[conv.label] : null
+  const heat   = conv.temperatura === 'quente' || conv.temperatura === 'urgente'
   const unread = conv.unread ?? 0
 
   return (
@@ -426,7 +449,6 @@ function ConvItem({
         active ? 'bg-violet-600/10 border-l-2 border-l-violet-500' : 'hover:bg-zinc-800/30',
       )}
     >
-      {/* Avatar */}
       <div className="relative shrink-0">
         <div className={cn(
           'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold',
@@ -441,7 +463,6 @@ function ConvItem({
         )}
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1 mb-0.5">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -458,7 +479,7 @@ function ConvItem({
               {cfg.label}
             </span>
           ) : (
-            <span className="text-[11px] text-zinc-600">{conv.message_count} mensagens</span>
+            <span className="text-[11px] text-zinc-600">{conv.message_count} msgs</span>
           )}
           {unread > 0 && (
             <span className="shrink-0 min-w-[18px] h-[18px] rounded-full bg-violet-600 text-[10px] text-white flex items-center justify-center px-1">
@@ -482,14 +503,17 @@ function Bubble({ msg }: { msg: Message }) {
       className={cn('flex gap-2.5 max-w-[78%]', isOut ? 'flex-row-reverse ml-auto' : 'mr-auto')}
     >
       {isOut && (
-        <div className={cn('w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-auto',
+        <div className={cn(
+          'w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-auto',
           msg.ai_generated ? 'bg-violet-600/20' : 'bg-zinc-700',
         )}>
-          {msg.ai_generated ? <Bot className="w-3.5 h-3.5 text-violet-400" /> : <Phone className="w-3.5 h-3.5 text-zinc-400" />}
+          {msg.ai_generated
+            ? <Bot className="w-3.5 h-3.5 text-violet-400" />
+            : <Phone className="w-3.5 h-3.5 text-zinc-400" />
+          }
         </div>
       )}
       <div className={cn('flex flex-col gap-1', isOut ? 'items-end' : 'items-start')}>
-        {/* AI label */}
         {isOut && msg.ai_generated && (
           <div className="flex items-center gap-1 text-[10px] text-violet-400/70">
             <Sparkles className="w-2.5 h-2.5" />
@@ -530,14 +554,13 @@ const PRIORITY_STYLE = {
   baixa: { dot: 'bg-zinc-500',  label: 'Baixa prioridade', text: 'text-zinc-500' },
 }
 
-const DEMO_ACTIVITY: ActivityItem[] = [
-  { icon: '✅', label: 'Resposta automática enviada',  time: 'há 1 min',  color: 'text-emerald-400' },
-  { icon: '🔥', label: 'Lead quente identificado',     time: 'há 3 min',  color: 'text-orange-400' },
-  { icon: '📊', label: 'Oportunidade criada no pipeline', time: 'há 5 min', color: 'text-violet-400' },
-  { icon: '🏷️', label: 'Tag "Interesse" aplicada',    time: 'há 5 min',  color: 'text-blue-400' },
-]
-
-function AISidebar({ conv }: { conv: Conversation | null }) {
+function AISidebar({
+  conv,
+  activityEvents,
+}: {
+  conv:           Conversation | null
+  activityEvents: ActivityEvent[]
+}) {
   if (!conv) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
@@ -545,6 +568,21 @@ function AISidebar({ conv }: { conv: Conversation | null }) {
           <Bot className="w-6 h-6 text-violet-400/50" />
         </div>
         <p className="text-xs text-zinc-600">Selecione uma conversa<br />para ver a análise da IA</p>
+        {/* Global feed when no conv selected */}
+        {activityEvents.length > 0 && (
+          <div className="w-full mt-4 space-y-2.5">
+            <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider text-left">Atividade recente</p>
+            {activityEvents.slice(0, 5).map(a => (
+              <div key={a.id} className="flex items-start gap-2.5">
+                <span className="text-sm shrink-0 mt-0.5">{a.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={cn('text-[11px]', a.color)}>{a.label}</p>
+                  <p className="text-[10px] text-zinc-600">{formatRelative(a.time)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     )
   }
@@ -554,16 +592,21 @@ function AISidebar({ conv }: { conv: Conversation | null }) {
   const valor = heat ? 'R$ 5.800' : 'R$ 2.400'
 
   const analysis = [
-    { label: 'Sentimento',         value: 'Positivo',  valueColor: 'text-emerald-400',  dot: 'bg-emerald-400' },
-    { label: 'Temperatura',        value: heat ? 'Quente' : 'Morno', valueColor: heat ? 'text-orange-400' : 'text-amber-400', dot: heat ? 'bg-orange-400' : 'bg-amber-400' },
+    { label: 'Sentimento',           value: 'Positivo',  valueColor: 'text-emerald-400',  dot: 'bg-emerald-400' },
+    { label: 'Temperatura',          value: heat ? 'Quente' : 'Morno', valueColor: heat ? 'text-orange-400' : 'text-amber-400', dot: heat ? 'bg-orange-400' : 'bg-amber-400' },
     { label: 'Chance de fechamento', value: `${score}%`, valueColor: score >= 70 ? 'text-emerald-400' : 'text-amber-400', dot: score >= 70 ? 'bg-emerald-400' : 'bg-amber-400' },
-    { label: 'Valor potencial',    value: valor,       valueColor: 'text-white',         dot: null },
-    { label: 'Último contato',     value: formatRelative(conv.last_message_at), valueColor: 'text-zinc-300', dot: null },
+    { label: 'Valor potencial',      value: valor,       valueColor: 'text-white',         dot: null },
+    { label: 'Último contato',       value: formatRelative(conv.last_message_at), valueColor: 'text-zinc-300', dot: null },
+  ]
+
+  const feedEvents = activityEvents.length > 0 ? activityEvents : [
+    { id: 'demo1', icon: '✅', label: 'IA respondeu automaticamente', time: new Date(Date.now() - 60000).toISOString(), color: 'text-emerald-400' },
+    { id: 'demo2', icon: '🔥', label: 'Lead quente identificado',     time: new Date(Date.now() - 180000).toISOString(), color: 'text-orange-400' },
+    { id: 'demo3', icon: '📊', label: 'Oportunidade no pipeline',     time: new Date(Date.now() - 300000).toISOString(), color: 'text-violet-400' },
   ]
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-
       {/* AI Analysis */}
       <div className="p-4 border-b border-zinc-800/60">
         <div className="flex items-center justify-between mb-3">
@@ -606,38 +649,46 @@ function AISidebar({ conv }: { conv: Conversation | null }) {
               </button>
             )
           })}
-          <button className="w-full text-[11px] text-violet-400 hover:text-violet-300 transition py-1 text-center">
-            Ver todas as ações
-          </button>
         </div>
       </div>
 
-      {/* Activity Feed */}
+      {/* Live Activity Feed */}
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Activity className="w-3.5 h-3.5 text-violet-400" />
             <p className="text-xs font-semibold text-zinc-200">Atividade da IA</p>
           </div>
-          <button className="text-[10px] text-violet-400 hover:text-violet-300 transition">Ver tudo</button>
+          <div className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] text-emerald-400">ao vivo</span>
+          </div>
         </div>
         <div className="space-y-2.5">
-          {DEMO_ACTIVITY.map((a, i) => (
-            <div key={i} className="flex items-start gap-2.5">
-              <span className="text-sm shrink-0 mt-0.5">{a.icon}</span>
-              <div className="flex-1 min-w-0">
-                <p className={cn('text-[11px]', a.color)}>{a.label}</p>
-                <p className="text-[10px] text-zinc-600">{a.time}</p>
-              </div>
-            </div>
-          ))}
+          <AnimatePresence>
+            {feedEvents.map(a => (
+              <motion.div
+                key={a.id}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 8 }}
+                className="flex items-start gap-2.5"
+              >
+                <span className="text-sm shrink-0 mt-0.5">{a.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={cn('text-[11px]', a.color)}>{a.label}</p>
+                  <p className="text-[10px] text-zinc-600">{formatRelative(a.time)}</p>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       </div>
     </div>
   )
 }
 
-// ─── Quick Reply Suggestion ────────────────────────────────────────────
+// ─── Quick Replies ────────────────────────────────────────────────────
 
 const QUICK_REPLIES = [
   'Claro! Vou te mostrar como funciona nossa automação e os resultados que podemos gerar.',
@@ -648,22 +699,28 @@ const QUICK_REPLIES = [
 // ─── Main Page ────────────────────────────────────────────────────────
 
 export default function WhatsAppPage() {
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [messages,      setMessages]      = useState<Message[]>([])
-  const [waStatus,      setWaStatus]      = useState<WAStatus | null>(null)
-  const [selected,      setSelected]      = useState<Conversation | null>(null)
-  const [loading,       setLoading]       = useState(true)
-  const [loadingMsgs,   setLoadingMsgs]   = useState(false)
-  const [showConnect,   setShowConnect]   = useState(false)
-  const [search,        setSearch]        = useState('')
-  const [filter,        setFilter]        = useState<string>('all')
-  const [inputText,     setInputText]     = useState('')
+  const [conversations,  setConversations]  = useState<Conversation[]>([])
+  const [messages,       setMessages]       = useState<Message[]>([])
+  const [waStatus,       setWaStatus]       = useState<WAStatus | null>(null)
+  const [selected,       setSelected]       = useState<Conversation | null>(null)
+  const [loading,        setLoading]        = useState(true)
+  const [loadingMsgs,    setLoadingMsgs]    = useState(false)
+  const [sendingMsg,     setSendingMsg]     = useState(false)
+  const [showConnect,    setShowConnect]    = useState(false)
+  const [search,         setSearch]         = useState('')
+  const [filter,         setFilter]         = useState<string>('all')
+  const [inputText,      setInputText]      = useState('')
   const [showSuggestion, setShowSuggestion] = useState(false)
   const [suggestionIdx,  setSuggestionIdx]  = useState(0)
-  const messagesEnd = useRef<HTMLDivElement>(null)
-  const inputRef    = useRef<HTMLInputElement>(null)
+  const [showTyping,     setShowTyping]     = useState(false)
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([])
+  const [companyId,      setCompanyId]      = useState<string | null>(null)
 
-  // ── Fetchers ─────────────────────────────────────────────────
+  const messagesEnd  = useRef<HTMLDivElement>(null)
+  const inputRef     = useRef<HTMLInputElement>(null)
+  const typingTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Fetchers ──────────────────────────────────────────────────
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -678,12 +735,12 @@ export default function WhatsAppPage() {
       const res  = await fetch('/api/whatsapp/conversations')
       const data = await res.json()
       const convs = (data.conversations ?? []) as Conversation[]
-      // Enrich with demo labels for visual richness
+      // Enrich with demo labels for visual richness until DB stores them
       const enriched = convs.map((c, i): Conversation => ({
         ...c,
-        unread:     i === 0 ? 2 : i === 2 ? 3 : 0,
-        label:      i === 0 ? 'lead' : i === 1 ? 'cliente' : i === 2 ? 'negociacao' : null,
-        temperatura: i === 0 ? 'quente' : 'morno',
+        unread:      i === 0 ? 2 : i === 2 ? 3 : 0,
+        label:       i === 0 ? 'lead' : i === 1 ? 'cliente' : i === 2 ? 'negociacao' : null,
+        temperatura: i === 0 ? 'quente' : i === 1 ? 'morno' : 'frio',
       }))
       setConversations(enriched)
     } catch { /* ignore */ }
@@ -700,37 +757,164 @@ export default function WhatsAppPage() {
     }
   }, [])
 
-  // ── Init ─────────────────────────────────────────────────────
+  const fetchActivity = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/nexus/whatsapp/activity')
+      const data = await res.json()
+      setActivityEvents(data.events ?? [])
+    } catch { /* ignore */ }
+  }, [])
+
+  const fetchCompanyId = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/nexus/whatsapp/company')
+      const data = await res.json()
+      setCompanyId(data.company_id ?? null)
+    } catch { /* ignore */ }
+  }, [])
+
+  // ── Send message ──────────────────────────────────────────────
+
+  const handleSend = useCallback(async () => {
+    if (!selected || !inputText.trim() || sendingMsg) return
+    const text = inputText.trim()
+    setInputText('')
+    setSendingMsg(true)
+
+    // Optimistic update
+    const optimisticMsg: Message = {
+      id:           `opt-${Date.now()}`,
+      direction:    'outgoing',
+      content:      text,
+      from_me:      true,
+      ai_generated: false,
+      status:       'sent',
+      created_at:   new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, optimisticMsg])
+
+    try {
+      const res = await fetch('/api/nexus/whatsapp/send', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          phone:           selected.phone,
+          message:         text,
+          conversation_id: selected.id,
+        }),
+      })
+      if (!res.ok) {
+        // Roll back optimistic update on error
+        setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
+        setInputText(text)
+      }
+    } catch {
+      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
+      setInputText(text)
+    } finally {
+      setSendingMsg(false)
+    }
+  }, [selected, inputText, sendingMsg])
+
+  // ── Realtime subscription ─────────────────────────────────────
+
+  useEffect(() => {
+    if (!companyId) return
+
+    const supabase = getSupabaseBrowser()
+
+    const channel = supabase
+      .channel(`wa-messages-${companyId}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  'INSERT',
+          schema: 'public',
+          table:  'whatsapp_messages',
+          filter: `company_id=eq.${companyId}`,
+        },
+        payload => {
+          const newMsg = payload.new as Message & { conversation_id: string }
+
+          // If this message is for the selected conversation, add it
+          setSelected(sel => {
+            if (sel && newMsg.conversation_id === sel.id) {
+              setMessages(prev => {
+                // Avoid duplicates
+                if (prev.some(m => m.id === newMsg.id)) return prev
+                return [...prev, newMsg]
+              })
+              // Show typing indicator briefly for incoming messages (AI is processing)
+              if (newMsg.direction === 'incoming') {
+                setShowTyping(true)
+                if (typingTimer.current) clearTimeout(typingTimer.current)
+                typingTimer.current = setTimeout(() => setShowTyping(false), 5000)
+              }
+            }
+            return sel
+          })
+
+          // Refresh conversations list to update last_message_at
+          fetchConversations()
+          // Refresh activity feed
+          fetchActivity()
+        },
+      )
+      .subscribe()
+
+    return () => { void supabase.removeChannel(channel) }
+  }, [companyId, fetchConversations, fetchActivity])
+
+  // ── Init ──────────────────────────────────────────────────────
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([fetchStatus(), fetchConversations()]).finally(() => setLoading(false))
-    const t = setInterval(() => { fetchStatus(); fetchConversations() }, 30000)
-    return () => clearInterval(t)
-  }, [fetchStatus, fetchConversations])
+    Promise.all([
+      fetchStatus(),
+      fetchConversations(),
+      fetchCompanyId(),
+      fetchActivity(),
+    ]).finally(() => setLoading(false))
 
+    // Poll status + conversations every 30s
+    const statusTimer = setInterval(() => {
+      fetchStatus()
+      fetchConversations()
+    }, 30_000)
+
+    // Poll activity feed every 15s
+    const activityTimer = setInterval(fetchActivity, 15_000)
+
+    return () => {
+      clearInterval(statusTimer)
+      clearInterval(activityTimer)
+    }
+  }, [fetchStatus, fetchConversations, fetchCompanyId, fetchActivity])
+
+  // Poll messages every 5s when conversation selected (fallback for Realtime)
   useEffect(() => {
     if (!selected) return
-    const t = setInterval(() => fetchMessages(selected.id), 10000)
+    const t = setInterval(() => fetchMessages(selected.id), 5000)
     return () => clearInterval(t)
   }, [selected, fetchMessages])
 
+  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // ── Derived ──────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────
 
   const connected = waStatus?.connected ?? false
 
   const FILTERS = [
-    { key: 'all',     label: 'Todas',        count: conversations.length },
-    { key: 'unread',  label: 'Não lidas',    count: conversations.filter(c => (c.unread ?? 0) > 0).length },
-    { key: 'leads',   label: 'Leads quentes',count: conversations.filter(c => c.label === 'lead').length },
-    { key: 'clients', label: 'Clientes',     count: conversations.filter(c => c.label === 'cliente').length },
-    { key: 'ai',      label: 'Aguardando IA',count: conversations.filter(c => !c.ai_enabled).length },
-    { key: 'nego',    label: 'Negociações',  count: conversations.filter(c => c.label === 'negociacao').length },
-    { key: 'closed',  label: 'Arquivadas',   count: conversations.filter(c => c.status === 'closed').length },
+    { key: 'all',     label: 'Todas',         count: conversations.length },
+    { key: 'unread',  label: 'Não lidas',     count: conversations.filter(c => (c.unread ?? 0) > 0).length },
+    { key: 'leads',   label: 'Leads quentes', count: conversations.filter(c => c.label === 'lead').length },
+    { key: 'clients', label: 'Clientes',      count: conversations.filter(c => c.label === 'cliente').length },
+    { key: 'ai',      label: 'Aguardando IA', count: conversations.filter(c => !c.ai_enabled).length },
+    { key: 'nego',    label: 'Negociações',   count: conversations.filter(c => c.label === 'negociacao').length },
+    { key: 'closed',  label: 'Arquivadas',    count: conversations.filter(c => c.status === 'closed').length },
   ]
 
   const visibleConvs = conversations.filter(c => {
@@ -747,10 +931,10 @@ export default function WhatsAppPage() {
   })
 
   const kpis = [
-    { label: 'Conversas ativas', value: conversations.filter(c => c.status === 'active').length, sub: '+18% hoje',    icon: MessageCircle, color: 'text-violet-400' },
-    { label: 'Mensagens',        value: conversations.reduce((a, c) => a + c.message_count, 0),  sub: '+32% hoje',    icon: Send,          color: 'text-blue-400' },
-    { label: 'Leads identificados', value: conversations.filter(c => c.label === 'lead').length, sub: '+27% hoje',   icon: Users,         color: 'text-orange-400' },
-    { label: 'Oportunidades',    value: conversations.filter(c => c.label === 'negociacao').length, sub: '+44% hoje', icon: TrendingUp,    color: 'text-emerald-400' },
+    { label: 'Conversas ativas',    value: conversations.filter(c => c.status === 'active').length, sub: 'ao vivo',      icon: MessageCircle, color: 'text-violet-400' },
+    { label: 'Mensagens',           value: conversations.reduce((a, c) => a + c.message_count, 0),  sub: 'total trocado', icon: Send,          color: 'text-blue-400'   },
+    { label: 'Leads identificados', value: conversations.filter(c => c.label === 'lead').length,     sub: 'em andamento',  icon: Users,         color: 'text-orange-400' },
+    { label: 'Oportunidades',       value: conversations.filter(c => c.label === 'negociacao').length, sub: 'negociando', icon: TrendingUp,    color: 'text-emerald-400' },
   ]
 
   function handleSelectConv(conv: Conversation) {
@@ -758,6 +942,7 @@ export default function WhatsAppPage() {
     fetchMessages(conv.id)
     setShowSuggestion(true)
     setSuggestionIdx(0)
+    setShowTyping(false)
   }
 
   function useSuggestion() {
@@ -766,7 +951,7 @@ export default function WhatsAppPage() {
     inputRef.current?.focus()
   }
 
-  // ── Render: not connected ─────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -776,6 +961,8 @@ export default function WhatsAppPage() {
     )
   }
 
+  // ── Not connected ─────────────────────────────────────────────
+
   if (!connected) {
     return (
       <>
@@ -783,14 +970,19 @@ export default function WhatsAppPage() {
         {showConnect && (
           <ConnectModal
             onClose={() => setShowConnect(false)}
-            onConnected={() => { setShowConnect(false); fetchStatus(); fetchConversations() }}
+            onConnected={() => {
+              setShowConnect(false)
+              fetchStatus()
+              fetchConversations()
+              fetchActivity()
+            }}
           />
         )}
       </>
     )
   }
 
-  // ── Render: connected — OPERATION CENTER ──────────────────────
+  // ── Connected: OPERATION CENTER ───────────────────────────────
 
   return (
     <div className="h-screen bg-zinc-950 flex flex-col overflow-hidden">
@@ -799,7 +991,7 @@ export default function WhatsAppPage() {
       <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-zinc-800/60">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center">
-            <MessageCircle className="w-4.5 h-4.5 text-emerald-400" />
+            <MessageCircle className="w-4 h-4 text-emerald-400" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
@@ -808,6 +1000,9 @@ export default function WhatsAppPage() {
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Conectado
               </div>
+              {waStatus?.phone && (
+                <span className="text-[11px] text-zinc-500">+{waStatus.phone}</span>
+              )}
             </div>
             <p className="text-xs text-zinc-500">Atendimento inteligente, automações e oportunidades em tempo real.</p>
           </div>
@@ -816,7 +1011,10 @@ export default function WhatsAppPage() {
           <button className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition">
             <Settings className="w-3.5 h-3.5" /> Configurações
           </button>
-          <button className="flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-500 px-4 py-1.5 rounded-lg transition shadow-lg shadow-violet-600/20">
+          <button
+            onClick={() => setShowConnect(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-500 px-4 py-1.5 rounded-lg transition shadow-lg shadow-violet-600/20"
+          >
             <Plus className="w-3.5 h-3.5" /> Nova mensagem
           </button>
         </div>
@@ -832,14 +1030,14 @@ export default function WhatsAppPage() {
               <div>
                 <p className="text-lg font-bold text-white leading-none">{kpi.value}</p>
                 <p className="text-[10px] text-zinc-500">{kpi.label}</p>
-                <p className="text-[10px] text-emerald-500">{kpi.sub}</p>
+                <p className="text-[10px] text-zinc-600">{kpi.sub}</p>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* Main 3-column layout */}
+      {/* Main 3-column */}
       <div className="flex-1 flex overflow-hidden">
 
         {/* ── Left: Smart Inbox ── */}
@@ -849,16 +1047,17 @@ export default function WhatsAppPage() {
           <div className="p-4 border-b border-zinc-800/60">
             <div className="bg-zinc-900 border border-zinc-800/60 rounded-xl p-3 flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                <MessageCircle className="w-4 h-4 text-emerald-400" />
+                <Wifi className="w-4 h-4 text-emerald-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-white">WhatsApp Conectado</p>
-                <p className="text-[10px] text-zinc-500 truncate">
-                  {waStatus?.phone ? `+${waStatus.phone}` : 'Ativo e operando'}
-                </p>
+                <p className="text-xs font-semibold text-white">WhatsApp Ativo</p>
+                <p className="text-[10px] text-zinc-500 truncate">IA NEXUS respondendo automaticamente</p>
               </div>
-              <button className="shrink-0 text-[10px] text-violet-400 hover:text-violet-300 border border-violet-500/30 rounded-lg px-2 py-1 transition">
-                Ver QR
+              <button
+                onClick={() => setShowConnect(true)}
+                className="shrink-0 text-[10px] text-violet-400 hover:text-violet-300 border border-violet-500/30 rounded-lg px-2 py-1 transition"
+              >
+                QR
               </button>
             </div>
           </div>
@@ -918,7 +1117,11 @@ export default function WhatsAppPage() {
             {visibleConvs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
                 <MessageSquare className="w-7 h-7 text-zinc-700" />
-                <p className="text-xs text-zinc-600">Nenhuma conversa encontrada</p>
+                <p className="text-xs text-zinc-600">
+                  {conversations.length === 0
+                    ? 'Nenhuma conversa ainda.\nEnvie uma mensagem para começar.'
+                    : 'Nenhuma conversa neste filtro.'}
+                </p>
               </div>
             ) : (
               visibleConvs.map(c => (
@@ -932,7 +1135,6 @@ export default function WhatsAppPage() {
             )}
           </div>
 
-          {/* New filter */}
           <div className="p-3 border-t border-zinc-800/60">
             <button className="w-full flex items-center justify-center gap-2 text-xs text-zinc-600 hover:text-zinc-400 py-2 transition">
               <Plus className="w-3.5 h-3.5" /> Novo filtro
@@ -954,12 +1156,18 @@ export default function WhatsAppPage() {
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-white">{displayName(selected)}</p>
                       {selected.label && (
-                        <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full border', LABEL_CONFIG[selected.label]?.color, LABEL_CONFIG[selected.label]?.bg)}>
+                        <span className={cn(
+                          'text-[10px] font-medium px-1.5 py-0.5 rounded-full border',
+                          LABEL_CONFIG[selected.label]?.color,
+                          LABEL_CONFIG[selected.label]?.bg,
+                        )}>
                           {LABEL_CONFIG[selected.label]?.label}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-zinc-500">Visto por último há 14:30</p>
+                    <p className="text-[11px] text-zinc-500">
+                      {selected.ai_enabled ? '🤖 IA ativa · Respondendo automaticamente' : `+${selected.phone}`}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -970,25 +1178,12 @@ export default function WhatsAppPage() {
                     <Tag className="w-3.5 h-3.5" />
                   </button>
                   <button className="w-7 h-7 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition">
+                    <Bell className="w-3.5 h-3.5" />
+                  </button>
+                  <button className="w-7 h-7 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition">
                     <MoreHorizontal className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </div>
-
-              {/* Conversation filter tabs */}
-              <div className="shrink-0 flex gap-1 px-5 py-2 border-b border-zinc-800/40 bg-zinc-950/80">
-                {['Todas 24', 'Não lidas 5', 'Leads 6', 'Clientes 12'].map(t => {
-                  const [label, count] = t.split(' ')
-                  const active = label === 'Todas'
-                  return (
-                    <button key={t} className={cn(
-                      'text-xs px-3 py-1 rounded-full transition',
-                      active ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-600 hover:text-zinc-400',
-                    )}>
-                      {label} <span className={active ? 'text-zinc-400' : 'text-zinc-700'}>{count}</span>
-                    </button>
-                  )
-                })}
               </div>
 
               {/* Messages */}
@@ -1001,30 +1196,38 @@ export default function WhatsAppPage() {
                   <div className="flex flex-col items-center justify-center flex-1 gap-3">
                     <MessageSquare className="w-8 h-8 text-zinc-700" />
                     <p className="text-sm text-zinc-600">Nenhuma mensagem ainda</p>
+                    <p className="text-xs text-zinc-700">Envie a primeira mensagem abaixo</p>
                   </div>
                 ) : (
                   messages.map(m => <Bubble key={m.id} msg={m} />)
                 )}
 
-                {/* Typing indicator */}
-                {selected && (
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] font-bold text-zinc-400">
-                      {initials(selected)}
-                    </div>
-                    <div className="bg-zinc-800 border border-zinc-700/60 rounded-2xl rounded-tl-md px-4 py-2.5 flex items-center gap-1">
-                      {[0, 1, 2].map(i => (
-                        <motion.div
-                          key={i}
-                          animate={{ y: [0, -3, 0] }}
-                          transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
-                          className="w-1.5 h-1.5 rounded-full bg-zinc-500"
-                        />
-                      ))}
-                    </div>
-                    <p className="text-xs text-zinc-600">{displayName(selected)} está digitando…</p>
-                  </div>
-                )}
+                {/* Typing indicator — only when incoming message was just received */}
+                <AnimatePresence>
+                  {showTyping && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 8 }}
+                      className="flex items-center gap-2.5"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] font-bold text-zinc-400">
+                        {initials(selected)}
+                      </div>
+                      <div className="bg-zinc-800 border border-zinc-700/60 rounded-2xl rounded-tl-md px-4 py-2.5 flex items-center gap-1">
+                        {[0, 1, 2].map(i => (
+                          <motion.div
+                            key={i}
+                            animate={{ y: [0, -3, 0] }}
+                            transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
+                            className="w-1.5 h-1.5 rounded-full bg-zinc-500"
+                          />
+                        ))}
+                      </div>
+                      <p className="text-xs text-zinc-600">{displayName(selected)} digitando…</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <div ref={messagesEnd} />
               </div>
@@ -1054,13 +1257,13 @@ export default function WhatsAppPage() {
                           onClick={useSuggestion}
                           className="flex items-center gap-1.5 text-xs text-white bg-violet-600 hover:bg-violet-500 px-3 py-1.5 rounded-lg transition"
                         >
-                          <Check className="w-3 h-3" /> Enviar
+                          <Check className="w-3 h-3" /> Usar
                         </button>
                         <button
                           onClick={() => setSuggestionIdx(i => (i + 1) % QUICK_REPLIES.length)}
                           className="text-xs text-zinc-500 hover:text-zinc-300 transition"
                         >
-                          + 2 opções
+                          Próxima sugestão
                         </button>
                         <button
                           onClick={() => { setInputText(QUICK_REPLIES[suggestionIdx]); setShowSuggestion(false); inputRef.current?.focus() }}
@@ -1077,11 +1280,9 @@ export default function WhatsAppPage() {
               {/* Input bar */}
               <div className="shrink-0 px-5 py-3 border-t border-zinc-800/60 bg-zinc-950">
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <button className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition">
-                      <Smile className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <button className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition shrink-0">
+                    <Smile className="w-4 h-4" />
+                  </button>
                   <div className="flex-1 bg-zinc-900 border border-zinc-800/60 rounded-2xl px-4 py-2.5 flex items-center gap-2">
                     <input
                       ref={inputRef}
@@ -1089,20 +1290,27 @@ export default function WhatsAppPage() {
                       placeholder="Digite sua mensagem..."
                       value={inputText}
                       onChange={e => setInputText(e.target.value)}
-                      className="flex-1 bg-transparent text-sm text-zinc-200 placeholder-zinc-600 outline-none"
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                      disabled={sendingMsg}
+                      className="flex-1 bg-transparent text-sm text-zinc-200 placeholder-zinc-600 outline-none disabled:opacity-50"
                     />
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => { setShowSuggestion(true); setSuggestionIdx(0) }}
-                        className="flex items-center gap-1 text-[10px] text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full px-2 py-0.5 hover:bg-violet-500/20 transition"
-                      >
-                        <Bot className="w-2.5 h-2.5" /> IA Assistente
-                        <span className="bg-violet-500/20 text-[9px] rounded-full px-1 ml-0.5 font-bold">Novo</span>
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => { setShowSuggestion(true); setSuggestionIdx(0) }}
+                      className="flex items-center gap-1 text-[10px] text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full px-2 py-0.5 hover:bg-violet-500/20 transition shrink-0"
+                    >
+                      <Bot className="w-2.5 h-2.5" /> IA Assistente
+                      <span className="bg-violet-500/20 text-[9px] rounded-full px-1 ml-0.5 font-bold">Novo</span>
+                    </button>
                   </div>
-                  <button className="w-9 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 flex items-center justify-center text-white transition shadow-lg shadow-violet-600/20">
-                    <Send className="w-4 h-4" />
+                  <button
+                    onClick={handleSend}
+                    disabled={!inputText.trim() || sendingMsg}
+                    className="w-9 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white transition shadow-lg shadow-violet-600/20 shrink-0"
+                  >
+                    {sendingMsg
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <Send className="w-4 h-4" />
+                    }
                   </button>
                 </div>
               </div>
@@ -1119,7 +1327,7 @@ export default function WhatsAppPage() {
               </div>
               <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                IA NEXUS está ativa · Monitorando e otimizando
+                IA NEXUS ativa · Monitorando e otimizando
               </div>
             </div>
           )}
@@ -1127,26 +1335,34 @@ export default function WhatsAppPage() {
 
         {/* ── Right: AI Sidebar ── */}
         <div className="w-72 shrink-0 border-l border-zinc-800/60 bg-zinc-950 overflow-hidden">
-          <AISidebar conv={selected} />
+          <AISidebar conv={selected} activityEvents={activityEvents} />
         </div>
       </div>
 
       {/* Bottom live bar */}
-      <div className="shrink-0 flex items-center gap-2 px-6 py-2 border-t border-zinc-800/60 bg-zinc-950/90">
+      <div className="shrink-0 flex items-center gap-3 px-6 py-2 border-t border-zinc-800/60 bg-zinc-950/90">
         <div className="flex items-center gap-2 flex-1">
           <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-          <p className="text-[11px] text-zinc-500">IA NEXUS está ativa · Respondendo conversas automaticamente</p>
+          <p className="text-[11px] text-zinc-500">
+            IA NEXUS ativa · Respondendo automaticamente · Pipeline sincronizado
+          </p>
         </div>
-        <button className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-zinc-400 transition">
+        <div className="flex items-center gap-1.5">
+          <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="text-[11px] text-emerald-400">Conectado</span>
+        </div>
+        <button
+          onClick={() => { fetchStatus(); fetchConversations(); fetchActivity() }}
+          className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-zinc-400 transition"
+        >
           <RefreshCw className="w-3 h-3" />
         </button>
       </div>
 
-      {/* Connect modal can also appear when connected (re-connect) */}
       {showConnect && (
         <ConnectModal
           onClose={() => setShowConnect(false)}
-          onConnected={() => { setShowConnect(false); fetchStatus() }}
+          onConnected={() => { setShowConnect(false); fetchStatus(); fetchConversations() }}
         />
       )}
     </div>
