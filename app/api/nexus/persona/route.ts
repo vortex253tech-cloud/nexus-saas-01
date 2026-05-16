@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   const allowed = [
     'nome', 'nicho', 'tom', 'objetivo', 'abordagem', 'produto_foco',
     'publico_alvo', 'dores_cliente', 'diferenciais', 'objecoes',
-    'instrucoes', 'saudacao', 'is_active',
+    'instrucoes', 'instrucoes_base', 'saudacao', 'is_active',
   ]
 
   const payload: Record<string, unknown> = { company_id, updated_at: new Date().toISOString() }

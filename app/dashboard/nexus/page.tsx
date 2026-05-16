@@ -7,6 +7,7 @@ import {
   ChevronRight, RefreshCw, Send, Bot, Shield,
   BarChart2, ArrowUpRight, ArrowDownRight,
   Flame, Snowflake, Thermometer, Phone,
+  Save, Settings, KanbanSquare, Plus,
 } from 'lucide-react'
 import { resolveCompanyId } from '@/lib/get-company-id'
 import { cn } from '@/lib/cn'
@@ -28,13 +29,13 @@ interface DiagnosticScore {
 }
 
 interface SellerTask {
-  id:           string
-  tipo:         string
-  canal:        string
-  status:       string
+  id:            string
+  tipo:          string
+  canal:         string
+  status:        string
   agendado_para: string
-  conteudo:     string | null
-  leads?:       { name: string; phone: string; empresa: string; score: number } | null
+  conteudo:      string | null
+  leads?:        { name: string; phone: string; empresa: string; score: number } | null
 }
 
 interface SellerEvent {
@@ -45,17 +46,41 @@ interface SellerEvent {
 }
 
 interface AIPersona {
-  nome:     string
-  tom:      string
-  objetivo: string
-  nicho:    string | null
-  is_active: boolean
+  nome:        string
+  tom:         string
+  objetivo:    string
+  nicho:       string | null
+  instrucoes:  string | null
+  saudacao:    string | null
+  produto_foco: string | null
+  is_active:   boolean
 }
 
 interface AIMemory {
-  taxa_conversao: number
-  taxa_resposta:  number
+  taxa_conversao:  number
+  taxa_resposta:   number
   objecoes_comuns: string[] | null
+}
+
+interface PipelineLead {
+  id:          string
+  name:        string
+  phone:       string | null
+  empresa:     string | null
+  score:       number
+  temperatura: string
+  stage:       string
+  canal:       string | null
+  updated_at:  string
+}
+
+interface PipelineStage {
+  id:       string
+  nome:     string
+  cor:      string
+  posicao:  number
+  tipo:     string
+  leads:    PipelineLead[]
 }
 
 // ── Score Ring ─────────────────────────────────────────────────────────────
@@ -64,24 +89,17 @@ function ScoreRing({ score, label, color }: { score: number; label: string; colo
   const r = 28
   const circ = 2 * Math.PI * r
   const offset = circ - (score / 100) * circ
-
   return (
     <div className="flex flex-col items-center gap-1">
       <div className="relative w-16 h-16">
         <svg width="64" height="64" viewBox="0 0 64 64" className="-rotate-90">
           <circle cx="32" cy="32" r={r} fill="none" stroke="#1f2937" strokeWidth="6" />
-          <circle
-            cx="32" cy="32" r={r} fill="none"
-            stroke={color} strokeWidth="6"
-            strokeDasharray={circ}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
+          <circle cx="32" cy="32" r={r} fill="none" stroke={color} strokeWidth="6"
+            strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
             style={{ transition: 'stroke-dashoffset 1s ease' }}
           />
         </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">
-          {score}
-        </span>
+        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">{score}</span>
       </div>
       <span className="text-[10px] text-zinc-400 text-center leading-tight">{label}</span>
     </div>
@@ -92,10 +110,10 @@ function ScoreRing({ score, label, color }: { score: number; label: string; colo
 
 function TempBadge({ temp }: { temp: string }) {
   const config: Record<string, { icon: React.ReactNode; label: string; cls: string }> = {
-    frio:     { icon: <Snowflake className="w-3 h-3" />, label: 'Frio',    cls: 'bg-blue-500/15 text-blue-400 border-blue-500/25' },
-    morno:    { icon: <Thermometer className="w-3 h-3" />, label: 'Morno', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/25' },
-    quente:   { icon: <Flame className="w-3 h-3" />, label: 'Quente',     cls: 'bg-orange-500/15 text-orange-400 border-orange-500/25' },
-    urgente:  { icon: <Zap className="w-3 h-3" />, label: 'Urgente',      cls: 'bg-red-500/15 text-red-400 border-red-500/25' },
+    frio:    { icon: <Snowflake className="w-3 h-3" />, label: 'Frio',    cls: 'bg-blue-500/15 text-blue-400 border-blue-500/25' },
+    morno:   { icon: <Thermometer className="w-3 h-3" />, label: 'Morno', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/25' },
+    quente:  { icon: <Flame className="w-3 h-3" />, label: 'Quente',      cls: 'bg-orange-500/15 text-orange-400 border-orange-500/25' },
+    urgente: { icon: <Zap className="w-3 h-3" />, label: 'Urgente',       cls: 'bg-red-500/15 text-red-400 border-red-500/25' },
   }
   const c = config[temp] ?? config.frio
   return (
@@ -121,18 +139,291 @@ function RiskBadge({ risco }: { risco: string }) {
   )
 }
 
+// ── Pipeline Kanban ────────────────────────────────────────────────────────
+
+function KanbanBoard({
+  stages,
+  companyId,
+  onMove,
+}: {
+  stages: PipelineStage[]
+  companyId: string
+  onMove: () => void
+}) {
+  const [moving, setMoving] = useState<string | null>(null)
+
+  const moveLead = async (leadId: string, stageId: string) => {
+    setMoving(leadId)
+    try {
+      await fetch('/api/nexus/pipeline', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ company_id: companyId, lead_id: leadId, stage_id: stageId }),
+      })
+      onMove()
+    } finally {
+      setMoving(null)
+    }
+  }
+
+  if (!stages || stages.length === 0) {
+    return (
+      <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl">
+        <KanbanSquare className="w-10 h-10 mx-auto mb-3 text-zinc-600" />
+        <p className="text-sm text-zinc-400">Pipeline vazio</p>
+        <p className="text-xs text-zinc-500 mt-1">Leads do WhatsApp aparecerão aqui automaticamente</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto pb-4">
+      <div className="flex gap-3 min-w-max">
+        {stages.sort((a, b) => a.posicao - b.posicao).map(stage => (
+          <div key={stage.id} className="w-60 flex-shrink-0">
+            {/* Stage header */}
+            <div className="flex items-center justify-between mb-2 px-1">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.cor }} />
+                <span className="text-xs font-semibold text-zinc-300">{stage.nome}</span>
+              </div>
+              <span className="text-[10px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded-full">
+                {stage.leads.length}
+              </span>
+            </div>
+
+            {/* Cards */}
+            <div className="space-y-2 min-h-[120px] bg-zinc-900/30 rounded-xl p-2 border border-zinc-800/60">
+              {stage.leads.length === 0 ? (
+                <div className="text-center py-6 text-zinc-700 text-xs">vazio</div>
+              ) : stage.leads.map(lead => (
+                <div key={lead.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 hover:border-zinc-700 transition-colors group">
+                  <div className="flex items-start justify-between gap-1 mb-1.5">
+                    <p className="text-xs font-medium text-white leading-tight truncate">{lead.name}</p>
+                    <TempBadge temp={lead.temperatura} />
+                  </div>
+                  {lead.empresa && (
+                    <p className="text-[10px] text-zinc-500 truncate mb-1.5">{lead.empresa}</p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <div className="text-[10px] text-zinc-500">Score:</div>
+                      <div className={cn(
+                        'text-[10px] font-bold',
+                        lead.score >= 70 ? 'text-emerald-400' :
+                        lead.score >= 40 ? 'text-amber-400' : 'text-zinc-400'
+                      )}>{lead.score}</div>
+                    </div>
+                    {lead.phone && (
+                      <span className="text-[10px] text-zinc-600 flex items-center gap-0.5">
+                        <Phone className="w-2.5 h-2.5" />
+                        {lead.phone.slice(-4)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Move to stage buttons — visible on hover */}
+                  {stages.filter(s => s.id !== stage.id).length > 0 && (
+                    <div className="mt-2 hidden group-hover:flex flex-wrap gap-1">
+                      {stages
+                        .filter(s => s.id !== stage.id)
+                        .slice(0, 3)
+                        .map(s => (
+                          <button
+                            key={s.id}
+                            onClick={() => moveLead(lead.id, s.id)}
+                            disabled={moving === lead.id}
+                            className="text-[9px] px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-500 hover:text-white hover:border-zinc-500 transition-colors"
+                          >
+                            → {s.nome}
+                          </button>
+                        ))
+                      }
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Persona Form ───────────────────────────────────────────────────────────
+
+function PersonaForm({
+  initial,
+  companyId,
+  onSaved,
+}: {
+  initial: AIPersona | null
+  companyId: string
+  onSaved: (p: AIPersona) => void
+}) {
+  const [form, setForm] = useState<Partial<AIPersona>>(initial ?? {
+    nome:        'NEXUS AI',
+    tom:         'profissional',
+    objetivo:    'converter',
+    nicho:       '',
+    instrucoes:  '',
+    saudacao:    '',
+    produto_foco: '',
+    is_active:   true,
+  })
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved]   = useState(false)
+
+  const set = (k: keyof AIPersona, v: unknown) => {
+    setForm(f => ({ ...f, [k]: v }))
+    setSaved(false)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/nexus/persona', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ company_id: companyId, ...form }),
+      })
+      const json = await res.json() as { persona?: AIPersona }
+      if (json.persona) {
+        onSaved(json.persona)
+        setSaved(true)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const field = (label: string, key: keyof AIPersona, placeholder = '', type: 'text' | 'textarea' | 'select' = 'text', options?: string[]) => (
+    <div>
+      <label className="block text-xs text-zinc-400 mb-1">{label}</label>
+      {type === 'textarea' ? (
+        <textarea
+          value={(form[key] as string) ?? ''}
+          onChange={e => set(key, e.target.value)}
+          placeholder={placeholder}
+          rows={3}
+          className="w-full bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500 resize-none"
+        />
+      ) : type === 'select' && options ? (
+        <select
+          value={(form[key] as string) ?? ''}
+          onChange={e => set(key, e.target.value)}
+          className="w-full bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
+        >
+          {options.map(o => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={(form[key] as string) ?? ''}
+          onChange={e => set(key, e.target.value)}
+          placeholder={placeholder}
+          className="w-full bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500"
+        />
+      )}
+    </div>
+  )
+
+  return (
+    <div className="space-y-5">
+      {/* Status bar */}
+      <div className="flex items-center justify-between p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-violet-600/20 rounded-xl flex items-center justify-center border border-violet-500/25">
+            <Bot className="w-5 h-5 text-violet-400" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-white">{form.nome || 'Sem nome'}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <div className={cn('w-2 h-2 rounded-full', form.is_active ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600')} />
+              <span className="text-xs text-zinc-400">{form.is_active ? 'Ativa' : 'Inativa'}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => set('is_active', !form.is_active)}
+            className={cn(
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              form.is_active ? 'bg-violet-600' : 'bg-zinc-700'
+            )}
+          >
+            <span className={cn(
+              'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+              form.is_active ? 'translate-x-6' : 'translate-x-1'
+            )} />
+          </button>
+        </div>
+      </div>
+
+      {/* Form grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+        {field('Nome da IA', 'nome', 'Ex: NEXUS AI, Víctor, Sofia...')}
+        {field('Tom de voz', 'tom', '', 'select', [
+          'profissional', 'amigavel', 'executivo', 'consultivo', 'direto', 'descontraido',
+        ])}
+        {field('Objetivo principal', 'objetivo', '', 'select', [
+          'converter', 'qualificar', 'agendar_reuniao', 'follow_up', 'suporte',
+        ])}
+        {field('Nicho de mercado', 'nicho', 'Ex: academias, e-commerce, consultoria...')}
+        {field('Produto / Serviço foco', 'produto_foco', 'Ex: NEXUS Enterprise - R$2.997/mês')}
+        {field('Saudação inicial', 'saudacao', 'Ex: Olá! Aqui é o NEXUS, sua IA comercial...')}
+        <div className="sm:col-span-2">
+          {field('Instruções personalizadas', 'instrucoes',
+            'Ex: Sempre pergunte o faturamento antes de enviar proposta. Não fale em desconto antes de 3 interações...',
+            'textarea'
+          )}
+        </div>
+      </div>
+
+      {/* Save */}
+      <div className="flex items-center justify-end gap-3">
+        {saved && (
+          <span className="text-xs text-emerald-400 flex items-center gap-1">
+            <CheckCircle className="w-3.5 h-3.5" /> Salvo com sucesso
+          </span>
+        )}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {saving ? 'Salvando...' : 'Salvar Persona'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────
 
+type Tab = 'overview' | 'pipeline' | 'tasks' | 'persona' | 'events'
+
 export default function NexusDashboard() {
-  const [companyId, setCompanyId]     = useState<string | null>(null)
-  const [diagnostic, setDiagnostic]   = useState<DiagnosticScore | null>(null)
-  const [tasks, setTasks]             = useState<SellerTask[]>([])
-  const [events, setEvents]           = useState<SellerEvent[]>([])
-  const [persona, setPersona]         = useState<AIPersona | null>(null)
-  const [memory, setMemory]           = useState<AIMemory | null>(null)
-  const [loading, setLoading]         = useState(true)
-  const [running, setRunning]         = useState(false)
-  const [activeTab, setActiveTab]     = useState<'overview' | 'tasks' | 'persona' | 'events'>('overview')
+  const [companyId, setCompanyId]   = useState<string | null>(null)
+  const [diagnostic, setDiagnostic] = useState<DiagnosticScore | null>(null)
+  const [tasks, setTasks]           = useState<SellerTask[]>([])
+  const [events, setEvents]         = useState<SellerEvent[]>([])
+  const [persona, setPersona]       = useState<AIPersona | null>(null)
+  const [memory, setMemory]         = useState<AIMemory | null>(null)
+  const [pipeline, setPipeline]     = useState<PipelineStage[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [running, setRunning]       = useState(false)
+  const [activeTab, setActiveTab]   = useState<Tab>('overview')
+
+  const loadPipeline = useCallback(async (cid: string) => {
+    const res = await fetch(`/api/nexus/pipeline?company_id=${cid}`)
+    const json = await res.json() as { stages?: PipelineStage[] }
+    setPipeline(json.stages ?? [])
+  }, [])
 
   const load = useCallback(async (cid: string) => {
     const [diagRes, tasksRes, eventsRes, personaRes, memoryRes] = await Promise.allSettled([
@@ -142,13 +433,13 @@ export default function NexusDashboard() {
       fetch(`/api/nexus/persona?company_id=${cid}`).then(r => r.json()),
       fetch(`/api/nexus/memory?company_id=${cid}`).then(r => r.json()),
     ])
-
-    if (diagRes.status === 'fulfilled') setDiagnostic(diagRes.value.diagnostics?.[0] ?? null)
-    if (tasksRes.status === 'fulfilled') setTasks(tasksRes.value.tasks ?? [])
-    if (eventsRes.status === 'fulfilled') setEvents(eventsRes.value.tasks ?? [])
+    if (diagRes.status === 'fulfilled')    setDiagnostic(diagRes.value.diagnostics?.[0] ?? null)
+    if (tasksRes.status === 'fulfilled')   setTasks(tasksRes.value.tasks ?? [])
+    if (eventsRes.status === 'fulfilled')  setEvents(eventsRes.value.tasks ?? [])
     if (personaRes.status === 'fulfilled') setPersona(personaRes.value.persona ?? null)
-    if (memoryRes.status === 'fulfilled') setMemory(memoryRes.value.memory ?? null)
-  }, [])
+    if (memoryRes.status === 'fulfilled')  setMemory(memoryRes.value.memory ?? null)
+    await loadPipeline(cid)
+  }, [loadPipeline])
 
   useEffect(() => {
     resolveCompanyId().then(cid => {
@@ -162,10 +453,10 @@ export default function NexusDashboard() {
     if (!companyId || running) return
     setRunning(true)
     try {
-      const res = await fetch('/api/nexus/diagnostic', {
-        method: 'POST',
+      const res  = await fetch('/api/nexus/diagnostic', {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_id: companyId }),
+        body:    JSON.stringify({ company_id: companyId }),
       })
       const json = await res.json() as { diagnostic?: DiagnosticScore }
       if (json.diagnostic) setDiagnostic(json.diagnostic)
@@ -177,20 +468,15 @@ export default function NexusDashboard() {
   const runTask = async (task: SellerTask) => {
     if (!companyId || !task.leads?.phone) return
     await fetch('/api/nexus/seller', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body:    JSON.stringify({
         company_id: companyId,
-        task_id: task.id,
-        action: {
-          type:    task.tipo,
-          leadId:  task.id,
-          phone:   task.leads.phone,
-          context: task.conteudo,
-        },
+        task_id:    task.id,
+        action:     { type: task.tipo, leadId: task.id, phone: task.leads.phone, context: task.conteudo },
       }),
     })
-    await load(companyId)
+    if (companyId) await load(companyId)
   }
 
   if (loading) {
@@ -206,12 +492,21 @@ export default function NexusDashboard() {
 
   const pendingTasks = tasks.filter(t => t.status === 'pendente')
   const totalScore   = diagnostic?.score_operacional ?? 0
+  const totalLeads   = pipeline.reduce((acc, s) => acc + s.leads.length, 0)
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'overview',  label: 'Visão Geral' },
+    { id: 'pipeline',  label: `Pipeline (${totalLeads})` },
+    { id: 'tasks',     label: 'Tarefas IA' },
+    { id: 'persona',   label: 'Persona IA' },
+    { id: 'events',    label: 'Eventos' },
+  ]
 
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-white p-6 space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-violet-600/20 rounded-xl flex items-center justify-center border border-violet-500/25">
             <Brain className="w-5 h-5 text-violet-400" />
@@ -244,7 +539,6 @@ export default function NexusDashboard() {
         <div className="bg-gradient-to-r from-violet-600/10 via-purple-600/10 to-zinc-900 border border-violet-500/20 rounded-2xl p-5">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-6">
-              {/* Big score */}
               <div className="text-center">
                 <div className={cn(
                   'text-5xl font-black',
@@ -254,8 +548,6 @@ export default function NexusDashboard() {
                 </div>
                 <div className="text-xs text-zinc-400 mt-1">Score Operacional</div>
               </div>
-
-              {/* Mini rings */}
               <div className="flex items-center gap-4">
                 <ScoreRing score={diagnostic.score_aquisicao}  label="Aquisição"  color="#8b5cf6" />
                 <ScoreRing score={diagnostic.score_conversao}  label="Conversão"  color="#06b6d4" />
@@ -263,7 +555,6 @@ export default function NexusDashboard() {
                 <ScoreRing score={diagnostic.score_retencao}   label="Retenção"   color="#f59e0b" />
               </div>
             </div>
-
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-zinc-400">Risco:</span>
@@ -281,19 +572,19 @@ export default function NexusDashboard() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-zinc-900/50 p-1 rounded-xl border border-zinc-800 w-fit">
-        {(['overview', 'tasks', 'persona', 'events'] as const).map(tab => (
+      <div className="flex gap-1 bg-zinc-900/50 p-1 rounded-xl border border-zinc-800 overflow-x-auto">
+        {tabs.map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'text-xs font-medium px-4 py-1.5 rounded-lg transition-colors capitalize',
-              activeTab === tab
+              'text-xs font-medium px-4 py-1.5 rounded-lg transition-colors whitespace-nowrap',
+              activeTab === tab.id
                 ? 'bg-violet-600 text-white'
                 : 'text-zinc-400 hover:text-white'
             )}
           >
-            {tab === 'overview' ? 'Visão Geral' : tab === 'tasks' ? 'Tarefas IA' : tab === 'persona' ? 'Persona IA' : 'Eventos'}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -335,7 +626,7 @@ export default function NexusDashboard() {
                     <span className={cn(
                       'text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0',
                       r.prioridade === 'CRÍTICA' ? 'bg-red-500/20 text-red-400' :
-                      r.prioridade === 'ALTA' ? 'bg-orange-500/20 text-orange-400' :
+                      r.prioridade === 'ALTA'    ? 'bg-orange-500/20 text-orange-400' :
                       'bg-amber-500/20 text-amber-400'
                     )}>
                       {r.prioridade}
@@ -416,6 +707,31 @@ export default function NexusDashboard() {
         </div>
       )}
 
+      {/* ── PIPELINE TAB ─────────────────────────────────────────────────── */}
+      {activeTab === 'pipeline' && companyId && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Pipeline de Vendas</h2>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {totalLeads} lead{totalLeads !== 1 ? 's' : ''} · leads criados automaticamente pelo WhatsApp
+              </p>
+            </div>
+            <button
+              onClick={() => loadPipeline(companyId)}
+              className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Atualizar
+            </button>
+          </div>
+          <KanbanBoard
+            stages={pipeline}
+            companyId={companyId}
+            onMove={() => loadPipeline(companyId)}
+          />
+        </div>
+      )}
+
       {/* ── TASKS TAB ────────────────────────────────────────────────────── */}
       {activeTab === 'tasks' && (
         <div className="space-y-3">
@@ -428,21 +744,19 @@ export default function NexusDashboard() {
             <div key={task.id} className="flex items-center gap-4 bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors">
               <div className={cn(
                 'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
-                task.status === 'concluido' ? 'bg-emerald-500/15' :
-                task.status === 'falhou'   ? 'bg-red-500/15' :
+                task.status === 'concluido'  ? 'bg-emerald-500/15' :
+                task.status === 'falhou'     ? 'bg-red-500/15' :
                 task.status === 'executando' ? 'bg-violet-500/15' : 'bg-zinc-800'
               )}>
-                {task.status === 'concluido' ? <CheckCircle className="w-4 h-4 text-emerald-400" /> :
-                 task.status === 'falhou'    ? <AlertTriangle className="w-4 h-4 text-red-400" /> :
+                {task.status === 'concluido'  ? <CheckCircle className="w-4 h-4 text-emerald-400" /> :
+                 task.status === 'falhou'     ? <AlertTriangle className="w-4 h-4 text-red-400" /> :
                  task.status === 'executando' ? <RefreshCw className="w-4 h-4 text-violet-400 animate-spin" /> :
                  <Clock className="w-4 h-4 text-zinc-400" />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-white truncate">{task.leads?.name ?? 'Lead'}</p>
-                  {task.leads?.empresa && (
-                    <span className="text-[10px] text-zinc-500 truncate">{task.leads.empresa}</span>
-                  )}
+                  {task.leads?.empresa && <span className="text-[10px] text-zinc-500 truncate">{task.leads.empresa}</span>}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[10px] text-zinc-500">{task.tipo}</span>
@@ -452,8 +766,7 @@ export default function NexusDashboard() {
                     <>
                       <span className="text-[10px] text-zinc-600">·</span>
                       <span className="text-[10px] text-zinc-500 flex items-center gap-0.5">
-                        <Phone className="w-2.5 h-2.5" />
-                        {task.leads.phone}
+                        <Phone className="w-2.5 h-2.5" />{task.leads.phone}
                       </span>
                     </>
                   )}
@@ -461,7 +774,9 @@ export default function NexusDashboard() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-[10px] text-zinc-500">
-                  {new Date(task.agendado_para).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                  {new Date(task.agendado_para).toLocaleString('pt-BR', {
+                    hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit',
+                  })}
                 </span>
                 {task.status === 'pendente' && task.leads?.phone && (
                   <button
@@ -478,49 +793,12 @@ export default function NexusDashboard() {
       )}
 
       {/* ── PERSONA TAB ──────────────────────────────────────────────────── */}
-      {activeTab === 'persona' && (
-        <div className="space-y-4">
-          {persona ? (
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-12 h-12 bg-violet-600/20 rounded-xl flex items-center justify-center border border-violet-500/25">
-                  <Bot className="w-6 h-6 text-violet-400" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">{persona.nome}</h2>
-                  <div className="flex items-center gap-2">
-                    <div className={cn('w-2 h-2 rounded-full', persona.is_active ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600')} />
-                    <span className="text-xs text-zinc-400">{persona.is_active ? 'Ativa' : 'Inativa'}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {[
-                  { label: 'Tom', value: persona.tom },
-                  { label: 'Objetivo', value: persona.objetivo },
-                  { label: 'Nicho', value: persona.nicho ?? '—' },
-                ].map(item => (
-                  <div key={item.label} className="bg-zinc-800/50 rounded-lg p-3">
-                    <p className="text-[10px] text-zinc-500 mb-1">{item.label}</p>
-                    <p className="text-sm font-medium text-white capitalize">{item.value.replace(/_/g, ' ')}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 p-3 bg-violet-600/5 border border-violet-500/15 rounded-lg">
-                <p className="text-xs text-zinc-400">
-                  A persona IA é o agente que fala com seus leads no WhatsApp. Configure em{' '}
-                  <strong className="text-violet-400">Configurações &rarr; IA</strong>.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl">
-              <Bot className="w-10 h-10 mx-auto mb-3 text-zinc-600" />
-              <p className="text-sm text-zinc-400">Persona IA não configurada</p>
-              <p className="text-xs text-zinc-500 mt-1">Configure sua IA em Configurações &rarr; IA</p>
-            </div>
-          )}
-        </div>
+      {activeTab === 'persona' && companyId && (
+        <PersonaForm
+          initial={persona}
+          companyId={companyId}
+          onSaved={setPersona}
+        />
       )}
 
       {/* ── EVENTS TAB ───────────────────────────────────────────────────── */}
