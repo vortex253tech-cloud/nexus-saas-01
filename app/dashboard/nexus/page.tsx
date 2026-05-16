@@ -2,835 +2,411 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Brain, Zap, Target, TrendingUp, AlertTriangle,
-  MessageSquare, Users, CheckCircle, Clock, Activity,
-  ChevronRight, RefreshCw, Send, Bot, Shield,
-  BarChart2, ArrowUpRight, ArrowDownRight,
-  Flame, Snowflake, Thermometer, Phone,
-  Save, Settings, KanbanSquare, Plus,
+  Wifi, WifiOff, Bot, Zap, Users, MessageSquare,
+  Flame, ChevronRight, RefreshCw, Save,
+  CheckCircle, Clock, ArrowRight, Settings,
+  Phone, Building2, Target, Sparkles,
 } from 'lucide-react'
 import { resolveCompanyId } from '@/lib/get-company-id'
 import { cn } from '@/lib/cn'
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────────
 
-interface DiagnosticScore {
-  score_aquisicao:   number
-  score_conversao:   number
-  score_automacao:   number
-  score_retencao:    number
-  score_operacional: number
-  risco:             string
-  dependencia:       string
-  perda_estimada:    number
-  potencial_crescimento: number
-  gargalos:          string[]
-  recomendacoes:     Array<{ prioridade: string; acao: string; impacto: string }>
+interface OverviewData {
+  ai: {
+    active:     boolean
+    nome:       string
+    tom:        string
+    objetivo:   string
+    nicho:      string | null
+    instrucoes: string | null
+    saudacao:   string | null
+  }
+  today: {
+    mensagens:   number
+    leads_novos: number
+  }
+  pipeline: {
+    total:  number
+    hot:    number
+    closed: number
+    stages: Array<{ id: string; nome: string; cor: string; posicao: number; tipo: string; count: number }>
+    leads:  Array<{ id: string; name: string; stage: string; temperatura: string; score: number; empresa: string | null; phone: string | null }>
+  }
+  events: Array<{ tipo: string; canal: string; conteudo: string; created_at: string }>
 }
 
-interface SellerTask {
-  id:            string
-  tipo:          string
-  canal:         string
-  status:        string
-  agendado_para: string
-  conteudo:      string | null
-  leads?:        { name: string; phone: string; empresa: string; score: number } | null
+interface WAStatus {
+  connected: boolean
+  status:    string
+  phone:     string | null
 }
 
-interface SellerEvent {
-  tipo:       string
-  canal:      string
-  conteudo:   string
-  created_at: string
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'agora'
+  if (m < 60) return `${m}m atrás`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h atrás`
+  return `${Math.floor(h / 24)}d atrás`
 }
 
-interface AIPersona {
-  nome:        string
-  tom:         string
-  objetivo:    string
-  nicho:       string | null
-  instrucoes:  string | null
-  saudacao:    string | null
-  produto_foco: string | null
-  is_active:   boolean
+const STAGE_COLORS: Record<string, string> = {
+  novo:        'bg-slate-100 text-slate-600',
+  contatado:   'bg-blue-50 text-blue-600',
+  qualificado: 'bg-violet-50 text-violet-600',
+  proposta:    'bg-amber-50 text-amber-600',
+  negociando:  'bg-orange-50 text-orange-600',
+  fechado:     'bg-emerald-50 text-emerald-700',
+  perdido:     'bg-red-50 text-red-500',
 }
 
-interface AIMemory {
-  taxa_conversao:  number
-  taxa_resposta:   number
-  objecoes_comuns: string[] | null
+function TempDot({ t }: { t: string }) {
+  const c = t === 'quente' || t === 'urgente'
+    ? 'bg-orange-400'
+    : t === 'morno' ? 'bg-amber-300' : 'bg-slate-300'
+  return <span className={cn('inline-block w-2 h-2 rounded-full', c)} />
 }
 
-interface PipelineLead {
-  id:          string
-  name:        string
-  phone:       string | null
-  empresa:     string | null
-  score:       number
-  temperatura: string
-  stage:       string
-  canal:       string | null
-  updated_at:  string
-}
+// ── Sub-components ────────────────────────────────────────────────────────────
 
-interface PipelineStage {
-  id:       string
-  nome:     string
-  cor:      string
-  posicao:  number
-  tipo:     string
-  leads:    PipelineLead[]
-}
-
-// ── Score Ring ─────────────────────────────────────────────────────────────
-
-function ScoreRing({ score, label, color }: { score: number; label: string; color: string }) {
-  const r = 28
-  const circ = 2 * Math.PI * r
-  const offset = circ - (score / 100) * circ
+function WABadge({ wa }: { wa: WAStatus | null }) {
+  if (!wa) return null
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="relative w-16 h-16">
-        <svg width="64" height="64" viewBox="0 0 64 64" className="-rotate-90">
-          <circle cx="32" cy="32" r={r} fill="none" stroke="#1f2937" strokeWidth="6" />
-          <circle cx="32" cy="32" r={r} fill="none" stroke={color} strokeWidth="6"
-            strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-            style={{ transition: 'stroke-dashoffset 1s ease' }}
-          />
-        </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">{score}</span>
-      </div>
-      <span className="text-[10px] text-zinc-400 text-center leading-tight">{label}</span>
+    <div className={cn(
+      'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium',
+      wa.connected ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600',
+    )}>
+      {wa.connected
+        ? <><Wifi className="w-3 h-3" /> WhatsApp conectado</>
+        : <><WifiOff className="w-3 h-3" /> WhatsApp desconectado</>
+      }
     </div>
   )
 }
 
-// ── Temperatura badge ──────────────────────────────────────────────────────
-
-function TempBadge({ temp }: { temp: string }) {
-  const config: Record<string, { icon: React.ReactNode; label: string; cls: string }> = {
-    frio:    { icon: <Snowflake className="w-3 h-3" />, label: 'Frio',    cls: 'bg-blue-500/15 text-blue-400 border-blue-500/25' },
-    morno:   { icon: <Thermometer className="w-3 h-3" />, label: 'Morno', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/25' },
-    quente:  { icon: <Flame className="w-3 h-3" />, label: 'Quente',      cls: 'bg-orange-500/15 text-orange-400 border-orange-500/25' },
-    urgente: { icon: <Zap className="w-3 h-3" />, label: 'Urgente',       cls: 'bg-red-500/15 text-red-400 border-red-500/25' },
-  }
-  const c = config[temp] ?? config.frio
+function MetricCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border', c.cls)}>
-      {c.icon} {c.label}
-    </span>
+    <div className="bg-white border border-slate-100 rounded-2xl px-5 py-4 flex flex-col gap-1">
+      <p className="text-xs text-slate-400 font-medium tracking-wide uppercase">{label}</p>
+      <p className="text-3xl font-semibold text-slate-900 leading-none">{value}</p>
+      {sub && <p className="text-xs text-slate-400">{sub}</p>}
+    </div>
   )
 }
 
-// ── Risk Badge ─────────────────────────────────────────────────────────────
-
-function RiskBadge({ risco }: { risco: string }) {
-  const colors: Record<string, string> = {
-    BAIXO:   'text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
-    MEDIO:   'text-amber-400 bg-amber-500/10 border-amber-500/25',
-    ALTO:    'text-orange-400 bg-orange-500/10 border-orange-500/25',
-    CRITICO: 'text-red-400 bg-red-500/10 border-red-500/25',
-  }
-  return (
-    <span className={cn('text-xs font-bold px-2 py-0.5 rounded border', colors[risco] ?? colors.MEDIO)}>
-      {risco}
-    </span>
-  )
-}
-
-// ── Pipeline Kanban ────────────────────────────────────────────────────────
-
-function KanbanBoard({
-  stages,
-  companyId,
-  onMove,
-}: {
-  stages: PipelineStage[]
-  companyId: string
-  onMove: () => void
-}) {
-  const [moving, setMoving] = useState<string | null>(null)
-
-  const moveLead = async (leadId: string, stageId: string) => {
-    setMoving(leadId)
-    try {
-      await fetch('/api/nexus/pipeline', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ company_id: companyId, lead_id: leadId, stage_id: stageId }),
-      })
-      onMove()
-    } finally {
-      setMoving(null)
-    }
-  }
-
-  if (!stages || stages.length === 0) {
+function EventFeed({ events }: { events: OverviewData['events'] }) {
+  if (!events.length) {
     return (
-      <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl">
-        <KanbanSquare className="w-10 h-10 mx-auto mb-3 text-zinc-600" />
-        <p className="text-sm text-zinc-400">Pipeline vazio</p>
-        <p className="text-xs text-zinc-500 mt-1">Leads do WhatsApp aparecerão aqui automaticamente</p>
+      <div className="py-16 text-center text-slate-400 text-sm">
+        Nenhuma atividade registrada ainda
       </div>
     )
   }
-
   return (
-    <div className="overflow-x-auto pb-4">
-      <div className="flex gap-3 min-w-max">
-        {stages.sort((a, b) => a.posicao - b.posicao).map(stage => (
-          <div key={stage.id} className="w-60 flex-shrink-0">
-            {/* Stage header */}
-            <div className="flex items-center justify-between mb-2 px-1">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.cor }} />
-                <span className="text-xs font-semibold text-zinc-300">{stage.nome}</span>
-              </div>
-              <span className="text-[10px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded-full">
-                {stage.leads.length}
-              </span>
-            </div>
-
-            {/* Cards */}
-            <div className="space-y-2 min-h-[120px] bg-zinc-900/30 rounded-xl p-2 border border-zinc-800/60">
-              {stage.leads.length === 0 ? (
-                <div className="text-center py-6 text-zinc-700 text-xs">vazio</div>
-              ) : stage.leads.map(lead => (
-                <div key={lead.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 hover:border-zinc-700 transition-colors group">
-                  <div className="flex items-start justify-between gap-1 mb-1.5">
-                    <p className="text-xs font-medium text-white leading-tight truncate">{lead.name}</p>
-                    <TempBadge temp={lead.temperatura} />
-                  </div>
-                  {lead.empresa && (
-                    <p className="text-[10px] text-zinc-500 truncate mb-1.5">{lead.empresa}</p>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1">
-                      <div className="text-[10px] text-zinc-500">Score:</div>
-                      <div className={cn(
-                        'text-[10px] font-bold',
-                        lead.score >= 70 ? 'text-emerald-400' :
-                        lead.score >= 40 ? 'text-amber-400' : 'text-zinc-400'
-                      )}>{lead.score}</div>
-                    </div>
-                    {lead.phone && (
-                      <span className="text-[10px] text-zinc-600 flex items-center gap-0.5">
-                        <Phone className="w-2.5 h-2.5" />
-                        {lead.phone.slice(-4)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Move to stage buttons — visible on hover */}
-                  {stages.filter(s => s.id !== stage.id).length > 0 && (
-                    <div className="mt-2 hidden group-hover:flex flex-wrap gap-1">
-                      {stages
-                        .filter(s => s.id !== stage.id)
-                        .slice(0, 3)
-                        .map(s => (
-                          <button
-                            key={s.id}
-                            onClick={() => moveLead(lead.id, s.id)}
-                            disabled={moving === lead.id}
-                            className="text-[9px] px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-500 hover:text-white hover:border-zinc-500 transition-colors"
-                          >
-                            → {s.nome}
-                          </button>
-                        ))
-                      }
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+    <div className="divide-y divide-slate-50">
+      {events.map((ev, i) => (
+        <div key={i} className="flex items-start gap-3 py-3.5 px-1">
+          <div className="mt-0.5 w-7 h-7 rounded-full bg-slate-50 flex items-center justify-center shrink-0">
+            <Zap className="w-3.5 h-3.5 text-slate-400" />
           </div>
-        ))}
-      </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-slate-700 leading-snug truncate">{ev.conteudo}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{ev.canal} · {timeAgo(ev.created_at)}</p>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
 
-// ── Persona Form ───────────────────────────────────────────────────────────
+function KanbanBoard({ stages }: { stages: OverviewData['pipeline']['stages']; leads: OverviewData['pipeline']['leads'] }) {
+  const [moving, setMoving] = useState<string | null>(null)
 
-function PersonaForm({
-  initial,
+  async function moveLead(leadId: string, stageId: string, companyId: string) {
+    setMoving(leadId)
+    await fetch('/api/nexus/pipeline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_id: companyId, lead_id: leadId, stage_id: stageId }),
+    })
+    setMoving(null)
+  }
+
+  if (!stages.length) return (
+    <div className="py-16 text-center text-slate-400 text-sm">Nenhuma etapa configurada</div>
+  )
+
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-4">
+      {stages.map(stage => (
+        <div key={stage.id} className="shrink-0 w-56">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{stage.nome}</span>
+            <span className="text-xs bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">{stage.count}</span>
+          </div>
+          <div className="space-y-2">
+            {stage.count === 0 && (
+              <div className="rounded-xl border-2 border-dashed border-slate-100 h-16 flex items-center justify-center text-xs text-slate-300">
+                vazio
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function PersonaTab({
+  persona,
   companyId,
-  onSaved,
 }: {
-  initial: AIPersona | null
+  persona: OverviewData['ai']
   companyId: string
-  onSaved: (p: AIPersona) => void
 }) {
-  const [form, setForm] = useState<Partial<AIPersona>>(initial ?? {
-    nome:        'NEXUS AI',
-    tom:         'profissional',
-    objetivo:    'converter',
-    nicho:       '',
-    instrucoes:  '',
-    saudacao:    '',
-    produto_foco: '',
-    is_active:   true,
+  const [form, setForm] = useState({
+    nome:       persona.nome,
+    nicho:      persona.nicho ?? '',
+    objetivo:   persona.objetivo,
+    tom:        persona.tom,
+    instrucoes: persona.instrucoes ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
 
-  const set = (k: keyof AIPersona, v: unknown) => {
-    setForm(f => ({ ...f, [k]: v }))
-    setSaved(false)
-  }
-
-  const handleSave = async () => {
+  async function save() {
     setSaving(true)
-    try {
-      const res = await fetch('/api/nexus/persona', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ company_id: companyId, ...form }),
-      })
-      const json = await res.json() as { persona?: AIPersona }
-      if (json.persona) {
-        onSaved(json.persona)
-        setSaved(true)
-      }
-    } finally {
-      setSaving(false)
-    }
+    await fetch('/api/nexus/persona', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_id: companyId, ...form }),
+    })
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
-  const field = (label: string, key: keyof AIPersona, placeholder = '', type: 'text' | 'textarea' | 'select' = 'text', options?: string[]) => (
-    <div>
-      <label className="block text-xs text-zinc-400 mb-1">{label}</label>
-      {type === 'textarea' ? (
-        <textarea
-          value={(form[key] as string) ?? ''}
-          onChange={e => set(key, e.target.value)}
-          placeholder={placeholder}
-          rows={3}
-          className="w-full bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500 resize-none"
-        />
-      ) : type === 'select' && options ? (
-        <select
-          value={(form[key] as string) ?? ''}
-          onChange={e => set(key, e.target.value)}
-          className="w-full bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
-        >
-          {options.map(o => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-      ) : (
-        <input
-          type="text"
-          value={(form[key] as string) ?? ''}
-          onChange={e => set(key, e.target.value)}
-          placeholder={placeholder}
-          className="w-full bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500"
-        />
-      )}
+  const field = (label: string, key: keyof typeof form, multiline?: boolean) => (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium text-slate-500">{label}</label>
+      {multiline
+        ? <textarea
+            rows={3}
+            value={form[key]}
+            onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
+            className="resize-none rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition"
+          />
+        : <input
+            type="text"
+            value={form[key]}
+            onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
+            className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition"
+          />
+      }
     </div>
   )
 
   return (
-    <div className="space-y-5">
-      {/* Status bar */}
-      <div className="flex items-center justify-between p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-violet-600/20 rounded-xl flex items-center justify-center border border-violet-500/25">
-            <Bot className="w-5 h-5 text-violet-400" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-white">{form.nome || 'Sem nome'}</p>
-            <div className="flex items-center gap-2 mt-0.5">
-              <div className={cn('w-2 h-2 rounded-full', form.is_active ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600')} />
-              <span className="text-xs text-zinc-400">{form.is_active ? 'Ativa' : 'Inativa'}</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => set('is_active', !form.is_active)}
-            className={cn(
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              form.is_active ? 'bg-violet-600' : 'bg-zinc-700'
-            )}
-          >
-            <span className={cn(
-              'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-              form.is_active ? 'translate-x-6' : 'translate-x-1'
-            )} />
-          </button>
-        </div>
-      </div>
-
-      {/* Form grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
-        {field('Nome da IA', 'nome', 'Ex: NEXUS AI, Víctor, Sofia...')}
-        {field('Tom de voz', 'tom', '', 'select', [
-          'profissional', 'amigavel', 'executivo', 'consultivo', 'direto', 'descontraido',
-        ])}
-        {field('Objetivo principal', 'objetivo', '', 'select', [
-          'converter', 'qualificar', 'agendar_reuniao', 'follow_up', 'suporte',
-        ])}
-        {field('Nicho de mercado', 'nicho', 'Ex: academias, e-commerce, consultoria...')}
-        {field('Produto / Serviço foco', 'produto_foco', 'Ex: NEXUS Enterprise - R$2.997/mês')}
-        {field('Saudação inicial', 'saudacao', 'Ex: Olá! Aqui é o NEXUS, sua IA comercial...')}
-        <div className="sm:col-span-2">
-          {field('Instruções personalizadas', 'instrucoes',
-            'Ex: Sempre pergunte o faturamento antes de enviar proposta. Não fale em desconto antes de 3 interações...',
-            'textarea'
-          )}
-        </div>
-      </div>
-
-      {/* Save */}
-      <div className="flex items-center justify-end gap-3">
-        {saved && (
-          <span className="text-xs text-emerald-400 flex items-center gap-1">
-            <CheckCircle className="w-3.5 h-3.5" /> Salvo com sucesso
-          </span>
-        )}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+    <div className="max-w-lg space-y-4">
+      {field('Nome da IA', 'nome')}
+      {field('Nicho / Mercado', 'nicho')}
+      {field('Objetivo principal', 'objetivo')}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-slate-500">Tom da IA</label>
+        <select
+          value={form.tom}
+          onChange={e => setForm(p => ({ ...p, tom: e.target.value }))}
+          className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition bg-white"
         >
-          {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {saving ? 'Salvando...' : 'Salvar Persona'}
-        </button>
+          {['profissional', 'descontraído', 'consultivo', 'direto', 'empático'].map(t => (
+            <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+          ))}
+        </select>
       </div>
+      {field('Instruções especiais', 'instrucoes', true)}
+      <button
+        onClick={save}
+        disabled={saving}
+        className={cn(
+          'flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition',
+          saved
+            ? 'bg-emerald-500 text-white'
+            : 'bg-violet-600 hover:bg-violet-700 text-white',
+        )}
+      >
+        {saved ? <><CheckCircle className="w-4 h-4" /> Salvo</> : saving ? <><RefreshCw className="w-4 h-4 animate-spin" /> Salvando…</> : <><Save className="w-4 h-4" /> Salvar</>}
+      </button>
     </div>
   )
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'pipeline' | 'tasks' | 'persona' | 'events'
+type Tab = 'atividade' | 'pipeline' | 'ia'
 
-export default function NexusDashboard() {
-  const [companyId, setCompanyId]   = useState<string | null>(null)
-  const [diagnostic, setDiagnostic] = useState<DiagnosticScore | null>(null)
-  const [tasks, setTasks]           = useState<SellerTask[]>([])
-  const [events, setEvents]         = useState<SellerEvent[]>([])
-  const [persona, setPersona]       = useState<AIPersona | null>(null)
-  const [memory, setMemory]         = useState<AIMemory | null>(null)
-  const [pipeline, setPipeline]     = useState<PipelineStage[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [running, setRunning]       = useState(false)
-  const [activeTab, setActiveTab]   = useState<Tab>('overview')
+export default function NexusPage() {
+  const [companyId, setCompanyId] = useState<string | null>(null)
+  const [data,      setData]      = useState<OverviewData | null>(null)
+  const [wa,        setWa]        = useState<WAStatus | null>(null)
+  const [tab,       setTab]       = useState<Tab>('atividade')
+  const [loading,   setLoading]   = useState(true)
+  const [toggling,  setToggling]  = useState(false)
 
-  const loadPipeline = useCallback(async (cid: string) => {
-    const res = await fetch(`/api/nexus/pipeline?company_id=${cid}`)
-    const json = await res.json() as { stages?: PipelineStage[] }
-    setPipeline(json.stages ?? [])
+  useEffect(() => {
+    resolveCompanyId().then(setCompanyId)
   }, [])
 
   const load = useCallback(async (cid: string) => {
-    const [diagRes, tasksRes, eventsRes, personaRes, memoryRes] = await Promise.allSettled([
-      fetch(`/api/nexus/diagnostic?company_id=${cid}`).then(r => r.json()),
-      fetch(`/api/nexus/tasks?company_id=${cid}&limit=20`).then(r => r.json()),
-      fetch(`/api/nexus/seller?company_id=${cid}`).then(r => r.json()),
-      fetch(`/api/nexus/persona?company_id=${cid}`).then(r => r.json()),
-      fetch(`/api/nexus/memory?company_id=${cid}`).then(r => r.json()),
+    setLoading(true)
+    const [ov, ws] = await Promise.all([
+      fetch(`/api/nexus/overview?company_id=${cid}`).then(r => r.json()),
+      fetch(`/api/nexus/whatsapp/status?company_id=${cid}`).then(r => r.json()).catch(() => null),
     ])
-    if (diagRes.status === 'fulfilled')    setDiagnostic(diagRes.value.diagnostics?.[0] ?? null)
-    if (tasksRes.status === 'fulfilled')   setTasks(tasksRes.value.tasks ?? [])
-    if (eventsRes.status === 'fulfilled')  setEvents(eventsRes.value.tasks ?? [])
-    if (personaRes.status === 'fulfilled') setPersona(personaRes.value.persona ?? null)
-    if (memoryRes.status === 'fulfilled')  setMemory(memoryRes.value.memory ?? null)
-    await loadPipeline(cid)
-  }, [loadPipeline])
+    setData(ov)
+    setWa(ws)
+    setLoading(false)
+  }, [])
 
   useEffect(() => {
-    resolveCompanyId().then(cid => {
-      if (!cid) { setLoading(false); return }
-      setCompanyId(cid)
-      load(cid).finally(() => setLoading(false))
-    })
-  }, [load])
+    if (companyId) load(companyId)
+  }, [companyId, load])
 
-  const runDiagnostic = async () => {
-    if (!companyId || running) return
-    setRunning(true)
-    try {
-      const res  = await fetch('/api/nexus/diagnostic', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ company_id: companyId }),
-      })
-      const json = await res.json() as { diagnostic?: DiagnosticScore }
-      if (json.diagnostic) setDiagnostic(json.diagnostic)
-    } finally {
-      setRunning(false)
-    }
-  }
-
-  const runTask = async (task: SellerTask) => {
-    if (!companyId || !task.leads?.phone) return
-    await fetch('/api/nexus/seller', {
-      method:  'POST',
+  async function toggleAI() {
+    if (!data || !companyId) return
+    setToggling(true)
+    await fetch('/api/nexus/persona', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        company_id: companyId,
-        task_id:    task.id,
-        action:     { type: task.tipo, leadId: task.id, phone: task.leads.phone, context: task.conteudo },
-      }),
+      body: JSON.stringify({ company_id: companyId, is_active: !data.ai.active }),
     })
-    if (companyId) await load(companyId)
+    await load(companyId)
+    setToggling(false)
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="flex items-center gap-3 text-zinc-400">
-          <Brain className="w-6 h-6 animate-pulse text-violet-400" />
-          <span>Carregando NEXUS...</span>
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="w-5 h-5 text-slate-300 animate-spin" />
       </div>
     )
   }
 
-  const pendingTasks = tasks.filter(t => t.status === 'pendente')
-  const totalScore   = diagnostic?.score_operacional ?? 0
-  const totalLeads   = pipeline.reduce((acc, s) => acc + s.leads.length, 0)
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
+        Erro ao carregar dados
+      </div>
+    )
+  }
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview',  label: 'Visão Geral' },
-    { id: 'pipeline',  label: `Pipeline (${totalLeads})` },
-    { id: 'tasks',     label: 'Tarefas IA' },
-    { id: 'persona',   label: 'Persona IA' },
-    { id: 'events',    label: 'Eventos' },
+  const TABS: { key: Tab; label: string }[] = [
+    { key: 'atividade', label: 'Atividade' },
+    { key: 'pipeline',  label: `Pipeline (${data.pipeline.total})` },
+    { key: 'ia',        label: 'IA' },
   ]
 
   return (
-    <div className="min-h-screen bg-[#0a0a0b] text-white p-6 space-y-6">
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-violet-600/20 rounded-xl flex items-center justify-center border border-violet-500/25">
-            <Brain className="w-5 h-5 text-violet-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-white">NEXUS Command Center</h1>
-            <p className="text-xs text-zinc-500">Sistema Operacional de IA Comercial</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {persona && (
-            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5">
-              <div className={cn('w-2 h-2 rounded-full', persona.is_active ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600')} />
-              <span className="text-xs text-zinc-300">{persona.nome}</span>
-            </div>
-          )}
-          <button
-            onClick={runDiagnostic}
-            disabled={running}
-            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors"
-          >
-            {running ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
-            {running ? 'Analisando...' : 'Diagnosticar'}
-          </button>
-        </div>
-      </div>
-
-      {/* Operational Score Banner */}
-      {diagnostic && (
-        <div className="bg-gradient-to-r from-violet-600/10 via-purple-600/10 to-zinc-900 border border-violet-500/20 rounded-2xl p-5">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-6">
-              <div className="text-center">
-                <div className={cn(
-                  'text-5xl font-black',
-                  totalScore >= 70 ? 'text-emerald-400' : totalScore >= 40 ? 'text-amber-400' : 'text-red-400'
-                )}>
-                  {totalScore}
-                </div>
-                <div className="text-xs text-zinc-400 mt-1">Score Operacional</div>
+        {/* ── Hero ── */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            {/* AI pulse */}
+            <div className="relative shrink-0">
+              <div className={cn(
+                'w-12 h-12 rounded-2xl flex items-center justify-center',
+                data.ai.active ? 'bg-violet-100' : 'bg-slate-100',
+              )}>
+                <Bot className={cn('w-6 h-6', data.ai.active ? 'text-violet-600' : 'text-slate-400')} />
               </div>
-              <div className="flex items-center gap-4">
-                <ScoreRing score={diagnostic.score_aquisicao}  label="Aquisição"  color="#8b5cf6" />
-                <ScoreRing score={diagnostic.score_conversao}  label="Conversão"  color="#06b6d4" />
-                <ScoreRing score={diagnostic.score_automacao}  label="Automação"  color="#10b981" />
-                <ScoreRing score={diagnostic.score_retencao}   label="Retenção"   color="#f59e0b" />
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400">Risco:</span>
-                <RiskBadge risco={diagnostic.risco} />
-              </div>
-              <div className="text-xs text-zinc-400">
-                Potencial: <span className="text-emerald-400 font-bold">+R${diagnostic.potencial_crescimento.toLocaleString()}</span>
-              </div>
-              <div className="text-xs text-zinc-400">
-                Perda estimada: <span className="text-red-400">R${diagnostic.perda_estimada.toLocaleString()}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex gap-1 bg-zinc-900/50 p-1 rounded-xl border border-zinc-800 overflow-x-auto">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              'text-xs font-medium px-4 py-1.5 rounded-lg transition-colors whitespace-nowrap',
-              activeTab === tab.id
-                ? 'bg-violet-600 text-white'
-                : 'text-zinc-400 hover:text-white'
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── OVERVIEW TAB ─────────────────────────────────────────────────── */}
-      {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-          {/* Bottlenecks */}
-          <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <h3 className="text-sm font-semibold text-white">Gargalos</h3>
-            </div>
-            {diagnostic?.gargalos && diagnostic.gargalos.length > 0 ? (
-              <div className="space-y-2">
-                {diagnostic.gargalos.map((g, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs text-zinc-300">
-                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
-                    {g}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-zinc-500">Nenhum gargalo crítico detectado</p>
-            )}
-          </div>
-
-          {/* Recommendations */}
-          <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 lg:col-span-2">
-            <div className="flex items-center gap-2 mb-3">
-              <Target className="w-4 h-4 text-violet-400" />
-              <h3 className="text-sm font-semibold text-white">Recomendações IA</h3>
-            </div>
-            {diagnostic?.recomendacoes && diagnostic.recomendacoes.length > 0 ? (
-              <div className="space-y-2">
-                {diagnostic.recomendacoes.map((r, i) => (
-                  <div key={i} className="flex items-start gap-3 p-2.5 bg-zinc-800/50 rounded-lg">
-                    <span className={cn(
-                      'text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0',
-                      r.prioridade === 'CRÍTICA' ? 'bg-red-500/20 text-red-400' :
-                      r.prioridade === 'ALTA'    ? 'bg-orange-500/20 text-orange-400' :
-                      'bg-amber-500/20 text-amber-400'
-                    )}>
-                      {r.prioridade}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-white">{r.acao}</p>
-                      <p className="text-[10px] text-emerald-400 mt-0.5">{r.impacto}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-zinc-500">Execute o diagnóstico para gerar recomendações</p>
-            )}
-          </div>
-
-          {/* AI Memory Stats */}
-          {memory && (
-            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Brain className="w-4 h-4 text-purple-400" />
-                <h3 className="text-sm font-semibold text-white">Memória IA</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-zinc-800/50 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-violet-400">{(memory.taxa_conversao || 0).toFixed(1)}%</div>
-                  <div className="text-[10px] text-zinc-400 mt-1">Taxa Conversão</div>
-                </div>
-                <div className="bg-zinc-800/50 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-cyan-400">{(memory.taxa_resposta || 0).toFixed(1)}%</div>
-                  <div className="text-[10px] text-zinc-400 mt-1">Taxa Resposta</div>
-                </div>
-              </div>
-              {memory.objecoes_comuns && memory.objecoes_comuns.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-[10px] text-zinc-500 mb-1.5">Objeções comuns:</p>
-                  {memory.objecoes_comuns.slice(0, 3).map((o, i) => (
-                    <div key={i} className="text-[10px] text-zinc-400 flex items-center gap-1">
-                      <ChevronRight className="w-3 h-3 text-zinc-600 shrink-0" /> {o}
-                    </div>
-                  ))}
-                </div>
+              {data.ai.active && (
+                <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full ring-2 ring-white animate-pulse" />
               )}
             </div>
-          )}
-
-          {/* Pending tasks summary */}
-          <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 lg:col-span-2">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-amber-400" />
-                <h3 className="text-sm font-semibold text-white">Próximas Tarefas IA</h3>
-              </div>
-              <span className="text-xs text-zinc-500">{pendingTasks.length} pendentes</span>
-            </div>
-            {pendingTasks.slice(0, 4).map(task => (
-              <div key={task.id} className="flex items-center gap-3 py-2 border-b border-zinc-800/50 last:border-0">
-                <div className="w-7 h-7 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0">
-                  <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-white truncate">{task.leads?.name ?? 'Lead sem nome'}</p>
-                  <p className="text-[10px] text-zinc-500">{task.tipo} · {task.canal}</p>
-                </div>
-                <button
-                  onClick={() => runTask(task)}
-                  className="text-[10px] text-violet-400 hover:text-violet-300 flex items-center gap-1 shrink-0"
-                >
-                  <Send className="w-3 h-3" /> Executar
-                </button>
-              </div>
-            ))}
-            {pendingTasks.length === 0 && (
-              <p className="text-xs text-zinc-500">Nenhuma tarefa pendente</p>
-            )}
-          </div>
-
-        </div>
-      )}
-
-      {/* ── PIPELINE TAB ─────────────────────────────────────────────────── */}
-      {activeTab === 'pipeline' && companyId && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-sm font-semibold text-white">Pipeline de Vendas</h2>
-              <p className="text-xs text-zinc-500 mt-0.5">
-                {totalLeads} lead{totalLeads !== 1 ? 's' : ''} · leads criados automaticamente pelo WhatsApp
+            <div className="min-w-0">
+              <p className="font-semibold text-slate-900">{data.ai.nome}</p>
+              <p className="text-sm text-slate-400 truncate">
+                {data.ai.active
+                  ? `${data.today.mensagens} mensagens · ${data.today.leads_novos} leads hoje`
+                  : 'IA pausada'}
               </p>
             </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <WABadge wa={wa} />
             <button
-              onClick={() => loadPipeline(companyId)}
-              className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
+              onClick={toggleAI}
+              disabled={toggling}
+              className={cn(
+                'px-4 py-2 rounded-xl text-sm font-medium transition',
+                data.ai.active
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  : 'bg-violet-600 hover:bg-violet-700 text-white',
+                toggling && 'opacity-50 cursor-not-allowed',
+              )}
             >
-              <RefreshCw className="w-3.5 h-3.5" /> Atualizar
+              {data.ai.active ? 'Pausar IA' : 'Ativar IA'}
             </button>
           </div>
-          <KanbanBoard
-            stages={pipeline}
-            companyId={companyId}
-            onMove={() => loadPipeline(companyId)}
-          />
         </div>
-      )}
 
-      {/* ── TASKS TAB ────────────────────────────────────────────────────── */}
-      {activeTab === 'tasks' && (
-        <div className="space-y-3">
-          {tasks.length === 0 ? (
-            <div className="text-center py-16 text-zinc-500">
-              <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">Nenhuma tarefa agendada</p>
-            </div>
-          ) : tasks.map(task => (
-            <div key={task.id} className="flex items-center gap-4 bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors">
-              <div className={cn(
-                'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
-                task.status === 'concluido'  ? 'bg-emerald-500/15' :
-                task.status === 'falhou'     ? 'bg-red-500/15' :
-                task.status === 'executando' ? 'bg-violet-500/15' : 'bg-zinc-800'
-              )}>
-                {task.status === 'concluido'  ? <CheckCircle className="w-4 h-4 text-emerald-400" /> :
-                 task.status === 'falhou'     ? <AlertTriangle className="w-4 h-4 text-red-400" /> :
-                 task.status === 'executando' ? <RefreshCw className="w-4 h-4 text-violet-400 animate-spin" /> :
-                 <Clock className="w-4 h-4 text-zinc-400" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-white truncate">{task.leads?.name ?? 'Lead'}</p>
-                  {task.leads?.empresa && <span className="text-[10px] text-zinc-500 truncate">{task.leads.empresa}</span>}
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] text-zinc-500">{task.tipo}</span>
-                  <span className="text-[10px] text-zinc-600">·</span>
-                  <span className="text-[10px] text-zinc-500">{task.canal}</span>
-                  {task.leads?.phone && (
-                    <>
-                      <span className="text-[10px] text-zinc-600">·</span>
-                      <span className="text-[10px] text-zinc-500 flex items-center gap-0.5">
-                        <Phone className="w-2.5 h-2.5" />{task.leads.phone}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[10px] text-zinc-500">
-                  {new Date(task.agendado_para).toLocaleString('pt-BR', {
-                    hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit',
-                  })}
-                </span>
-                {task.status === 'pendente' && task.leads?.phone && (
-                  <button
-                    onClick={() => runTask(task)}
-                    className="flex items-center gap-1 text-[10px] bg-violet-600/20 hover:bg-violet-600/40 text-violet-400 px-2 py-1 rounded-lg transition-colors"
-                  >
-                    <Send className="w-3 h-3" /> Executar
-                  </button>
+        {/* ── Metrics ── */}
+        <div className="grid grid-cols-3 gap-3">
+          <MetricCard label="Leads hoje"   value={data.today.leads_novos} sub="novos" />
+          <MetricCard label="Mensagens"    value={data.today.mensagens}   sub="enviadas hoje" />
+          <MetricCard label="Leads quentes" value={data.pipeline.hot}     sub={`de ${data.pipeline.total}`} />
+        </div>
+
+        {/* ── Tabs ── */}
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="flex border-b border-slate-100">
+            {TABS.map(t => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  'flex-1 py-3.5 text-sm font-medium transition',
+                  tab === t.key
+                    ? 'text-violet-600 border-b-2 border-violet-500 bg-violet-50/40'
+                    : 'text-slate-400 hover:text-slate-600',
                 )}
-              </div>
-            </div>
-          ))}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-5">
+            {tab === 'atividade' && (
+              <EventFeed events={data.events} />
+            )}
+
+            {tab === 'pipeline' && (
+              <KanbanBoard stages={data.pipeline.stages} leads={data.pipeline.leads} />
+            )}
+
+            {tab === 'ia' && companyId && (
+              <PersonaTab persona={data.ai} companyId={companyId} />
+            )}
+          </div>
         </div>
-      )}
 
-      {/* ── PERSONA TAB ──────────────────────────────────────────────────── */}
-      {activeTab === 'persona' && companyId && (
-        <PersonaForm
-          initial={persona}
-          companyId={companyId}
-          onSaved={setPersona}
-        />
-      )}
-
-      {/* ── EVENTS TAB ───────────────────────────────────────────────────── */}
-      {activeTab === 'events' && (
-        <div className="space-y-2">
-          {events.length === 0 ? (
-            <div className="text-center py-16 text-zinc-500">
-              <Activity className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">Nenhum evento registrado</p>
-            </div>
-          ) : events.map((ev, i) => (
-            <div key={i} className="flex items-start gap-3 bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-3">
-              <div className="w-6 h-6 bg-zinc-800 rounded flex items-center justify-center shrink-0 mt-0.5">
-                <Zap className="w-3 h-3 text-violet-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-white capitalize">{ev.tipo}</span>
-                  <span className="text-[10px] text-zinc-500">via {ev.canal}</span>
-                </div>
-                {ev.conteudo && (
-                  <p className="text-[10px] text-zinc-400 mt-0.5 line-clamp-2">{ev.conteudo}</p>
-                )}
-              </div>
-              <span className="text-[10px] text-zinc-600 shrink-0">
-                {new Date(ev.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            </div>
-          ))}
+        {/* ── Refresh ── */}
+        <div className="flex justify-end">
+          <button
+            onClick={() => companyId && load(companyId)}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Atualizar
+          </button>
         </div>
-      )}
 
+      </div>
     </div>
   )
 }
