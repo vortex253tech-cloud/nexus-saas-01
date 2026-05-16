@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
   const pipelineStages = stages.map(s => {
     const slug  = SLUG[s.nome.toLowerCase()] ?? s.nome.toLowerCase()
     const count = leads.filter(l => l.stage === slug || l.stage === s.nome).length
-    return { id: s.id, nome: s.nome, cor: s.cor, posicao: s.posicao, tipo: s.tipo, count }
+    return { id: s.id, nome: s.nome, cor: s.cor, posicao: s.posicao, tipo: s.tipo, count, slug }
   })
 
   const hotLeads    = leads.filter(l => l.temperatura === 'quente' || l.temperatura === 'urgente')

@@ -19,7 +19,7 @@ interface OverviewData {
   today: { mensagens: number; leads_novos: number }
   pipeline: {
     total: number; hot: number; closed: number
-    stages: Array<{ id: string; nome: string; cor: string; posicao: number; tipo: string; count: number }>
+    stages: Array<{ id: string; nome: string; cor: string; posicao: number; tipo: string; count: number; slug: string }>
     leads:  Array<{ id: string; name: string; stage: string; temperatura: string; score: number; empresa: string | null; phone: string | null }>
   }
   events: Array<{ tipo: string; canal: string; conteudo: string; created_at: string }>
@@ -267,11 +267,10 @@ function StageColumn({ stage, leads }: {
   stage: OverviewData['pipeline']['stages'][number]
   leads: OverviewData['pipeline']['leads']
 }) {
-  const stageName = stage.nome.toLowerCase()
   const stageLeads = leads.filter(l =>
-    l.stage === stageName ||
+    l.stage === stage.slug ||
     l.stage === stage.nome ||
-    l.stage === stageName.replace(' ', '-')
+    l.stage === stage.nome.toLowerCase()
   )
 
   const colorMap: Record<string, string> = {
@@ -283,8 +282,7 @@ function StageColumn({ stage, leads }: {
     'fechado':     '#10b981',
     'perdido':     '#ef4444',
   }
-  const stageSlug = stageName.split(' ')[0]
-  const accentColor = colorMap[stageSlug] ?? '#7c3aed'
+  const accentColor = colorMap[stage.slug] ?? colorMap[stage.nome.toLowerCase().split(' ')[0]] ?? '#7c3aed'
 
   return (
     <div className="flex-1 min-w-0">
@@ -341,10 +339,19 @@ function SuggestedAction({ label, priority, href }: { label: string; priority: '
 
 // ─── Main Page ────────────────────────────────────────────────────
 
+interface MetricsData {
+  days:     string[]
+  leads:    number[]
+  messages: number[]
+  deals:    number[]
+  totals:   { leads: number; messages: number; deals: number; closed: number }
+}
+
 export default function DashboardPage() {
   const [companyId,  setCompanyId]  = useState<string | null>(null)
   const [session,    setSession]    = useState<SessionInfo>({ nomeEmpresa: 'Minha Empresa', nome: '', effectivePlan: 'free' })
   const [overview,   setOverview]   = useState<OverviewData | null>(null)
+  const [metrics,    setMetrics]    = useState<MetricsData | null>(null)
   const [loading,    setLoading]    = useState(true)
   const [liveIndex,  setLiveIndex]  = useState(0)
 
@@ -366,11 +373,13 @@ export default function DashboardPage() {
 
   const load = useCallback(async (cid: string) => {
     setLoading(true)
-    const [ov, sess] = await Promise.all([
+    const [ov, sess, met] = await Promise.all([
       fetch(`/api/nexus/overview?company_id=${cid}`).then(r => r.json()).catch(() => null),
       fetch('/api/auth/session').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/nexus/metrics?company_id=${cid}`).then(r => r.json()).catch(() => null),
     ])
     if (ov) setOverview(ov)
+    if (met) setMetrics(met)
     if (sess) {
       setSession({
         nomeEmpresa:   sess.company?.name ?? 'Empresa',
@@ -383,61 +392,70 @@ export default function DashboardPage() {
 
   useEffect(() => { if (companyId) load(companyId) }, [companyId, load])
 
-  // Synthetic sparklines (7 days trending up)
-  const sparkBase   = [8, 12, 9, 15, 18, 14, 22]
-  const sparkLeads  = [18, 22, 19, 28, 25, 30, 35]
-  const sparkNeg    = [5, 8, 6, 10, 9, 12, 14]
-  const sparkTasks  = [70, 74, 72, 79, 81, 85, 89]
+  // Real 7-day time-series from metrics API (fallback to flat zeros)
+  const sparkLeads  = metrics?.leads    ?? [0, 0, 0, 0, 0, 0, 0]
+  const sparkMsgs   = metrics?.messages ?? [0, 0, 0, 0, 0, 0, 0]
+  const sparkDeals  = metrics?.deals    ?? [0, 0, 0, 0, 0, 0, 0]
+  const closedCount = metrics?.totals.closed ?? overview?.pipeline.closed ?? 0
+  const totalLeads  = metrics?.totals.leads  ?? overview?.pipeline.total  ?? 0
 
-  // Synthetic performance chart data
-  const chartRevenue = [8000, 12000, 9500, 15000, 18000, 14000, 22000]
-  const chartLeads   = [18, 22, 19, 28, 25, 30, 35]
-  const chartNeg     = [5, 8, 6, 10, 9, 12, 14]
+  // Conversion rate sparkline: compare first half vs second half of week
+  const convRate    = totalLeads > 0 ? Math.round((closedCount / totalLeads) * 100) : 0
+  const sparkConv   = sparkLeads.map((l, i) => sparkDeals[i] > 0 && l > 0 ? Math.round((sparkDeals[i] / l) * 100) : convRate)
+
+  // 7-day period-over-period trend (compare last 7 vs prior 7)
+  function weekTrend(arr: number[]): number {
+    const half = Math.floor(arr.length / 2)
+    const prev = arr.slice(0, half).reduce((a, b) => a + b, 0)
+    const curr = arr.slice(half).reduce((a, b) => a + b, 0)
+    if (prev === 0) return curr > 0 ? 100 : 0
+    return Math.round(((curr - prev) / prev) * 100)
+  }
 
   const kpis = [
     {
-      label:      'Receita Recuperada',
-      value:      overview?.today.mensagens ? 24870 : 0,
-      unit:       'BRL' as const,
-      trend:      32,
-      trendLabel: '↑ 32% vs último período',
-      sparkValues: sparkBase,
-      color:      'bg-violet-500/15',
-      glow:       '#7c3aed',
-      icon:       <DollarSign className="w-4 h-4 text-violet-400" />,
+      label:       'Mensagens enviadas',
+      value:       metrics?.totals.messages ?? overview?.today.mensagens ?? 0,
+      unit:        undefined,
+      trend:       weekTrend(sparkMsgs),
+      trendLabel:  'últimos 7 dias',
+      sparkValues: sparkMsgs,
+      color:       'bg-violet-500/15',
+      glow:        '#7c3aed',
+      icon:        <MessageCircle className="w-4 h-4 text-violet-400" />,
     },
     {
-      label:      'Novos Leads',
-      value:      overview?.today.leads_novos ?? 0,
-      unit:       undefined,
-      trend:      18,
-      trendLabel: '↑ 18% vs último período',
+      label:       'Novos Leads',
+      value:       totalLeads,
+      unit:        undefined,
+      trend:       weekTrend(sparkLeads),
+      trendLabel:  'últimos 7 dias',
       sparkValues: sparkLeads,
-      color:      'bg-blue-500/15',
-      glow:       '#3b82f6',
-      icon:       <Users className="w-4 h-4 text-blue-400" />,
+      color:       'bg-blue-500/15',
+      glow:        '#3b82f6',
+      icon:        <Users className="w-4 h-4 text-blue-400" />,
     },
     {
-      label:      'Negociações Ativas',
-      value:      overview?.pipeline.total ?? 0,
-      unit:       undefined,
-      trend:      11,
-      trendLabel: '↑ 11% vs último período',
-      sparkValues: sparkNeg,
-      color:      'bg-fuchsia-500/15',
-      glow:       '#d946ef',
-      icon:       <TrendingUp className="w-4 h-4 text-fuchsia-400" />,
+      label:       'Negociações Ativas',
+      value:       metrics?.totals.deals ?? overview?.pipeline.hot ?? 0,
+      unit:        undefined,
+      trend:       weekTrend(sparkDeals),
+      trendLabel:  'últimos 7 dias',
+      sparkValues: sparkDeals,
+      color:       'bg-fuchsia-500/15',
+      glow:        '#d946ef',
+      icon:        <TrendingUp className="w-4 h-4 text-fuchsia-400" />,
     },
     {
-      label:      'Tarefas Concluídas',
-      value:      89,
-      unit:       '%' as const,
-      trend:      23,
-      trendLabel: '↑ 23% vs último período',
-      sparkValues: sparkTasks,
-      color:      'bg-emerald-500/15',
-      glow:       '#10b981',
-      icon:       <CheckCircle className="w-4 h-4 text-emerald-400" />,
+      label:       'Taxa de Conversão',
+      value:       convRate,
+      unit:        '%' as const,
+      trend:       weekTrend(sparkConv),
+      trendLabel:  'leads → fechados',
+      sparkValues: sparkConv,
+      color:       'bg-emerald-500/15',
+      glow:        '#10b981',
+      icon:        <CheckCircle className="w-4 h-4 text-emerald-400" />,
     },
   ]
 
@@ -548,9 +566,9 @@ export default function DashboardPage() {
               </div>
             </div>
             <AreaChart datasets={[
-              { label: 'Receita',     values: chartRevenue, color: 'violet', glow: '#7c3aed' },
-              { label: 'Leads',       values: chartLeads.map(v => v * 350), color: 'blue', glow: '#3b82f6' },
-              { label: 'Negociacoes', values: chartNeg.map(v => v * 700), color: 'fuchsia', glow: '#d946ef' },
+              { label: 'Mensagens',    values: sparkMsgs,                      color: 'violet',  glow: '#7c3aed' },
+              { label: 'Leads',        values: sparkLeads,                     color: 'blue',    glow: '#3b82f6' },
+              { label: 'Negociações',  values: sparkDeals,                     color: 'fuchsia', glow: '#d946ef' },
             ]} />
           </div>
 

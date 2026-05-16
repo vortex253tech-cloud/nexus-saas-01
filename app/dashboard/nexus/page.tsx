@@ -6,7 +6,8 @@ import {
   Bot, Zap, Users, MessageSquare, Wifi, WifiOff,
   RefreshCw, Save, CheckCircle, Sparkles, Wand2,
   Bell, Brain, BarChart3, TrendingUp, Play, Pause,
-  ArrowRight, Clock,
+  ArrowRight, Clock, AlertTriangle, Target, Lightbulb,
+  TrendingDown, ChevronRight, ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { resolveCompanyId } from '@/lib/get-company-id'
 import { cn } from '@/lib/cn'
@@ -31,7 +32,7 @@ interface OverviewData {
     total:  number
     hot:    number
     closed: number
-    stages: Array<{ id: string; nome: string; cor: string; posicao: number; tipo: string; count: number }>
+    stages: Array<{ id: string; nome: string; cor: string; posicao: number; tipo: string; count: number; slug: string }>
     leads:  Array<{ id: string; name: string; stage: string; temperatura: string; score: number; empresa: string | null; phone: string | null }>
   }
   events: Array<{ tipo: string; canal: string; conteudo: string; created_at: string }>
@@ -198,7 +199,7 @@ function PipelineTab({ data }: { data: OverviewData }) {
             ) : (
               <div className="space-y-2">
                 {data.pipeline.leads
-                  .filter(l => l.stage === stage.nome.toLowerCase() || l.stage === stage.nome)
+                  .filter(l => l.stage === stage.slug || l.stage === stage.nome || l.stage === stage.nome.toLowerCase())
                   .slice(0, 3)
                   .map(lead => (
                     <div key={lead.id} className="bg-zinc-800/60 rounded-xl px-3 py-2">
@@ -302,6 +303,250 @@ function IAConfigTab({ persona, companyId }: { persona: OverviewData['ai']; comp
             : <><Save className="w-4 h-4" /> Salvar configurações</>
         }
       </button>
+    </div>
+  )
+}
+
+// ── Insights Tab ──────────────────────────────────────────────────────────────
+
+interface Insight {
+  id:         string
+  title:      string
+  body:       string
+  action:     string
+  actionHref: string
+  severity:   'critical' | 'warning' | 'opportunity' | 'success'
+  metric?:    { label: string; value: string }
+}
+
+const SEV_STYLE: Record<Insight['severity'], { border: string; badge: string; icon: React.ElementType; iconColor: string }> = {
+  critical:    { border: 'border-red-500/30',     badge: 'bg-red-500/10 text-red-400',      icon: AlertTriangle,  iconColor: 'text-red-400' },
+  warning:     { border: 'border-amber-500/30',   badge: 'bg-amber-500/10 text-amber-400',  icon: TrendingDown,   iconColor: 'text-amber-400' },
+  opportunity: { border: 'border-violet-500/30',  badge: 'bg-violet-500/10 text-violet-400',icon: Target,         iconColor: 'text-violet-400' },
+  success:     { border: 'border-emerald-500/30', badge: 'bg-emerald-500/10 text-emerald-400', icon: CheckCircle, iconColor: 'text-emerald-400' },
+}
+
+const SEV_LABEL: Record<Insight['severity'], string> = {
+  critical:    'Crítico',
+  warning:     'Atenção',
+  opportunity: 'Oportunidade',
+  success:     'Positivo',
+}
+
+function InsightsTab({ companyId }: { companyId: string }) {
+  const [insights,   setInsights]   = useState<Insight[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res  = await fetch(`/api/nexus/insights?company_id=${companyId}`)
+      const data = await res.json()
+      setInsights(data.insights ?? [])
+      setGeneratedAt(data.generatedAt ?? null)
+    } catch {
+      setInsights([])
+    } finally {
+      setLoading(false)
+    }
+  }, [companyId])
+
+  useEffect(() => { load() }, [load])
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <div className="w-10 h-10 rounded-2xl bg-violet-600/20 flex items-center justify-center">
+          <Lightbulb className="w-5 h-5 text-violet-400 animate-pulse" />
+        </div>
+        <p className="text-sm text-zinc-500">Analisando seu pipeline com IA…</p>
+      </div>
+    )
+  }
+
+  if (!insights.length) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <p className="text-sm text-zinc-600">Nenhum insight disponível. Adicione leads ao pipeline.</p>
+        <button onClick={load} className="text-xs text-violet-400 hover:text-violet-300 transition">Tentar novamente</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-zinc-200">Insights da IA</p>
+          {generatedAt && (
+            <p className="text-xs text-zinc-600 mt-0.5">
+              Gerado {timeAgo(generatedAt)}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={load}
+          className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800/60 hover:border-zinc-700"
+        >
+          <RefreshCw className="w-3 h-3" /> Atualizar
+        </button>
+      </div>
+
+      <div className="grid gap-3">
+        {insights.map(ins => {
+          const sev = SEV_STYLE[ins.severity]
+          const Icon = sev.icon
+          return (
+            <div
+              key={ins.id}
+              className={cn('bg-zinc-900 border rounded-2xl p-5 flex gap-4', sev.border)}
+            >
+              <div className="mt-0.5 shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-zinc-800 flex items-center justify-center">
+                  <Icon className={cn('w-4 h-4', sev.iconColor)} />
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <p className="text-sm font-semibold text-zinc-100">{ins.title}</p>
+                  <span className={cn('shrink-0 text-[10px] font-semibold rounded-full px-2 py-0.5', sev.badge)}>
+                    {SEV_LABEL[ins.severity]}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 leading-relaxed mb-3">{ins.body}</p>
+                <div className="flex items-center justify-between">
+                  {ins.metric && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-zinc-600">{ins.metric.label}</span>
+                      <span className="text-xs font-semibold text-zinc-300">{ins.metric.value}</span>
+                    </div>
+                  )}
+                  <a
+                    href={ins.actionHref}
+                    className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition ml-auto"
+                  >
+                    {ins.action} <ChevronRight className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Automações Tab ────────────────────────────────────────────────────────────
+
+interface AutomationRule {
+  id:       string
+  label:    string
+  desc:     string
+  icon:     React.ElementType
+  active:   boolean
+  category: string
+}
+
+const DEFAULT_RULES: AutomationRule[] = [
+  {
+    id: 'new-lead-welcome',
+    label: 'Boas-vindas ao novo lead',
+    desc: 'Envia mensagem de boas-vindas automática quando um lead entra no pipeline.',
+    icon: MessageSquare,
+    active: true,
+    category: 'Engajamento',
+  },
+  {
+    id: 'hot-lead-followup',
+    label: 'Follow-up lead quente',
+    desc: 'Notifica sobre leads quentes sem resposta há mais de 1 hora.',
+    icon: Target,
+    active: true,
+    category: 'Engajamento',
+  },
+  {
+    id: 'cold-reactivation',
+    label: 'Reativação de leads frios',
+    desc: 'Envia mensagem de reativação para leads sem interação há 3 dias.',
+    icon: Zap,
+    active: false,
+    category: 'Recuperação',
+  },
+  {
+    id: 'proposal-reminder',
+    label: 'Lembrete de proposta',
+    desc: 'Lembra leads na etapa "Proposta" que ainda não responderam após 24h.',
+    icon: Bell,
+    active: false,
+    category: 'Vendas',
+  },
+  {
+    id: 'closed-congrats',
+    label: 'Parabéns pós-fechamento',
+    desc: 'Envia mensagem de boas-vindas após lead ser marcado como fechado.',
+    icon: CheckCircle,
+    active: true,
+    category: 'Pós-venda',
+  },
+]
+
+function AutomacoesTab() {
+  const [rules, setRules] = useState<AutomationRule[]>(DEFAULT_RULES)
+
+  function toggle(id: string) {
+    setRules(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r))
+  }
+
+  const categories = [...new Set(rules.map(r => r.category))]
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-zinc-900 border border-violet-500/20 rounded-2xl p-4 flex items-start gap-3">
+        <Sparkles className="w-4 h-4 text-violet-400 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-sm font-medium text-violet-300 mb-0.5">Automações inteligentes</p>
+          <p className="text-xs text-zinc-500">A IA NEXUS executa estas regras automaticamente. Ative ou desative conforme sua estratégia de vendas.</p>
+        </div>
+      </div>
+
+      {categories.map(cat => (
+        <div key={cat} className="space-y-2">
+          <p className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider px-1">{cat}</p>
+          {rules.filter(r => r.category === cat).map(rule => {
+            const Icon = rule.icon
+            return (
+              <div
+                key={rule.id}
+                className="bg-zinc-900 border border-zinc-800/60 rounded-2xl px-5 py-4 flex items-center gap-4 hover:border-zinc-700/60 transition-colors"
+              >
+                <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0', rule.active ? 'bg-violet-600/20' : 'bg-zinc-800')}>
+                  <Icon className={cn('w-4 h-4', rule.active ? 'text-violet-400' : 'text-zinc-500')} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-zinc-200">{rule.label}</p>
+                  <p className="text-xs text-zinc-600 mt-0.5 leading-snug">{rule.desc}</p>
+                </div>
+                <button
+                  onClick={() => toggle(rule.id)}
+                  className="shrink-0 ml-2"
+                  title={rule.active ? 'Desativar' : 'Ativar'}
+                >
+                  {rule.active
+                    ? <ToggleRight className="w-7 h-7 text-violet-400" />
+                    : <ToggleLeft  className="w-7 h-7 text-zinc-600" />
+                  }
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      ))}
+
+      <p className="text-[11px] text-zinc-700 text-center pt-2">
+        Novas automações com triggers avançados chegando em breve.
+      </p>
     </div>
   )
 }
@@ -437,12 +682,8 @@ function NexusContent() {
       )}
       {tab === 'pipeline' && <PipelineTab data={data} />}
       {tab === 'ia'       && companyId && <IAConfigTab persona={data.ai} companyId={companyId} />}
-      {tab === 'automacoes' && (
-        <ComingSoon icon={<Wand2 className="w-6 h-6" />} title="Automações" desc="Configure fluxos automáticos de follow-up, recuperação de leads e campanhas programadas." />
-      )}
-      {tab === 'insights' && (
-        <ComingSoon icon={<BarChart3 className="w-6 h-6" />} title="Insights da IA" desc="Análise preditiva de conversão, score de leads e recomendações inteligentes." />
-      )}
+      {tab === 'automacoes' && <AutomacoesTab />}
+      {tab === 'insights'   && companyId && <InsightsTab companyId={companyId} />}
       {tab === 'criativos' && (
         <ComingSoon icon={<Brain className="w-6 h-6" />} title="Criativos" desc="Geração automática de copies, campanhas e mensagens personalizadas por segmento." />
       )}
