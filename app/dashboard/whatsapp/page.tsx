@@ -10,7 +10,8 @@ import {
   Target, Bell, RefreshCw, Settings, Plus,
   ArrowUpRight, Activity, Circle,
   MessageSquare, X, Loader2, Check, AlertTriangle,
-  Smile, Archive, Tag, Wifi, WifiOff,
+  Smile, Archive, Tag, Wifi,
+  Cpu, BarChart3, Brain, DollarSign, Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -54,7 +55,29 @@ interface ActivityEvent {
   color: string
 }
 
-// ─── Supabase browser client (anon key — for Realtime only) ──────────
+interface LeadIntel {
+  name:              string | null
+  phone:             string
+  empresa:           string | null
+  nicho:             string | null
+  faturamento:       string | null
+  stage:             string
+  temperatura:       string
+  score:             number
+  dores:             string[]
+  objetivo:          string | null
+  usa_crm:           boolean | null
+  usa_automacao:     boolean | null
+  perde_whatsapp:    boolean | null
+  conversion_pct:    number
+  estimated_revenue: string | null
+  message_count:     number
+  has_real_data:     boolean
+}
+
+type AIMode = 'auto' | 'hybrid' | 'manual'
+
+// ─── Supabase browser client (anon — Realtime only) ───────────────
 
 function getSupabaseBrowser() {
   return createClient(
@@ -63,7 +86,7 @@ function getSupabaseBrowser() {
   )
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -98,67 +121,113 @@ const LABEL_CONFIG: Record<string, { label: string; color: string; bg: string }>
   recuperacao: { label: 'Recuperação', color: 'text-amber-400',   bg: 'bg-amber-500/15 border-amber-500/20'    },
 }
 
-// ─── QR Connect Modal ─────────────────────────────────────────────────
+const STAGE_LABEL: Record<string, string> = {
+  novo:          'Novo',
+  qualificado:   'Qualificado',
+  interessado:   'Interessado',
+  negociando:    'Negociando',
+  proposta:      'Proposta enviada',
+  fechado:       'Fechado',
+  perdido:       'Perdido',
+  cliente:       'Cliente',
+}
 
-type ConnectStep = 'loading' | 'qr' | 'scanning' | 'success'
+// ─── ScoreRing ────────────────────────────────────────────────────
+
+function ScoreRing({ score }: { score: number }) {
+  const r    = 22
+  const circ = 2 * Math.PI * r
+  const pct  = Math.min(100, Math.max(0, score))
+  const color = pct >= 70 ? '#34d399' : pct >= 40 ? '#f59e0b' : '#64748b'
+
+  return (
+    <div className="relative w-14 h-14 shrink-0">
+      <svg width="56" height="56" viewBox="0 0 56 56" className="-rotate-90">
+        <circle cx="28" cy="28" r={r} fill="none" stroke="#27272a" strokeWidth="4" />
+        <circle
+          cx="28" cy="28" r={r} fill="none"
+          stroke={color} strokeWidth="4"
+          strokeDasharray={`${circ * pct / 100} ${circ}`}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dasharray 0.7s ease' }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-xs font-bold text-white leading-none">{pct}</span>
+        <span className="text-[8px] text-zinc-600 leading-none">score</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Cinematic ConnectModal ───────────────────────────────────────
+
+type ConnectPhase = 'qr' | 'activating' | 'success'
+type QRStep = 'loading' | 'showing' | 'scanning'
+
+const ACTIVATION_STEPS = [
+  { icon: '📱', text: 'Conectando seu número',    sub: 'Verificando autenticação...'            },
+  { icon: '🤖', text: 'IA preparando automações', sub: 'Configurando respostas inteligentes...' },
+  { icon: '🔍', text: 'Analisando conversas',     sub: 'Sincronizando histórico de mensagens...' },
+  { icon: '⚡', text: 'NEXUS operacional',        sub: 'Sistema ativo. IA monitorando.'         },
+]
 
 function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnected: () => void }) {
-  const [step,    setStep]    = useState<ConnectStep>('loading')
+  const [phase,   setPhase]   = useState<ConnectPhase>('qr')
+  const [qrStep,  setQrStep]  = useState<QRStep>('loading')
   const [qrError, setQrError] = useState(false)
   const [qrTs,    setQrTs]    = useState(Date.now())
-  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [actStep, setActStep] = useState(-1)
+
+  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null)
   const qrTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Simulate brief load then show QR
+  // Show QR after brief load
   useEffect(() => {
-    const t = setTimeout(() => setStep('qr'), 900)
+    const t = setTimeout(() => setQrStep('showing'), 900)
     return () => clearTimeout(t)
   }, [])
 
   // Auto-refresh QR every 55s (before Z-API ~60s expiry)
   useEffect(() => {
-    if (step !== 'qr' && step !== 'scanning') {
-      if (qrTimerRef.current) clearInterval(qrTimerRef.current)
-      return
-    }
-    qrTimerRef.current = setInterval(() => {
-      setQrTs(Date.now())
-      setQrError(false)
-    }, 55_000)
-    return () => { if (qrTimerRef.current) clearInterval(qrTimerRef.current) }
-  }, [step])
+    if (phase !== 'qr') { qrTimerRef.current && clearInterval(qrTimerRef.current); return }
+    qrTimerRef.current = setInterval(() => { setQrTs(Date.now()); setQrError(false) }, 55_000)
+    return () => { qrTimerRef.current && clearInterval(qrTimerRef.current) }
+  }, [phase])
 
   // Poll connection status every 3s
   useEffect(() => {
-    if (step !== 'qr' && step !== 'scanning') return
-
+    if (phase !== 'qr') return
     pollRef.current = setInterval(async () => {
       try {
         const res  = await fetch('/api/nexus/whatsapp/status?company_id=check')
         const data = await res.json() as WAStatus
         if (data.connected) {
           clearInterval(pollRef.current!)
-          setStep('success')
-          // Auto-configure webhook in background
+          setQrStep('scanning')
+          // Configure webhook silently
           fetch('/api/nexus/whatsapp/setup', { method: 'POST' }).catch(() => {})
-          setTimeout(onConnected, 1800)
-        } else if (step === 'qr') {
-          setStep('scanning')
+          // Start cinematic activation after 600ms
+          setTimeout(() => { setPhase('activating'); setActStep(0) }, 600)
+        } else if (qrStep === 'showing') {
+          setQrStep('scanning')
         }
       } catch { /* ignore */ }
     }, 3000)
+    return () => { pollRef.current && clearInterval(pollRef.current) }
+  }, [phase, qrStep])
 
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [step, onConnected])
-
-  function refreshQr() {
-    setQrTs(Date.now())
-    setQrError(false)
-    setStep('qr')
-  }
-
-  const STEPS: ConnectStep[] = ['loading', 'qr', 'scanning', 'success']
-  const stepIdx = STEPS.indexOf(step)
+  // Advance activation steps every 1400ms
+  useEffect(() => {
+    if (phase !== 'activating' || actStep < 0) return
+    if (actStep >= ACTIVATION_STEPS.length) {
+      setPhase('success')
+      setTimeout(onConnected, 1400)
+      return
+    }
+    const t = setTimeout(() => setActStep(s => s + 1), 1400)
+    return () => clearTimeout(t)
+  }, [phase, actStep, onConnected])
 
   return (
     <AnimatePresence>
@@ -166,144 +235,280 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-        onClick={e => e.target === e.currentTarget && onClose()}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm"
+        onClick={e => { if (e.target === e.currentTarget && phase === 'qr') onClose() }}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.92, y: 20 }}
           animate={{ opacity: 1, scale: 1,    y: 0  }}
           exit={{ opacity: 0,   scale: 0.95,  y: 10 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          className="relative bg-zinc-950 border border-zinc-800 rounded-3xl p-8 w-full max-w-md shadow-2xl"
+          className="relative bg-zinc-950 border border-zinc-800 rounded-3xl p-8 w-full max-w-md shadow-2xl overflow-hidden"
         >
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {/* Ambient glow */}
+          <motion.div
+            animate={{
+              background: phase === 'activating' ? 'radial-gradient(circle at 50% 50%, rgba(139,92,246,0.08) 0%, transparent 70%)' :
+                          phase === 'success'    ? 'radial-gradient(circle at 50% 50%, rgba(52,211,153,0.08) 0%, transparent 70%)' :
+                                                   'transparent',
+            }}
+            transition={{ duration: 0.8 }}
+            className="absolute inset-0 rounded-3xl pointer-events-none"
+          />
 
-          {/* Header */}
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center">
-              <MessageCircle className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-white">Conectar WhatsApp</p>
-              <p className="text-xs text-zinc-500">Escaneie o QR com seu celular</p>
-            </div>
-          </div>
+          {phase === 'qr' && (
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
 
-          {/* QR Area */}
-          <div className="flex flex-col items-center gap-6">
-
-            {step === 'loading' && (
+          {/* ── QR Phase ── */}
+          <AnimatePresence mode="wait">
+            {phase === 'qr' && (
               <motion.div
+                key="qr"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="w-56 h-56 rounded-2xl bg-zinc-900 border border-zinc-800 flex flex-col items-center justify-center gap-3"
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative z-10"
               >
-                <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
-                <p className="text-xs text-zinc-500">Gerando QR Code…</p>
-              </motion.div>
-            )}
+                <div className="flex items-center gap-3 mb-7">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center">
+                    <MessageCircle className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Conectar WhatsApp</p>
+                    <p className="text-xs text-zinc-500">Escaneie o QR com seu celular</p>
+                  </div>
+                </div>
 
-            {(step === 'qr' || step === 'scanning') && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="relative"
-              >
-                <div className="w-56 h-56 rounded-2xl overflow-hidden border-2 border-violet-500/30 shadow-lg shadow-violet-500/10">
-                  {qrError ? (
-                    <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center gap-3">
-                      <AlertTriangle className="w-8 h-8 text-amber-400" />
-                      <p className="text-xs text-zinc-500 text-center px-4">
-                        QR não disponível.<br />Configure Z-API primeiro.
-                      </p>
+                <div className="flex flex-col items-center gap-5">
+                  {/* QR image */}
+                  <div className="relative">
+                    <div className={cn(
+                      'w-56 h-56 rounded-2xl overflow-hidden border-2 transition-all duration-500',
+                      qrStep === 'scanning'
+                        ? 'border-emerald-500/60 shadow-lg shadow-emerald-500/15'
+                        : 'border-violet-500/40 shadow-lg shadow-violet-500/10',
+                    )}>
+                      {qrStep === 'loading' ? (
+                        <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center gap-3">
+                          <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+                          <p className="text-xs text-zinc-500">Gerando QR Code…</p>
+                        </div>
+                      ) : qrError ? (
+                        <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4">
+                          <AlertTriangle className="w-8 h-8 text-amber-400" />
+                          <p className="text-xs text-zinc-500 text-center">
+                            QR indisponível.<br />Verifique a configuração Z-API.
+                          </p>
+                          <button
+                            onClick={() => { setQrTs(Date.now()); setQrError(false) }}
+                            className="text-xs text-violet-400 border border-violet-500/30 rounded-lg px-3 py-1.5 hover:bg-violet-500/10 transition"
+                          >
+                            Tentar novamente
+                          </button>
+                        </div>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/nexus/whatsapp/qr?t=${qrTs}`}
+                          alt="QR Code WhatsApp"
+                          className="w-full h-full object-cover bg-white"
+                          onError={() => setQrError(true)}
+                        />
+                      )}
                     </div>
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`/api/nexus/whatsapp/qr?t=${qrTs}`}
-                      alt="QR Code WhatsApp"
-                      className="w-full h-full object-cover"
-                      onError={() => setQrError(true)}
+
+                    {qrStep === 'scanning' && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="absolute inset-0 rounded-2xl bg-black/40 flex items-center justify-center"
+                      >
+                        <div className="flex items-center gap-2 bg-zinc-900/90 border border-emerald-500/30 rounded-full px-4 py-2">
+                          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          <p className="text-xs text-emerald-300 font-medium">Aguardando escaneamento…</p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </div>
+
+                  <div className="text-center space-y-1.5">
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      1. Abra o WhatsApp no celular<br />
+                      2. Vá em <strong className="text-white">Dispositivos vinculados</strong><br />
+                      3. Toque em <strong className="text-white">Vincular um dispositivo</strong><br />
+                      4. Escaneie este QR Code
+                    </p>
+                    {!qrError && (
+                      <button
+                        onClick={() => { setQrTs(Date.now()); setQrError(false) }}
+                        className="text-xs text-violet-400 hover:text-violet-300 transition"
+                      >
+                        ↺ Atualizar QR Code
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-7">
+                  {[0, 1, 2, 3].map(i => (
+                    <div
+                      key={i}
+                      className={cn(
+                        'h-0.5 rounded-full flex-1 transition-all duration-500',
+                        (qrStep === 'loading' ? 0 : qrStep === 'showing' ? 1 : 2) >= i
+                          ? 'bg-violet-500' : 'bg-zinc-800',
+                      )}
                     />
-                  )}
+                  ))}
                 </div>
-                {step === 'scanning' && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="absolute inset-0 rounded-2xl bg-black/40 flex items-center justify-center"
-                  >
-                    <div className="flex items-center gap-2 bg-zinc-900/90 border border-zinc-700 rounded-full px-4 py-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <p className="text-xs text-zinc-300">Aguardando escaneamento…</p>
-                    </div>
-                  </motion.div>
-                )}
               </motion.div>
             )}
 
-            {step === 'success' && (
+            {/* ── Activating Phase ── */}
+            {phase === 'activating' && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="w-56 h-56 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col items-center justify-center gap-4"
+                key="activating"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="relative z-10"
               >
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 300, delay: 0.1 }}
-                  className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center"
-                >
-                  <Check className="w-8 h-8 text-emerald-400" />
-                </motion.div>
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-emerald-400">Conectado!</p>
-                  <p className="text-xs text-zinc-500 mt-1">Ativando NEXUS AI…</p>
+                <div className="flex flex-col items-center mb-7">
+                  <div className="relative mb-4">
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                      className="w-16 h-16 rounded-2xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center"
+                    >
+                      <Cpu className="w-8 h-8 text-violet-400" />
+                    </motion.div>
+                    <div className="absolute inset-0 rounded-2xl border border-violet-500/20 animate-ping" style={{ animationDuration: '2s' }} />
+                  </div>
+                  <p className="text-sm font-semibold text-white">Ativando NEXUS AI</p>
+                  <p className="text-xs text-zinc-500 mt-1">Configurando o Operation Center…</p>
+                </div>
+
+                <div className="space-y-2.5">
+                  {ACTIVATION_STEPS.map((step, i) => {
+                    const done    = actStep > i
+                    const current = actStep === i
+                    const future  = actStep < i
+                    return (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, x: -16 }}
+                        animate={{
+                          opacity: future ? 0.3 : 1,
+                          x: 0,
+                        }}
+                        transition={{ delay: i * 0.06 }}
+                        className={cn(
+                          'flex items-center gap-3 p-3 rounded-xl border transition-all duration-500',
+                          done    ? 'bg-emerald-500/8 border-emerald-500/20'  :
+                          current ? 'bg-violet-600/12 border-violet-500/25'   :
+                                    'bg-zinc-900/40 border-zinc-800/40',
+                        )}
+                      >
+                        <div className={cn(
+                          'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-sm transition-all duration-300',
+                          done    ? 'bg-emerald-500/20' :
+                          current ? 'bg-violet-600/20'  : 'bg-zinc-800',
+                        )}>
+                          {done ? (
+                            <motion.span
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 400 }}
+                            >
+                              <Check className="w-4 h-4 text-emerald-400" />
+                            </motion.span>
+                          ) : current ? (
+                            <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                          ) : (
+                            <span>{step.icon}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={cn(
+                            'text-xs font-semibold',
+                            done ? 'text-emerald-300' : current ? 'text-white' : 'text-zinc-600',
+                          )}>
+                            {step.text}
+                          </p>
+                          <p className={cn(
+                            'text-[10px] mt-0.5',
+                            done ? 'text-emerald-600' : current ? 'text-zinc-400' : 'text-zinc-700',
+                          )}>
+                            {done ? 'Concluído' : step.sub}
+                          </p>
+                        </div>
+                      </motion.div>
+                    )
+                  })}
                 </div>
               </motion.div>
             )}
 
-            {(step === 'qr' || step === 'scanning') && (
-              <div className="text-center space-y-2">
-                <p className="text-xs text-zinc-400">
-                  1. Abra o WhatsApp no celular<br />
-                  2. Vá em <strong className="text-white">Dispositivos vinculados</strong><br />
-                  3. Toque em <strong className="text-white">Vincular um dispositivo</strong><br />
-                  4. Escaneie este QR Code
-                </p>
-                {!qrError && (
-                  <button onClick={refreshQr} className="text-xs text-violet-400 hover:text-violet-300 transition mt-2">
-                    ↺ Atualizar QR Code
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+            {/* ── Success Phase ── */}
+            {phase === 'success' && (
+              <motion.div
+                key="success"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative z-10 flex flex-col items-center gap-6 py-2"
+              >
+                <div className="relative">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 280, delay: 0.1 }}
+                    className="w-20 h-20 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shadow-xl shadow-emerald-500/20"
+                  >
+                    <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+                  </motion.div>
+                  <div className="absolute inset-0 rounded-2xl border border-emerald-500/25 animate-ping" style={{ animationDuration: '1.5s' }} />
+                </div>
 
-          {/* Progress bar */}
-          <div className="flex items-center gap-2 mt-8">
-            {STEPS.map((s, i) => (
-              <div
-                key={s}
-                className={cn(
-                  'h-1 rounded-full flex-1 transition-all duration-500',
-                  stepIdx >= i ? 'bg-violet-500' : 'bg-zinc-800',
-                )}
-              />
-            ))}
-          </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-white">NEXUS Operacional</p>
+                  <p className="text-sm text-emerald-400 mt-1">IA ativada. Monitorando automaticamente.</p>
+                  <p className="text-xs text-zinc-600 mt-3">Abrindo o Operation Center…</p>
+                </div>
+
+                <div className="flex items-center gap-8">
+                  {[
+                    { icon: '🤖', label: 'IA ativa' },
+                    { icon: '⚡', label: 'Automação' },
+                    { icon: '📊', label: 'Pipeline sync' },
+                  ].map((item, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 + i * 0.1 }}
+                      className="flex flex-col items-center gap-1"
+                    >
+                      <span className="text-xl">{item.icon}</span>
+                      <p className="text-[10px] text-zinc-500">{item.label}</p>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       </motion.div>
     </AnimatePresence>
   )
 }
 
-// ─── Onboarding ───────────────────────────────────────────────────────
+// ─── Onboarding ───────────────────────────────────────────────────
 
 const MOCK_CONVS = [
   { name: 'João Silva',    tag: 'Lead quente', tagColor: 'text-orange-400',  msg: 'Olá! Tenho interesse nos seus serviços', time: '14:32', unread: 2 },
@@ -314,18 +519,17 @@ const MOCK_CONVS = [
 
 function OnboardingView({ onConnect }: { onConnect: () => void }) {
   const features = [
-    { icon: Bot,       text: 'IA responde automaticamente 24/7' },
+    { icon: Bot,        text: 'IA responde automaticamente 24/7' },
     { icon: TrendingUp, text: 'Detecta e qualifica leads em tempo real' },
-    { icon: Zap,       text: 'Follow-ups automáticos e reativação de clientes' },
+    { icon: Zap,        text: 'Follow-ups automáticos e reativação de clientes' },
   ]
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center relative overflow-hidden px-4">
-      {/* Ambient glows */}
       <div className="fixed top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-3xl pointer-events-none" />
       <div className="fixed bottom-1/4 left-1/3 w-[400px] h-[200px] bg-emerald-600/6 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Mock conversations (faded background) */}
+      {/* Faded mock conversations */}
       <div className="absolute inset-y-0 right-0 w-80 flex flex-col gap-2 p-6 opacity-20 pointer-events-none hidden lg:flex">
         {MOCK_CONVS.map((c, i) => (
           <motion.div
@@ -360,7 +564,7 @@ function OnboardingView({ onConnect }: { onConnect: () => void }) {
             <Bot className="w-3.5 h-3.5 text-violet-400" />
             <p className="text-[10px] text-violet-400 font-medium">NEXUS AI · Resposta automática</p>
           </div>
-          <p className="text-[11px] text-zinc-300 leading-relaxed">Olá João! 👋 Posso te mostrar como podemos ajudar sua empresa a vender mais…</p>
+          <p className="text-[11px] text-zinc-300 leading-relaxed">Olá João! 👋 Posso te mostrar como podemos ajudar…</p>
         </motion.div>
       </div>
 
@@ -428,15 +632,11 @@ function OnboardingView({ onConnect }: { onConnect: () => void }) {
   )
 }
 
-// ─── Conversation Item ────────────────────────────────────────────────
+// ─── Conversation Item ────────────────────────────────────────────
 
 function ConvItem({
   conv, active, onClick,
-}: {
-  conv:    Conversation
-  active:  boolean
-  onClick: () => void
-}) {
+}: { conv: Conversation; active: boolean; onClick: () => void }) {
   const cfg    = conv.label ? LABEL_CONFIG[conv.label] : null
   const heat   = conv.temperatura === 'quente' || conv.temperatura === 'urgente'
   const unread = conv.unread ?? 0
@@ -492,7 +692,7 @@ function ConvItem({
   )
 }
 
-// ─── Message Bubble ───────────────────────────────────────────────────
+// ─── Message Bubble ───────────────────────────────────────────────
 
 function Bubble({ msg }: { msg: Message }) {
   const isOut = msg.direction === 'outgoing'
@@ -509,8 +709,7 @@ function Bubble({ msg }: { msg: Message }) {
         )}>
           {msg.ai_generated
             ? <Bot className="w-3.5 h-3.5 text-violet-400" />
-            : <Phone className="w-3.5 h-3.5 text-zinc-400" />
-          }
+            : <Phone className="w-3.5 h-3.5 text-zinc-400" />}
         </div>
       )}
       <div className={cn('flex flex-col gap-1', isOut ? 'items-end' : 'items-start')}>
@@ -539,120 +738,314 @@ function Bubble({ msg }: { msg: Message }) {
   )
 }
 
-// ─── AI Sidebar ───────────────────────────────────────────────────────
+// ─── AI Mode Toggle ───────────────────────────────────────────────
 
-const SUGGESTED_ACTIONS = [
-  { icon: '📋', label: 'Enviar proposta personalizada', priority: 'alta'  as const },
-  { icon: '📅', label: 'Agendar follow-up',             priority: 'media' as const },
-  { icon: '🎯', label: 'Oferecer demonstração',         priority: 'alta'  as const },
-  { icon: '💼', label: 'Enviar case de sucesso',        priority: 'baixa' as const },
+const AI_MODES: { key: AIMode; label: string; desc: string; color: string }[] = [
+  { key: 'auto',   label: 'Automático', desc: 'IA responde sozinha',   color: 'text-emerald-400' },
+  { key: 'hybrid', label: 'Híbrido',   desc: 'IA sugere, você aprova', color: 'text-violet-400'  },
+  { key: 'manual', label: 'Manual',    desc: 'Você controla tudo',     color: 'text-zinc-400'    },
 ]
 
-const PRIORITY_STYLE = {
-  alta:  { dot: 'bg-red-400',   label: 'Alta prioridade',  text: 'text-red-400' },
-  media: { dot: 'bg-amber-400', label: 'Média prioridade', text: 'text-amber-400' },
-  baixa: { dot: 'bg-zinc-500',  label: 'Baixa prioridade', text: 'text-zinc-500' },
+function AIModeToggle({ mode, onChange }: { mode: AIMode; onChange: (m: AIMode) => void }) {
+  const current = AI_MODES.find(m => m.key === mode)!
+  return (
+    <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-xl p-1">
+      {AI_MODES.map(m => (
+        <button
+          key={m.key}
+          onClick={() => onChange(m.key)}
+          className={cn(
+            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
+            mode === m.key
+              ? 'bg-zinc-800 text-white shadow-sm'
+              : 'text-zinc-600 hover:text-zinc-400',
+          )}
+        >
+          {m.key === 'auto'   && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+          {m.key === 'hybrid' && <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
+          {m.key === 'manual' && <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />}
+          {m.label}
+        </button>
+      ))}
+    </div>
+  )
 }
+
+// ─── AI Sidebar ───────────────────────────────────────────────────
+
+const QUICK_REPLIES = [
+  'Claro! Vou te mostrar como funciona nossa automação e os resultados que podemos gerar.',
+  'Posso agendar uma demonstração rápida para você ver na prática. Quando tem 20 minutos?',
+  'Ótima pergunta! Nossos planos começam em R$297/mês com ROI médio de 3x em 90 dias.',
+]
+
+const SUGGESTED_ACTIONS = [
+  { icon: '📋', label: 'Enviar proposta personalizada' },
+  { icon: '📅', label: 'Agendar follow-up' },
+  { icon: '🎯', label: 'Oferecer demonstração' },
+  { icon: '💼', label: 'Enviar case de sucesso' },
+]
 
 function AISidebar({
   conv,
   activityEvents,
+  leadData,
+  leadLoading,
+  aiMode,
+  onAIModeChange,
 }: {
   conv:           Conversation | null
   activityEvents: ActivityEvent[]
+  leadData:       LeadIntel | null
+  leadLoading:    boolean
+  aiMode:         AIMode
+  onAIModeChange: (m: AIMode) => void
 }) {
+  const feedEvents = activityEvents.length > 0 ? activityEvents : [
+    { id: 'd1', icon: '✅', label: 'IA respondeu automaticamente',     time: new Date(Date.now() - 60000).toISOString(),  color: 'text-emerald-400' },
+    { id: 'd2', icon: '🔥', label: 'Lead quente identificado',         time: new Date(Date.now() - 180000).toISOString(), color: 'text-orange-400' },
+    { id: 'd3', icon: '📊', label: 'Oportunidade detectada no pipeline', time: new Date(Date.now() - 300000).toISOString(), color: 'text-violet-400' },
+  ]
+
   if (!conv) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center">
-          <Bot className="w-6 h-6 text-violet-400/50" />
+      <div className="flex flex-col h-full overflow-y-auto">
+        {/* AI Mode control */}
+        <div className="p-4 border-b border-zinc-800/60">
+          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Modo de operação</p>
+          <AIModeToggle mode={aiMode} onChange={onAIModeChange} />
+          <p className="text-[10px] text-zinc-600 mt-2">
+            {AI_MODES.find(m => m.key === aiMode)?.desc}
+          </p>
         </div>
-        <p className="text-xs text-zinc-600">Selecione uma conversa<br />para ver a análise da IA</p>
-        {/* Global feed when no conv selected */}
-        {activityEvents.length > 0 && (
-          <div className="w-full mt-4 space-y-2.5">
-            <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider text-left">Atividade recente</p>
-            {activityEvents.slice(0, 5).map(a => (
-              <div key={a.id} className="flex items-start gap-2.5">
-                <span className="text-sm shrink-0 mt-0.5">{a.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className={cn('text-[11px]', a.color)}>{a.label}</p>
-                  <p className="text-[10px] text-zinc-600">{formatRelative(a.time)}</p>
-                </div>
-              </div>
-            ))}
+
+        {/* Monitoring state */}
+        <div className="p-4 border-b border-zinc-800/60">
+          <div className="flex flex-col items-center gap-3 py-2">
+            <motion.div
+              animate={{ scale: [1, 1.08, 1] }}
+              transition={{ duration: 2.5, repeat: Infinity }}
+              className="w-12 h-12 rounded-2xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center"
+            >
+              <Brain className="w-6 h-6 text-violet-400/60" />
+            </motion.div>
+            <div className="text-center">
+              <p className="text-xs font-medium text-zinc-400">IA monitorando conversas</p>
+              <p className="text-[10px] text-zinc-600 mt-1">Selecione uma conversa para análise detalhada</p>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/8 border border-emerald-500/15 rounded-full px-3 py-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Detectando oportunidades
+            </div>
           </div>
-        )}
+        </div>
+
+        {/* Global activity feed */}
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Activity className="w-3.5 h-3.5 text-violet-400" />
+              <p className="text-xs font-semibold text-zinc-200">Atividade da IA</p>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] text-emerald-400">ao vivo</span>
+            </div>
+          </div>
+          <div className="space-y-2.5">
+            <AnimatePresence>
+              {feedEvents.map(a => (
+                <motion.div
+                  key={a.id}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 8 }}
+                  className="flex items-start gap-2.5"
+                >
+                  <span className="text-sm shrink-0 mt-0.5">{a.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={cn('text-[11px]', a.color)}>{a.label}</p>
+                    <p className="text-[10px] text-zinc-600">{formatRelative(a.time)}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
     )
   }
 
-  const heat  = conv.temperatura === 'quente' || conv.temperatura === 'urgente'
-  const score = conv.message_count > 10 ? 82 : conv.message_count > 5 ? 61 : 44
-  const valor = heat ? 'R$ 5.800' : 'R$ 2.400'
-
-  const analysis = [
-    { label: 'Sentimento',           value: 'Positivo',  valueColor: 'text-emerald-400',  dot: 'bg-emerald-400' },
-    { label: 'Temperatura',          value: heat ? 'Quente' : 'Morno', valueColor: heat ? 'text-orange-400' : 'text-amber-400', dot: heat ? 'bg-orange-400' : 'bg-amber-400' },
-    { label: 'Chance de fechamento', value: `${score}%`, valueColor: score >= 70 ? 'text-emerald-400' : 'text-amber-400', dot: score >= 70 ? 'bg-emerald-400' : 'bg-amber-400' },
-    { label: 'Valor potencial',      value: valor,       valueColor: 'text-white',         dot: null },
-    { label: 'Último contato',       value: formatRelative(conv.last_message_at), valueColor: 'text-zinc-300', dot: null },
-  ]
-
-  const feedEvents = activityEvents.length > 0 ? activityEvents : [
-    { id: 'demo1', icon: '✅', label: 'IA respondeu automaticamente', time: new Date(Date.now() - 60000).toISOString(), color: 'text-emerald-400' },
-    { id: 'demo2', icon: '🔥', label: 'Lead quente identificado',     time: new Date(Date.now() - 180000).toISOString(), color: 'text-orange-400' },
-    { id: 'demo3', icon: '📊', label: 'Oportunidade no pipeline',     time: new Date(Date.now() - 300000).toISOString(), color: 'text-violet-400' },
-  ]
+  // ── Conversation selected — show lead intelligence ──
+  const score   = leadData?.score ?? 0
+  const tempMap: Record<string, string> = {
+    urgente: 'text-red-400', quente: 'text-orange-400',
+    morno: 'text-amber-400', frio: 'text-zinc-500',
+  }
+  const tempLabel: Record<string, string> = {
+    urgente: 'Urgente 🔥🔥', quente: 'Quente 🔥', morno: 'Morno', frio: 'Frio',
+  }
+  const temp    = leadData?.temperatura ?? conv.temperatura ?? 'frio'
+  const convPct = leadData?.conversion_pct ?? (score >= 70 ? 72 : score >= 40 ? 48 : 28)
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* AI Analysis */}
+      {/* AI Mode */}
+      <div className="p-3 border-b border-zinc-800/60">
+        <AIModeToggle mode={aiMode} onChange={onAIModeChange} />
+      </div>
+
+      {/* Lead Score */}
       <div className="p-4 border-b border-zinc-800/60">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-violet-400" />
-            <p className="text-xs font-semibold text-zinc-200">Resumo da IA</p>
+            <BarChart3 className="w-3.5 h-3.5 text-violet-400" />
+            <p className="text-xs font-semibold text-zinc-200">Lead Intelligence</p>
           </div>
-          <span className="text-[10px] text-zinc-600">Atualizado agora</span>
+          {leadLoading && <Loader2 className="w-3.5 h-3.5 text-zinc-600 animate-spin" />}
+          {leadData?.has_real_data && !leadLoading && (
+            <span className="text-[9px] text-emerald-500 bg-emerald-500/10 rounded-full px-1.5 py-0.5">IA real</span>
+          )}
         </div>
-        <div className="space-y-2.5">
-          {analysis.map(a => (
-            <div key={a.label} className="flex items-center justify-between">
-              <p className="text-[11px] text-zinc-500">{a.label}</p>
-              <div className="flex items-center gap-1.5">
-                {a.dot && <div className={cn('w-1.5 h-1.5 rounded-full', a.dot)} />}
-                <p className={cn('text-[11px] font-semibold', a.valueColor)}>{a.value}</p>
+
+        {leadLoading && !leadData ? (
+          <div className="flex flex-col items-center gap-2 py-4">
+            <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.5, repeat: Infinity }}>
+              <Brain className="w-8 h-8 text-violet-400/40" />
+            </motion.div>
+            <p className="text-[11px] text-zinc-600">IA analisando conversa…</p>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <ScoreRing score={score} />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-white truncate">
+                {leadData?.name ?? displayName(conv)}
+              </p>
+              {leadData?.empresa && (
+                <p className="text-[10px] text-zinc-500 truncate">{leadData.empresa}</p>
+              )}
+              <div className="flex items-center gap-2 mt-1">
+                <span className={cn('text-[10px] font-semibold', tempMap[temp])}>
+                  {tempLabel[temp] ?? 'Frio'}
+                </span>
+                {leadData?.stage && (
+                  <>
+                    <span className="text-[10px] text-zinc-700">·</span>
+                    <span className="text-[10px] text-zinc-500">
+                      {STAGE_LABEL[leadData.stage] ?? leadData.stage}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Key metrics */}
+      {!leadLoading && (
+        <div className="p-4 border-b border-zinc-800/60">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-zinc-900/60 rounded-xl p-2.5">
+              <p className="text-[10px] text-zinc-600 mb-0.5">Chance de fechar</p>
+              <p className={cn(
+                'text-sm font-bold',
+                convPct >= 70 ? 'text-emerald-400' : convPct >= 40 ? 'text-amber-400' : 'text-zinc-400',
+              )}>
+                {convPct}%
+              </p>
+            </div>
+            <div className="bg-zinc-900/60 rounded-xl p-2.5">
+              <p className="text-[10px] text-zinc-600 mb-0.5">Valor estimado</p>
+              <p className="text-sm font-bold text-white">
+                {leadData?.estimated_revenue ?? '—'}
+              </p>
+            </div>
+            <div className="bg-zinc-900/60 rounded-xl p-2.5">
+              <p className="text-[10px] text-zinc-600 mb-0.5">Mensagens</p>
+              <p className="text-sm font-bold text-white">
+                {leadData?.message_count ?? conv.message_count}
+              </p>
+            </div>
+            <div className="bg-zinc-900/60 rounded-xl p-2.5">
+              <p className="text-[10px] text-zinc-600 mb-0.5">Último contato</p>
+              <p className="text-sm font-bold text-white">
+                {formatRelative(conv.last_message_at)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pain points & objective */}
+      {leadData?.dores && leadData.dores.length > 0 && (
+        <div className="p-4 border-b border-zinc-800/60">
+          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Dores identificadas</p>
+          <div className="flex flex-wrap gap-1.5">
+            {leadData.dores.slice(0, 4).map((d, i) => (
+              <span key={i} className="text-[10px] text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded-full px-2 py-0.5">
+                {d}
+              </span>
+            ))}
+          </div>
+          {leadData.objetivo && (
+            <p className="text-[11px] text-zinc-400 mt-2 leading-relaxed">
+              <span className="text-zinc-600">Objetivo: </span>{leadData.objetivo}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Business context */}
+      {leadData?.has_real_data && (leadData.usa_crm !== null || leadData.perde_whatsapp !== null) && (
+        <div className="p-4 border-b border-zinc-800/60">
+          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Contexto</p>
+          <div className="space-y-1.5">
+            {leadData.usa_crm !== null && (
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-zinc-500">Usa CRM</p>
+                <p className={cn('text-[11px] font-semibold', leadData.usa_crm ? 'text-emerald-400' : 'text-zinc-500')}>
+                  {leadData.usa_crm ? 'Sim' : 'Não'}
+                </p>
+              </div>
+            )}
+            {leadData.perde_whatsapp !== null && (
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-zinc-500">Perde leads no WhatsApp</p>
+                <p className={cn('text-[11px] font-semibold', leadData.perde_whatsapp ? 'text-red-400' : 'text-emerald-400')}>
+                  {leadData.perde_whatsapp ? 'Sim ⚠️' : 'Não'}
+                </p>
+              </div>
+            )}
+            {leadData.faturamento && (
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-zinc-500">Faturamento</p>
+                <p className="text-[11px] font-semibold text-white">{leadData.faturamento}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Suggested actions */}
+      <div className="p-4 border-b border-zinc-800/60">
+        <div className="flex items-center gap-2 mb-3">
+          <Target className="w-3.5 h-3.5 text-violet-400" />
+          <p className="text-xs font-semibold text-zinc-200">Próximas ações</p>
+        </div>
+        <div className="space-y-1.5">
+          {SUGGESTED_ACTIONS.map((a, i) => (
+            <button key={i} className="w-full flex items-center gap-3 py-2 px-3 rounded-xl hover:bg-zinc-800/50 transition-colors group text-left">
+              <span className="text-base shrink-0">{a.icon}</span>
+              <p className="flex-1 text-xs text-zinc-300 group-hover:text-white transition-colors truncate">{a.label}</p>
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 shrink-0 transition-colors" />
+            </button>
           ))}
         </div>
       </div>
 
-      {/* Suggested Actions */}
-      <div className="p-4 border-b border-zinc-800/60">
-        <div className="flex items-center gap-2 mb-3">
-          <Target className="w-3.5 h-3.5 text-violet-400" />
-          <p className="text-xs font-semibold text-zinc-200">Próximas ações sugeridas</p>
-        </div>
-        <div className="space-y-1.5">
-          {SUGGESTED_ACTIONS.map((a, i) => {
-            const p = PRIORITY_STYLE[a.priority]
-            return (
-              <button key={i} className="w-full flex items-center gap-3 py-2 px-3 rounded-xl hover:bg-zinc-800/50 transition-colors group text-left">
-                <span className="text-base shrink-0">{a.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-zinc-300 group-hover:text-white transition-colors truncate">{a.label}</p>
-                  <p className={cn('text-[10px]', p.text)}>{p.label}</p>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 shrink-0 transition-colors" />
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Live Activity Feed */}
+      {/* Live activity feed */}
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -666,7 +1059,7 @@ function AISidebar({
         </div>
         <div className="space-y-2.5">
           <AnimatePresence>
-            {feedEvents.map(a => (
+            {feedEvents.slice(0, 6).map(a => (
               <motion.div
                 key={a.id}
                 initial={{ opacity: 0, x: -8 }}
@@ -688,15 +1081,7 @@ function AISidebar({
   )
 }
 
-// ─── Quick Replies ────────────────────────────────────────────────────
-
-const QUICK_REPLIES = [
-  'Claro! Vou te mostrar como funciona nossa automação e os resultados que podemos gerar.',
-  'Posso agendar uma demonstração rápida para você ver na prática. Quando tem 20 minutos?',
-  'Ótima pergunta! Nossos planos começam em R$297/mês com ROI médio de 3x em 90 dias.',
-]
-
-// ─── Main Page ────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────
 
 export default function WhatsAppPage() {
   const [conversations,  setConversations]  = useState<Conversation[]>([])
@@ -715,10 +1100,13 @@ export default function WhatsAppPage() {
   const [showTyping,     setShowTyping]     = useState(false)
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([])
   const [companyId,      setCompanyId]      = useState<string | null>(null)
+  const [leadData,       setLeadData]       = useState<LeadIntel | null>(null)
+  const [leadLoading,    setLeadLoading]    = useState(false)
+  const [aiMode,         setAiMode]         = useState<AIMode>('auto')
 
-  const messagesEnd  = useRef<HTMLDivElement>(null)
-  const inputRef     = useRef<HTMLInputElement>(null)
-  const typingTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const messagesEnd = useRef<HTMLDivElement>(null)
+  const inputRef    = useRef<HTMLInputElement>(null)
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Fetchers ──────────────────────────────────────────────────
 
@@ -734,15 +1122,7 @@ export default function WhatsAppPage() {
     try {
       const res  = await fetch('/api/whatsapp/conversations')
       const data = await res.json()
-      const convs = (data.conversations ?? []) as Conversation[]
-      // Enrich with demo labels for visual richness until DB stores them
-      const enriched = convs.map((c, i): Conversation => ({
-        ...c,
-        unread:      i === 0 ? 2 : i === 2 ? 3 : 0,
-        label:       i === 0 ? 'lead' : i === 1 ? 'cliente' : i === 2 ? 'negociacao' : null,
-        temperatura: i === 0 ? 'quente' : i === 1 ? 'morno' : 'frio',
-      }))
-      setConversations(enriched)
+      setConversations(data.conversations ?? [])
     } catch { /* ignore */ }
   }, [])
 
@@ -773,15 +1153,28 @@ export default function WhatsAppPage() {
     } catch { /* ignore */ }
   }, [])
 
+  const fetchLeadData = useCallback(async (convId: string) => {
+    setLeadLoading(true)
+    setLeadData(null)
+    try {
+      const res  = await fetch(`/api/nexus/whatsapp/lead?conversation_id=${convId}`)
+      const data = await res.json()
+      setLeadData(data.lead ?? null)
+    } catch { /* ignore */ } finally {
+      setLeadLoading(false)
+    }
+  }, [])
+
   // ── Send message ──────────────────────────────────────────────
 
-  const handleSend = useCallback(async () => {
-    if (!selected || !inputText.trim() || sendingMsg) return
-    const text = inputText.trim()
+  const handleSend = useCallback(async (textOverride?: string) => {
+    const text = (textOverride ?? inputText).trim()
+    if (!selected || !text || sendingMsg) return
+
     setInputText('')
     setSendingMsg(true)
+    setShowSuggestion(false)
 
-    // Optimistic update
     const optimisticMsg: Message = {
       id:           `opt-${Date.now()}`,
       direction:    'outgoing',
@@ -804,7 +1197,6 @@ export default function WhatsAppPage() {
         }),
       })
       if (!res.ok) {
-        // Roll back optimistic update on error
         setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
         setInputText(text)
       }
@@ -820,46 +1212,33 @@ export default function WhatsAppPage() {
 
   useEffect(() => {
     if (!companyId) return
-
     const supabase = getSupabaseBrowser()
-
-    const channel = supabase
+    const channel  = supabase
       .channel(`wa-messages-${companyId}`)
-      .on(
-        'postgres_changes',
-        {
-          event:  'INSERT',
-          schema: 'public',
-          table:  'whatsapp_messages',
-          filter: `company_id=eq.${companyId}`,
-        },
-        payload => {
-          const newMsg = payload.new as Message & { conversation_id: string }
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'whatsapp_messages',
+        filter: `company_id=eq.${companyId}`,
+      }, payload => {
+        const newMsg = payload.new as Message & { conversation_id: string }
 
-          // If this message is for the selected conversation, add it
-          setSelected(sel => {
-            if (sel && newMsg.conversation_id === sel.id) {
-              setMessages(prev => {
-                // Avoid duplicates
-                if (prev.some(m => m.id === newMsg.id)) return prev
-                return [...prev, newMsg]
-              })
-              // Show typing indicator briefly for incoming messages (AI is processing)
-              if (newMsg.direction === 'incoming') {
-                setShowTyping(true)
-                if (typingTimer.current) clearTimeout(typingTimer.current)
-                typingTimer.current = setTimeout(() => setShowTyping(false), 5000)
-              }
+        setSelected(sel => {
+          if (sel && newMsg.conversation_id === sel.id) {
+            setMessages(prev => {
+              if (prev.some(m => m.id === newMsg.id)) return prev
+              return [...prev, newMsg]
+            })
+            if (newMsg.direction === 'incoming') {
+              setShowTyping(true)
+              if (typingTimer.current) clearTimeout(typingTimer.current)
+              typingTimer.current = setTimeout(() => setShowTyping(false), 5000)
             }
-            return sel
-          })
+          }
+          return sel
+        })
 
-          // Refresh conversations list to update last_message_at
-          fetchConversations()
-          // Refresh activity feed
-          fetchActivity()
-        },
-      )
+        fetchConversations()
+        fetchActivity()
+      })
       .subscribe()
 
     return () => { void supabase.removeChannel(channel) }
@@ -876,22 +1255,13 @@ export default function WhatsAppPage() {
       fetchActivity(),
     ]).finally(() => setLoading(false))
 
-    // Poll status + conversations every 30s
-    const statusTimer = setInterval(() => {
-      fetchStatus()
-      fetchConversations()
-    }, 30_000)
-
-    // Poll activity feed every 15s
+    const statusTimer   = setInterval(() => { fetchStatus(); fetchConversations() }, 30_000)
     const activityTimer = setInterval(fetchActivity, 15_000)
 
-    return () => {
-      clearInterval(statusTimer)
-      clearInterval(activityTimer)
-    }
+    return () => { clearInterval(statusTimer); clearInterval(activityTimer) }
   }, [fetchStatus, fetchConversations, fetchCompanyId, fetchActivity])
 
-  // Poll messages every 5s when conversation selected (fallback for Realtime)
+  // Poll messages every 5s (Realtime fallback)
   useEffect(() => {
     if (!selected) return
     const t = setInterval(() => fetchMessages(selected.id), 5000)
@@ -910,10 +1280,10 @@ export default function WhatsAppPage() {
   const FILTERS = [
     { key: 'all',     label: 'Todas',         count: conversations.length },
     { key: 'unread',  label: 'Não lidas',     count: conversations.filter(c => (c.unread ?? 0) > 0).length },
-    { key: 'leads',   label: 'Leads quentes', count: conversations.filter(c => c.label === 'lead').length },
+    { key: 'leads',   label: 'Leads quentes', count: conversations.filter(c => c.label === 'lead' || c.temperatura === 'quente').length },
     { key: 'clients', label: 'Clientes',      count: conversations.filter(c => c.label === 'cliente').length },
-    { key: 'ai',      label: 'Aguardando IA', count: conversations.filter(c => !c.ai_enabled).length },
     { key: 'nego',    label: 'Negociações',   count: conversations.filter(c => c.label === 'negociacao').length },
+    { key: 'ai',      label: 'IA ativa',      count: conversations.filter(c => c.ai_enabled).length },
     { key: 'closed',  label: 'Arquivadas',    count: conversations.filter(c => c.status === 'closed').length },
   ]
 
@@ -921,34 +1291,29 @@ export default function WhatsAppPage() {
     if (search) return displayName(c).toLowerCase().includes(search.toLowerCase())
     switch (filter) {
       case 'unread':  return (c.unread ?? 0) > 0
-      case 'leads':   return c.label === 'lead'
+      case 'leads':   return c.label === 'lead' || c.temperatura === 'quente'
       case 'clients': return c.label === 'cliente'
-      case 'ai':      return !c.ai_enabled
       case 'nego':    return c.label === 'negociacao'
+      case 'ai':      return c.ai_enabled
       case 'closed':  return c.status === 'closed'
       default:        return true
     }
   })
 
   const kpis = [
-    { label: 'Conversas ativas',    value: conversations.filter(c => c.status === 'active').length, sub: 'ao vivo',      icon: MessageCircle, color: 'text-violet-400' },
-    { label: 'Mensagens',           value: conversations.reduce((a, c) => a + c.message_count, 0),  sub: 'total trocado', icon: Send,          color: 'text-blue-400'   },
-    { label: 'Leads identificados', value: conversations.filter(c => c.label === 'lead').length,     sub: 'em andamento',  icon: Users,         color: 'text-orange-400' },
-    { label: 'Oportunidades',       value: conversations.filter(c => c.label === 'negociacao').length, sub: 'negociando', icon: TrendingUp,    color: 'text-emerald-400' },
+    { label: 'Conversas ativas',    value: conversations.filter(c => c.status === 'active').length,       sub: 'ao vivo',       icon: MessageCircle, color: 'text-violet-400' },
+    { label: 'Mensagens',           value: conversations.reduce((a, c) => a + c.message_count, 0),         sub: 'total trocadas', icon: Zap,           color: 'text-blue-400'   },
+    { label: 'Leads identificados', value: conversations.filter(c => c.temperatura === 'quente').length,   sub: 'em andamento',   icon: Users,         color: 'text-orange-400' },
+    { label: 'Oportunidades',       value: conversations.filter(c => c.label === 'negociacao').length,     sub: 'negociando',     icon: TrendingUp,    color: 'text-emerald-400' },
   ]
 
   function handleSelectConv(conv: Conversation) {
     setSelected(conv)
     fetchMessages(conv.id)
-    setShowSuggestion(true)
+    fetchLeadData(conv.id)
+    setShowSuggestion(aiMode !== 'manual')
     setSuggestionIdx(0)
     setShowTyping(false)
-  }
-
-  function useSuggestion() {
-    setInputText(QUICK_REPLIES[suggestionIdx])
-    setShowSuggestion(false)
-    inputRef.current?.focus()
   }
 
   // ── Loading ───────────────────────────────────────────────────
@@ -956,7 +1321,10 @@ export default function WhatsAppPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
+          <p className="text-xs text-zinc-600">Carregando NEXUS…</p>
+        </div>
       </div>
     )
   }
@@ -982,13 +1350,13 @@ export default function WhatsAppPage() {
     )
   }
 
-  // ── Connected: OPERATION CENTER ───────────────────────────────
+  // ── Connected: WhatsApp OS ─────────────────────────────────────
 
   return (
     <div className="h-screen bg-zinc-950 flex flex-col overflow-hidden">
 
-      {/* Header */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-zinc-800/60">
+      {/* ── Header ── */}
+      <div className="shrink-0 flex items-center justify-between px-6 py-3.5 border-b border-zinc-800/60">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center">
             <MessageCircle className="w-4 h-4 text-emerald-400" />
@@ -1004,12 +1372,12 @@ export default function WhatsAppPage() {
                 <span className="text-[11px] text-zinc-500">+{waStatus.phone}</span>
               )}
             </div>
-            <p className="text-xs text-zinc-500">Atendimento inteligente, automações e oportunidades em tempo real.</p>
+            <p className="text-xs text-zinc-500">Atendimento inteligente · automações · oportunidades em tempo real</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition">
-            <Settings className="w-3.5 h-3.5" /> Configurações
+            <Settings className="w-3.5 h-3.5" /> Config
           </button>
           <button
             onClick={() => setShowConnect(true)}
@@ -1020,7 +1388,7 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      {/* KPI row */}
+      {/* ── KPI row ── */}
       <div className="shrink-0 grid grid-cols-4 gap-3 px-6 py-3 border-b border-zinc-800/60">
         {kpis.map(kpi => {
           const Icon = kpi.icon
@@ -1029,21 +1397,20 @@ export default function WhatsAppPage() {
               <Icon className={cn('w-4 h-4 shrink-0', kpi.color)} />
               <div>
                 <p className="text-lg font-bold text-white leading-none">{kpi.value}</p>
-                <p className="text-[10px] text-zinc-500">{kpi.label}</p>
-                <p className="text-[10px] text-zinc-600">{kpi.sub}</p>
+                <p className="text-[10px] text-zinc-500 leading-tight">{kpi.label}</p>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* Main 3-column */}
+      {/* ── 3-column layout ── */}
       <div className="flex-1 flex overflow-hidden">
 
         {/* ── Left: Smart Inbox ── */}
         <div className="w-72 shrink-0 flex flex-col border-r border-zinc-800/60 bg-zinc-950">
 
-          {/* Connection card */}
+          {/* Connection badge */}
           <div className="p-4 border-b border-zinc-800/60">
             <div className="bg-zinc-900 border border-zinc-800/60 rounded-xl p-3 flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
@@ -1051,7 +1418,7 @@ export default function WhatsAppPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-white">WhatsApp Ativo</p>
-                <p className="text-[10px] text-zinc-500 truncate">IA NEXUS respondendo automaticamente</p>
+                <p className="text-[10px] text-zinc-500 truncate">NEXUS AI respondendo automaticamente</p>
               </div>
               <button
                 onClick={() => setShowConnect(true)}
@@ -1076,7 +1443,7 @@ export default function WhatsAppPage() {
             </div>
           </div>
 
-          {/* Filters */}
+          {/* Smart filters */}
           <div className="px-3 pb-2">
             <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2 px-1">Filtros inteligentes</p>
             <div className="space-y-0.5">
@@ -1096,7 +1463,7 @@ export default function WhatsAppPage() {
                     {f.key === 'unread'  && <Circle className="w-3.5 h-3.5" />}
                     {f.key === 'leads'   && <Flame className="w-3.5 h-3.5 text-orange-400" />}
                     {f.key === 'clients' && <Users className="w-3.5 h-3.5" />}
-                    {f.key === 'ai'      && <Bot className="w-3.5 h-3.5" />}
+                    {f.key === 'ai'      && <Bot className="w-3.5 h-3.5 text-violet-400" />}
                     {f.key === 'nego'    && <TrendingUp className="w-3.5 h-3.5" />}
                     {f.key === 'closed'  && <Archive className="w-3.5 h-3.5" />}
                     <span className="text-xs">{f.label}</span>
@@ -1115,13 +1482,30 @@ export default function WhatsAppPage() {
           {/* Conversation list */}
           <div className="flex-1 overflow-y-auto border-t border-zinc-800/40">
             {visibleConvs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
-                <MessageSquare className="w-7 h-7 text-zinc-700" />
-                <p className="text-xs text-zinc-600">
-                  {conversations.length === 0
-                    ? 'Nenhuma conversa ainda.\nEnvie uma mensagem para começar.'
-                    : 'Nenhuma conversa neste filtro.'}
-                </p>
+              <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
+                <motion.div
+                  animate={{ opacity: [0.4, 0.9, 0.4] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="w-10 h-10 rounded-2xl bg-violet-600/10 border border-violet-500/15 flex items-center justify-center"
+                >
+                  <Bot className="w-5 h-5 text-violet-400/50" />
+                </motion.div>
+                <div>
+                  <p className="text-xs font-medium text-zinc-500">
+                    {conversations.length === 0
+                      ? 'IA aguardando primeiras mensagens'
+                      : 'Nenhuma conversa neste filtro'}
+                  </p>
+                  {conversations.length === 0 && (
+                    <p className="text-[10px] text-zinc-700 mt-1">Quando alguém enviar mensagem, aparece aqui</p>
+                  )}
+                </div>
+                {conversations.length === 0 && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-violet-400 bg-violet-500/8 border border-violet-500/15 rounded-full px-3 py-1.5">
+                    <span className="w-1 h-1 rounded-full bg-violet-400 animate-pulse" />
+                    Monitorando canal
+                  </div>
+                )}
               </div>
             ) : (
               visibleConvs.map(c => (
@@ -1137,7 +1521,7 @@ export default function WhatsAppPage() {
 
           <div className="p-3 border-t border-zinc-800/60">
             <button className="w-full flex items-center justify-center gap-2 text-xs text-zinc-600 hover:text-zinc-400 py-2 transition">
-              <Plus className="w-3.5 h-3.5" /> Novo filtro
+              <Plus className="w-3.5 h-3.5" /> Nova conversa
             </button>
           </div>
         </div>
@@ -1147,7 +1531,7 @@ export default function WhatsAppPage() {
           {selected ? (
             <>
               {/* Chat header */}
-              <div className="shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-zinc-800/60 bg-zinc-950">
+              <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-zinc-800/60 bg-zinc-950">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-full bg-violet-600/20 text-violet-400 text-sm font-bold flex items-center justify-center">
                     {initials(selected)}
@@ -1166,7 +1550,11 @@ export default function WhatsAppPage() {
                       )}
                     </div>
                     <p className="text-[11px] text-zinc-500">
-                      {selected.ai_enabled ? '🤖 IA ativa · Respondendo automaticamente' : `+${selected.phone}`}
+                      {aiMode === 'auto'
+                        ? '🤖 IA ativa · Respondendo automaticamente'
+                        : aiMode === 'hybrid'
+                        ? '🔀 Modo híbrido · IA sugere, você aprova'
+                        : `📱 Modo manual · +${selected.phone}`}
                     </p>
                   </div>
                 </div>
@@ -1189,20 +1577,28 @@ export default function WhatsAppPage() {
               {/* Messages */}
               <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-4">
                 {loadingMsgs ? (
-                  <div className="flex items-center justify-center flex-1">
+                  <div className="flex items-center justify-center flex-1 gap-3">
                     <Loader2 className="w-5 h-5 text-zinc-600 animate-spin" />
                   </div>
                 ) : messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center flex-1 gap-3">
-                    <MessageSquare className="w-8 h-8 text-zinc-700" />
-                    <p className="text-sm text-zinc-600">Nenhuma mensagem ainda</p>
-                    <p className="text-xs text-zinc-700">Envie a primeira mensagem abaixo</p>
+                  <div className="flex flex-col items-center justify-center flex-1 gap-4">
+                    <motion.div
+                      animate={{ opacity: [0.4, 0.8, 0.4] }}
+                      transition={{ duration: 2.5, repeat: Infinity }}
+                      className="w-12 h-12 rounded-2xl bg-violet-600/10 border border-violet-500/15 flex items-center justify-center"
+                    >
+                      <MessageSquare className="w-6 h-6 text-violet-400/40" />
+                    </motion.div>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-zinc-500">Nenhuma mensagem ainda</p>
+                      <p className="text-xs text-zinc-700 mt-1">IA monitorando este canal. Envie a primeira mensagem.</p>
+                    </div>
                   </div>
                 ) : (
                   messages.map(m => <Bubble key={m.id} msg={m} />)
                 )}
 
-                {/* Typing indicator — only when incoming message was just received */}
+                {/* Typing indicator */}
                 <AnimatePresence>
                   {showTyping && (
                     <motion.div
@@ -1232,9 +1628,9 @@ export default function WhatsAppPage() {
                 <div ref={messagesEnd} />
               </div>
 
-              {/* AI quick reply suggestion */}
+              {/* AI suggestion — hybrid & auto mode */}
               <AnimatePresence>
-                {showSuggestion && (
+                {showSuggestion && aiMode !== 'manual' && (
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1245,7 +1641,9 @@ export default function WhatsAppPage() {
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5">
                           <Sparkles className="w-3 h-3 text-violet-400" />
-                          <p className="text-[11px] text-violet-400 font-medium">Resposta inteligente sugerida</p>
+                          <p className="text-[11px] text-violet-400 font-medium">
+                            {aiMode === 'hybrid' ? 'Rascunho da IA — aguardando aprovação' : 'Resposta inteligente sugerida'}
+                          </p>
                         </div>
                         <button onClick={() => setShowSuggestion(false)} className="text-zinc-600 hover:text-zinc-400">
                           <X className="w-3.5 h-3.5" />
@@ -1254,19 +1652,32 @@ export default function WhatsAppPage() {
                       <p className="text-xs text-zinc-400 leading-relaxed mb-3">{QUICK_REPLIES[suggestionIdx]}</p>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={useSuggestion}
+                          onClick={() => {
+                            if (aiMode === 'hybrid') {
+                              handleSend(QUICK_REPLIES[suggestionIdx])
+                            } else {
+                              setInputText(QUICK_REPLIES[suggestionIdx])
+                              setShowSuggestion(false)
+                              inputRef.current?.focus()
+                            }
+                          }}
                           className="flex items-center gap-1.5 text-xs text-white bg-violet-600 hover:bg-violet-500 px-3 py-1.5 rounded-lg transition"
                         >
-                          <Check className="w-3 h-3" /> Usar
+                          <Check className="w-3 h-3" />
+                          {aiMode === 'hybrid' ? 'Aprovar e Enviar' : 'Usar'}
                         </button>
                         <button
                           onClick={() => setSuggestionIdx(i => (i + 1) % QUICK_REPLIES.length)}
                           className="text-xs text-zinc-500 hover:text-zinc-300 transition"
                         >
-                          Próxima sugestão
+                          Próxima
                         </button>
                         <button
-                          onClick={() => { setInputText(QUICK_REPLIES[suggestionIdx]); setShowSuggestion(false); inputRef.current?.focus() }}
+                          onClick={() => {
+                            setInputText(QUICK_REPLIES[suggestionIdx])
+                            setShowSuggestion(false)
+                            inputRef.current?.focus()
+                          }}
                           className="text-xs text-zinc-500 hover:text-zinc-300 transition ml-auto"
                         >
                           ✏️ Editar
@@ -1287,47 +1698,68 @@ export default function WhatsAppPage() {
                     <input
                       ref={inputRef}
                       type="text"
-                      placeholder="Digite sua mensagem..."
+                      placeholder={
+                        aiMode === 'auto'   ? 'IA respondendo automaticamente… ou escreva manualmente' :
+                        aiMode === 'hybrid' ? 'Escreva ou use a sugestão da IA acima' :
+                                             'Digite sua mensagem...'
+                      }
                       value={inputText}
                       onChange={e => setInputText(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend() } }}
                       disabled={sendingMsg}
                       className="flex-1 bg-transparent text-sm text-zinc-200 placeholder-zinc-600 outline-none disabled:opacity-50"
                     />
-                    <button
-                      onClick={() => { setShowSuggestion(true); setSuggestionIdx(0) }}
-                      className="flex items-center gap-1 text-[10px] text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full px-2 py-0.5 hover:bg-violet-500/20 transition shrink-0"
-                    >
-                      <Bot className="w-2.5 h-2.5" /> IA Assistente
-                      <span className="bg-violet-500/20 text-[9px] rounded-full px-1 ml-0.5 font-bold">Novo</span>
-                    </button>
+                    {aiMode !== 'manual' && (
+                      <button
+                        onClick={() => { setShowSuggestion(true); setSuggestionIdx(0) }}
+                        className="flex items-center gap-1 text-[10px] text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full px-2 py-0.5 hover:bg-violet-500/20 transition shrink-0"
+                      >
+                        <Bot className="w-2.5 h-2.5" /> IA
+                      </button>
+                    )}
                   </div>
                   <button
-                    onClick={handleSend}
+                    onClick={() => void handleSend()}
                     disabled={!inputText.trim() || sendingMsg}
                     className="w-9 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white transition shadow-lg shadow-violet-600/20 shrink-0"
                   >
                     {sendingMsg
                       ? <Loader2 className="w-4 h-4 animate-spin" />
-                      : <Send className="w-4 h-4" />
-                    }
+                      : <Send className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
             </>
           ) : (
-            /* No conversation selected */
-            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center p-8">
-              <div className="w-14 h-14 rounded-2xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center">
-                <MessageCircle className="w-7 h-7 text-violet-400/50" />
-              </div>
+            /* No conversation selected — intelligent monitoring state */
+            <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center p-8">
+              <motion.div
+                animate={{ scale: [1, 1.06, 1] }}
+                transition={{ duration: 3, repeat: Infinity }}
+                className="relative"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center">
+                  <MessageCircle className="w-8 h-8 text-violet-400/50" />
+                </div>
+                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+              </motion.div>
               <div>
                 <p className="text-sm font-semibold text-zinc-300">Selecione uma conversa</p>
-                <p className="text-xs text-zinc-600 mt-1">A IA está monitorando todas as conversas em tempo real</p>
+                <p className="text-xs text-zinc-600 mt-1">IA monitorando {conversations.length} conversa{conversations.length !== 1 ? 's' : ''} em tempo real</p>
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                IA NEXUS ativa · Monitorando e otimizando
+              <div className="flex flex-col gap-2 items-center">
+                <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  NEXUS AI ativa · Analisando intenção do cliente
+                </div>
+                {activityEvents.length > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-violet-400 bg-violet-500/8 border border-violet-500/15 rounded-full px-3 py-1.5">
+                    <Sparkles className="w-3 h-3" />
+                    {activityEvents[0]?.label ?? 'Detectando oportunidades'}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1335,16 +1767,27 @@ export default function WhatsAppPage() {
 
         {/* ── Right: AI Sidebar ── */}
         <div className="w-72 shrink-0 border-l border-zinc-800/60 bg-zinc-950 overflow-hidden">
-          <AISidebar conv={selected} activityEvents={activityEvents} />
+          <AISidebar
+            conv={selected}
+            activityEvents={activityEvents}
+            leadData={leadData}
+            leadLoading={leadLoading}
+            aiMode={aiMode}
+            onAIModeChange={setAiMode}
+          />
         </div>
       </div>
 
-      {/* Bottom live bar */}
+      {/* ── Bottom live bar ── */}
       <div className="shrink-0 flex items-center gap-3 px-6 py-2 border-t border-zinc-800/60 bg-zinc-950/90">
         <div className="flex items-center gap-2 flex-1">
           <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
           <p className="text-[11px] text-zinc-500">
-            IA NEXUS ativa · Respondendo automaticamente · Pipeline sincronizado
+            NEXUS AI ativa ·
+            {aiMode === 'auto'   ? ' Respondendo automaticamente' :
+             aiMode === 'hybrid' ? ' Modo híbrido ativo' :
+                                   ' Modo manual ativo'}
+            {' · '}Pipeline sincronizado
           </p>
         </div>
         <div className="flex items-center gap-1.5">
