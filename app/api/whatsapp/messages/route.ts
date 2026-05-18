@@ -18,40 +18,40 @@ export async function GET(req: NextRequest) {
 
     const db = getSupabaseServerClient()
 
-    // Verify the conversation belongs to this user's company
-    const { data: userRow } = await db
-      .from('users')
-      .select('id')
-      .eq('auth_id', user.id)
-      .maybeSingle()
+    // Resolve authorised company_id (same logic as conversations route)
+    let companyId = process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
 
-    if (!userRow) return NextResponse.json({ messages: [] })
+    if (!companyId) {
+      const { data: userRow } = await db
+        .from('users').select('id').eq('auth_id', user.id).maybeSingle()
+      if (!userRow) return NextResponse.json({ messages: [] })
 
-    const { data: company } = await db
-      .from('companies')
-      .select('id')
-      .eq('user_id', userRow.id)
-      .maybeSingle()
+      const { data: company } = await db
+        .from('companies').select('id').eq('user_id', userRow.id).maybeSingle()
+      if (!company) return NextResponse.json({ messages: [] })
 
-    if (!company) return NextResponse.json({ messages: [] })
+      companyId = company.id
+    }
 
-    // Verify ownership
+    // Verify the conversation belongs to this company
     const { data: conversation } = await db
       .from('whatsapp_conversations')
       .select('id')
       .eq('id', conversationId)
-      .eq('company_id', company.id)
+      .eq('company_id', companyId)
       .maybeSingle()
 
     if (!conversation) {
+      console.warn('[WA messages] Conversation not found or wrong company:', conversationId, companyId)
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
 
-    const limit = parseInt(req.nextUrl.searchParams.get('limit') ?? '50', 10)
+    const limit = parseInt(req.nextUrl.searchParams.get('limit') ?? '100', 10)
     const messages = await getMessages(conversationId, limit)
+    console.log('[WA messages] found:', messages.length, 'for conv:', conversationId)
     return NextResponse.json({ messages })
   } catch (err) {
-    console.error('[WA messages]', err)
+    console.error('[WA messages] Error:', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

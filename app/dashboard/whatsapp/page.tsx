@@ -1233,18 +1233,30 @@ export default function WhatsAppPage() {
   const fetchConversations = useCallback(async () => {
     try {
       const res  = await fetch('/api/whatsapp/conversations')
+      if (!res.ok) {
+        console.error('[WA] conversations API error:', res.status, await res.text().catch(() => ''))
+        return
+      }
       const data = await res.json()
       setConversations(data.conversations ?? [])
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('[WA] fetchConversations failed:', e)
+    }
   }, [])
 
   const fetchMessages = useCallback(async (convId: string) => {
     setLoadingMsgs(true)
     try {
-      const res  = await fetch(`/api/whatsapp/messages?conversationId=${convId}`)
+      const res  = await fetch(`/api/whatsapp/messages?conversationId=${convId}&limit=100`)
+      if (!res.ok) {
+        console.error('[WA] messages API error:', res.status, await res.text().catch(() => ''))
+        return
+      }
       const data = await res.json()
       setMessages(data.messages ?? [])
-    } catch { /* ignore */ } finally {
+    } catch (e) {
+      console.error('[WA] fetchMessages failed:', e)
+    } finally {
       setLoadingMsgs(false)
     }
   }, [])
@@ -1399,16 +1411,17 @@ export default function WhatsAppPage() {
       fetchActivity(),
     ]).finally(() => setLoading(false))
 
-    const statusTimer   = setInterval(() => { fetchStatus(); fetchConversations() }, 30_000)
+    // Refresh conversations more frequently so new ones appear quickly
+    const statusTimer   = setInterval(() => { fetchStatus(); fetchConversations() }, 10_000)
     const activityTimer = setInterval(fetchActivity, 15_000)
 
     return () => { clearInterval(statusTimer); clearInterval(activityTimer) }
   }, [fetchStatus, fetchConversations, fetchCompanyId, fetchActivity])
 
-  // Poll messages every 5s (Realtime fallback)
+  // Poll messages every 3s (Realtime fallback)
   useEffect(() => {
     if (!selected) return
-    const t = setInterval(() => fetchMessages(selected.id), 5000)
+    const t = setInterval(() => fetchMessages(selected.id), 3000)
     return () => clearInterval(t)
   }, [selected, fetchMessages])
 
