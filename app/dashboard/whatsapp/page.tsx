@@ -173,49 +173,82 @@ const ACTIVATION_STEPS = [
 ]
 
 function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnected: () => void }) {
-  const [phase,   setPhase]   = useState<ConnectPhase>('qr')
-  const [qrStep,  setQrStep]  = useState<QRStep>('loading')
-  const [qrError, setQrError] = useState(false)
-  const [qrTs,    setQrTs]    = useState(Date.now())
-  const [actStep, setActStep] = useState(-1)
+  const [phase,            setPhase]           = useState<ConnectPhase>('qr')
+  const [qrStep,           setQrStep]          = useState<QRStep>('loading')
+  const [qrUrl,            setQrUrl]           = useState<string | null>(null)
+  const [qrError,          setQrError]         = useState<string | null>(null)
+  const [alreadyConnected, setAlreadyConnected] = useState(false)
+  const [disconnecting,    setDisconnecting]   = useState(false)
+  const [actStep,          setActStep]         = useState(-1)
 
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null)
   const qrTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const blobRef    = useRef<string | null>(null)
 
-  // Show QR after brief load
+  // Fetch QR via fetch() so we can handle JSON responses properly
+  const loadQr = useCallback(async () => {
+    if (blobRef.current) { URL.revokeObjectURL(blobRef.current); blobRef.current = null }
+    setQrUrl(null)
+    setQrError(null)
+    setAlreadyConnected(false)
+    setQrStep('loading')
+    try {
+      const res = await fetch('/api/nexus/whatsapp/qr', { cache: 'no-store' })
+      if (res.status === 409) {
+        setAlreadyConnected(true)
+        setQrStep('showing')
+        return
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        setQrError(err.error ?? 'qr_failed')
+        setQrStep('showing')
+        return
+      }
+      const buf  = await res.arrayBuffer()
+      const blob = new Blob([buf], { type: 'image/png' })
+      const url  = URL.createObjectURL(blob)
+      blobRef.current = url
+      setQrUrl(url)
+      setQrStep('showing')
+    } catch {
+      setQrError('timeout')
+      setQrStep('showing')
+    }
+  }, [])
+
+  // Load QR on mount
+  useEffect(() => { loadQr() }, [loadQr])
+
+  // Cleanup blob URL on unmount
   useEffect(() => {
-    const t = setTimeout(() => setQrStep('showing'), 900)
-    return () => clearTimeout(t)
+    return () => { if (blobRef.current) URL.revokeObjectURL(blobRef.current) }
   }, [])
 
   // Auto-refresh QR every 55s (before Z-API ~60s expiry)
   useEffect(() => {
-    if (phase !== 'qr') { qrTimerRef.current && clearInterval(qrTimerRef.current); return }
-    qrTimerRef.current = setInterval(() => { setQrTs(Date.now()); setQrError(false) }, 55_000)
+    if (phase !== 'qr' || alreadyConnected) return
+    qrTimerRef.current = setInterval(loadQr, 55_000)
     return () => { qrTimerRef.current && clearInterval(qrTimerRef.current) }
-  }, [phase])
+  }, [phase, alreadyConnected, loadQr])
 
   // Poll connection status every 3s
   useEffect(() => {
-    if (phase !== 'qr') return
+    if (phase !== 'qr' || alreadyConnected) return
     pollRef.current = setInterval(async () => {
       try {
         const res  = await fetch('/api/nexus/whatsapp/status?company_id=check')
         const data = await res.json() as WAStatus
         if (data.connected) {
           clearInterval(pollRef.current!)
-          setQrStep('scanning')
-          // Configure webhook silently
+          qrTimerRef.current && clearInterval(qrTimerRef.current)
           fetch('/api/nexus/whatsapp/setup', { method: 'POST' }).catch(() => {})
-          // Start cinematic activation after 600ms
           setTimeout(() => { setPhase('activating'); setActStep(0) }, 600)
-        } else if (qrStep === 'showing') {
-          setQrStep('scanning')
         }
       } catch { /* ignore */ }
     }, 3000)
     return () => { pollRef.current && clearInterval(pollRef.current) }
-  }, [phase, qrStep])
+  }, [phase, alreadyConnected])
 
   // Advance activation steps every 1400ms
   useEffect(() => {
@@ -228,6 +261,14 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
     const t = setTimeout(() => setActStep(s => s + 1), 1400)
     return () => clearTimeout(t)
   }, [phase, actStep, onConnected])
+
+  // Disconnect and show fresh QR
+  const handleDisconnect = useCallback(async () => {
+    setDisconnecting(true)
+    try { await fetch('/api/nexus/whatsapp/disconnect') } catch { /* ignore */ }
+    setDisconnecting(false)
+    await loadQr()
+  }, [loadQr])
 
   return (
     <AnimatePresence>
@@ -290,7 +331,7 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
                   <div className="relative">
                     <div className={cn(
                       'w-56 h-56 rounded-2xl overflow-hidden border-2 transition-all duration-500',
-                      qrStep === 'scanning'
+                      alreadyConnected
                         ? 'border-emerald-500/60 shadow-lg shadow-emerald-500/15'
                         : 'border-violet-500/40 shadow-lg shadow-violet-500/10',
                     )}>
@@ -299,6 +340,20 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
                           <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
                           <p className="text-xs text-zinc-500">Gerando QR Code…</p>
                         </div>
+                      ) : alreadyConnected ? (
+                        <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4">
+                          <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+                          <p className="text-xs text-emerald-300 font-semibold text-center">WhatsApp já vinculado</p>
+                          <p className="text-[10px] text-zinc-500 text-center">Um número já está conectado a esta conta.</p>
+                          <button
+                            onClick={handleDisconnect}
+                            disabled={disconnecting}
+                            className="flex items-center gap-1.5 text-xs text-amber-400 border border-amber-500/30 rounded-lg px-3 py-1.5 hover:bg-amber-500/10 transition disabled:opacity-50"
+                          >
+                            {disconnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                            Trocar número
+                          </button>
+                        </div>
                       ) : qrError ? (
                         <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4">
                           <AlertTriangle className="w-8 h-8 text-amber-400" />
@@ -306,53 +361,41 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
                             QR indisponível.<br />Verifique a configuração Z-API.
                           </p>
                           <button
-                            onClick={() => { setQrTs(Date.now()); setQrError(false) }}
+                            onClick={loadQr}
                             className="text-xs text-violet-400 border border-violet-500/30 rounded-lg px-3 py-1.5 hover:bg-violet-500/10 transition"
                           >
                             Tentar novamente
                           </button>
                         </div>
-                      ) : (
+                      ) : qrUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={`/api/nexus/whatsapp/qr?t=${qrTs}`}
+                          src={qrUrl}
                           alt="QR Code WhatsApp"
                           className="w-full h-full object-cover bg-white"
-                          onError={() => setQrError(true)}
                         />
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {!alreadyConnected && !qrError && (
+                    <div className="text-center space-y-1.5">
+                      <p className="text-xs text-zinc-400 leading-relaxed">
+                        1. Abra o WhatsApp no celular<br />
+                        2. Vá em <strong className="text-white">Dispositivos vinculados</strong><br />
+                        3. Toque em <strong className="text-white">Vincular um dispositivo</strong><br />
+                        4. Escaneie este QR Code
+                      </p>
+                      {qrUrl && (
+                        <button
+                          onClick={loadQr}
+                          className="text-xs text-violet-400 hover:text-violet-300 transition"
+                        >
+                          ↺ Atualizar QR Code
+                        </button>
                       )}
                     </div>
-
-                    {qrStep === 'scanning' && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="absolute inset-0 rounded-2xl bg-black/40 flex items-center justify-center"
-                      >
-                        <div className="flex items-center gap-2 bg-zinc-900/90 border border-emerald-500/30 rounded-full px-4 py-2">
-                          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                          <p className="text-xs text-emerald-300 font-medium">Aguardando escaneamento…</p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </div>
-
-                  <div className="text-center space-y-1.5">
-                    <p className="text-xs text-zinc-400 leading-relaxed">
-                      1. Abra o WhatsApp no celular<br />
-                      2. Vá em <strong className="text-white">Dispositivos vinculados</strong><br />
-                      3. Toque em <strong className="text-white">Vincular um dispositivo</strong><br />
-                      4. Escaneie este QR Code
-                    </p>
-                    {!qrError && (
-                      <button
-                        onClick={() => { setQrTs(Date.now()); setQrError(false) }}
-                        className="text-xs text-violet-400 hover:text-violet-300 transition"
-                      >
-                        ↺ Atualizar QR Code
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
 
                 <div className="flex gap-2 mt-7">
