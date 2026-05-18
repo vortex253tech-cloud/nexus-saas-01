@@ -180,11 +180,19 @@ async function saveConversation(params: {
   const supabase = db()
   const { phone, companyId, senderName, message, reply, msgId } = params
 
-  // Upsert conversation
+  const now = new Date().toISOString()
+
+  // Upsert conversation — always update last_message_at on activity
   const { data: conv } = await supabase
     .from('whatsapp_conversations')
     .upsert(
-      { company_id: companyId, phone, contact_name: senderName || null, updated_at: new Date().toISOString() },
+      {
+        company_id:      companyId,
+        phone,
+        contact_name:    senderName || null,
+        last_message_at: now,
+        updated_at:      now,
+      },
       { onConflict: 'company_id,phone', ignoreDuplicates: false }
     )
     .select('id')
@@ -217,6 +225,13 @@ async function saveConversation(params: {
     ai_generated:    true,
     status:          'sent',
     raw_payload:     {},
+  })
+
+  // Atomic: +2 message_count, +1 unread_count (only incoming is unread)
+  await supabase.rpc('wa_inc_message_count', {
+    p_conv_id:    conv.id,
+    p_msg_inc:    2,
+    p_unread_inc: 1,
   })
 
   return conv.id
@@ -304,6 +319,27 @@ Estágio:
       },
       { onConflict: 'conversation_id', ignoreDuplicates: false }
     )
+
+    // Cascade temperatura + label back to conversation for fast filter queries
+    const temperatura =
+      (merged.score ?? 0) >= 70 ? 'quente' :
+      (merged.score ?? 0) >= 40 ? 'morno'  : 'frio'
+
+    const estagioToLabel: Record<string, string> = {
+      negociando:  'negociacao',
+      cliente:     'cliente',
+      qualificado: 'lead',
+      interessado: 'lead',
+    }
+    const label = estagioToLabel[merged.estagio ?? ''] ?? null
+
+    await supabase.from('whatsapp_conversations')
+      .update({
+        temperatura,
+        ...(label ? { label } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversationId)
 
     // Sync to leads table (upsert by phone + company)
     await syncToLeads({ supabase, companyId, phone, merged })

@@ -483,11 +483,11 @@ export async function getConversations(companyId: string, limit = 50) {
   const db = getDb()
   const { data } = await db
     .from('whatsapp_conversations')
-    .select('id, phone, contact_name, status, last_message_at, message_count, ai_enabled, created_at')
+    .select('id, phone, contact_name, status, last_message_at, message_count, ai_enabled, created_at, temperatura, label, unread_count')
     .eq('company_id', companyId)
     .order('last_message_at', { ascending: false })
     .limit(limit)
-  return data ?? []
+  return (data ?? []).map(c => ({ ...c, unread: c.unread_count ?? 0 }))
 }
 
 export async function getMessages(conversationId: string, limit = 50) {

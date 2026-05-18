@@ -1251,12 +1251,14 @@ export default function WhatsAppPage() {
     }
   }, [selected, inputText, sendingMsg])
 
-  // ── Realtime subscription ─────────────────────────────────────
+  // ── Realtime subscriptions ────────────────────────────────────
 
   useEffect(() => {
     if (!companyId) return
     const supabase = getSupabaseBrowser()
-    const channel  = supabase
+
+    // 1. New messages → append to open chat + refresh conversation list
+    const msgChannel = supabase
       .channel(`wa-messages-${companyId}`)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'whatsapp_messages',
@@ -1284,7 +1286,37 @@ export default function WhatsAppPage() {
       })
       .subscribe()
 
-    return () => { void supabase.removeChannel(channel) }
+    // 2. Conversation updates → patch local state without full refetch
+    //    (handles last_message_at, unread_count, temperatura, label changes)
+    const convChannel = supabase
+      .channel(`wa-conversations-${companyId}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'whatsapp_conversations',
+        filter: `company_id=eq.${companyId}`,
+      }, payload => {
+        if (payload.eventType === 'INSERT') {
+          const c = payload.new as Conversation & { unread_count?: number }
+          setConversations(prev => {
+            if (prev.some(x => x.id === c.id)) return prev
+            return [{ ...c, unread: c.unread_count ?? 0 }, ...prev]
+          })
+        } else if (payload.eventType === 'UPDATE') {
+          const c = payload.new as Conversation & { unread_count?: number }
+          setConversations(prev =>
+            prev.map(x => x.id === c.id ? { ...c, unread: c.unread_count ?? 0 } : x)
+          )
+          // Keep selected in sync (name, temperatura, etc.)
+          setSelected(sel =>
+            sel?.id === c.id ? { ...sel, ...c, unread: c.unread_count ?? 0 } : sel
+          )
+        }
+      })
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(msgChannel)
+      void supabase.removeChannel(convChannel)
+    }
   }, [companyId, fetchConversations, fetchActivity])
 
   // ── Init ──────────────────────────────────────────────────────
@@ -1351,12 +1383,23 @@ export default function WhatsAppPage() {
   ]
 
   function handleSelectConv(conv: Conversation) {
-    setSelected(conv)
+    // Optimistically clear unread badge before the server confirms
+    setConversations(prev =>
+      prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c)
+    )
+    setSelected({ ...conv, unread: 0 })
     fetchMessages(conv.id)
     fetchLeadData(conv.id)
     setShowSuggestion(aiMode !== 'manual')
     setSuggestionIdx(0)
     setShowTyping(false)
+
+    // Fire-and-forget: reset unread_count in DB
+    fetch('/api/nexus/whatsapp/read', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ conversation_id: conv.id }),
+    }).catch(() => {})
   }
 
   // ── Loading ───────────────────────────────────────────────────
