@@ -12,6 +12,9 @@ import {
   MessageSquare, X, Loader2, Check, AlertTriangle,
   Smile, Archive, Tag, Wifi,
   Cpu, BarChart3, Brain, DollarSign, Clock,
+  Paperclip, Image, FileText, Mic, CalendarClock,
+  PhoneCall, UserCheck, Repeat2, ChevronDown,
+  ShieldCheck, Globe, Layers,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -677,56 +680,72 @@ function OnboardingView({ onConnect }: { onConnect: () => void }) {
 
 // ─── Conversation Item ────────────────────────────────────────────
 
+function isOnline(lastAt: string | null) {
+  if (!lastAt) return false
+  return Date.now() - new Date(lastAt).getTime() < 5 * 60 * 1000
+}
+
 function ConvItem({
   conv, active, onClick,
 }: { conv: Conversation; active: boolean; onClick: () => void }) {
   const cfg    = conv.label ? LABEL_CONFIG[conv.label] : null
   const heat   = conv.temperatura === 'quente' || conv.temperatura === 'urgente'
   const unread = conv.unread ?? 0
+  const online = isOnline(conv.last_message_at)
 
   return (
     <button
       onClick={onClick}
       className={cn(
-        'w-full px-4 py-3.5 flex items-start gap-3 text-left border-b border-zinc-800/40 last:border-0 transition-all duration-150',
-        active ? 'bg-violet-600/10 border-l-2 border-l-violet-500' : 'hover:bg-zinc-800/30',
+        'w-full px-4 py-3 flex items-start gap-3 text-left border-b border-zinc-800/30 last:border-0 transition-all duration-150',
+        active
+          ? 'bg-violet-600/10 border-l-2 border-l-violet-500'
+          : 'hover:bg-zinc-800/25',
       )}
     >
-      <div className="relative shrink-0">
+      <div className="relative shrink-0 mt-0.5">
         <div className={cn(
           'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold',
-          heat ? 'bg-orange-500/20 text-orange-400' : 'bg-violet-600/20 text-violet-400',
+          heat   ? 'bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30' :
+          active ? 'bg-violet-600/25 text-violet-300'  : 'bg-zinc-800 text-zinc-400',
         )}>
           {initials(conv)}
         </div>
-        {conv.ai_enabled && (
-          <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-zinc-950 border border-zinc-800 flex items-center justify-center">
-            <Bot className="w-2.5 h-2.5 text-violet-400" />
-          </span>
-        )}
+        {/* Online dot */}
+        <span className={cn(
+          'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-zinc-950',
+          online ? 'bg-emerald-500' : conv.ai_enabled ? 'bg-violet-600' : 'bg-zinc-700',
+        )} />
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1 mb-0.5">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <p className={cn('text-sm font-medium truncate', unread > 0 ? 'text-white' : 'text-zinc-300')}>
+          <div className="flex items-center gap-1 min-w-0">
+            <p className={cn('text-xs font-semibold truncate', unread > 0 ? 'text-white' : 'text-zinc-300')}>
               {displayName(conv)}
             </p>
-            {heat && <Flame className="w-3 h-3 text-orange-400 shrink-0" />}
+            {heat && <Flame className="w-2.5 h-2.5 text-orange-400 shrink-0" />}
           </div>
-          <span className="text-[10px] text-zinc-600 shrink-0">{formatRelative(conv.last_message_at)}</span>
+          <div className="flex items-center gap-1 shrink-0">
+            {unread > 0 && (
+              <span className="min-w-[16px] h-4 rounded-full bg-violet-600 text-[9px] font-bold text-white flex items-center justify-center px-1">
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+            <span className="text-[9px] text-zinc-700">{formatRelative(conv.last_message_at)}</span>
+          </div>
         </div>
+
         <div className="flex items-center justify-between gap-1">
-          {cfg ? (
+          {online ? (
+            <span className="text-[10px] text-emerald-400 font-medium">online</span>
+          ) : cfg ? (
             <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full border', cfg.color, cfg.bg)}>
               {cfg.label}
             </span>
           ) : (
-            <span className="text-[11px] text-zinc-600">{conv.message_count} msgs</span>
-          )}
-          {unread > 0 && (
-            <span className="shrink-0 min-w-[18px] h-[18px] rounded-full bg-violet-600 text-[10px] text-white flex items-center justify-center px-1">
-              {unread}
+            <span className="text-[10px] text-zinc-600 truncate">
+              {conv.ai_enabled ? '🤖 IA ativa' : `${conv.message_count} msgs`}
             </span>
           )}
         </div>
@@ -829,6 +848,33 @@ const SUGGESTED_ACTIONS = [
   { icon: '💼', label: 'Enviar case de sucesso' },
 ]
 
+const TEMP_MAP: Record<string, { label: string; color: string; bg: string }> = {
+  urgente: { label: 'Urgente 🔥🔥', color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/20'    },
+  quente:  { label: 'Quente 🔥',    color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20' },
+  morno:   { label: 'Morno',        color: 'text-amber-400',  bg: 'bg-amber-500/10 border-amber-500/20'  },
+  frio:    { label: 'Frio',         color: 'text-zinc-500',   bg: 'bg-zinc-800/60 border-zinc-700/30'    },
+}
+
+function ScoreBar({ label, value, max = 100, color = 'bg-violet-500' }: {
+  label: string; value: number; max?: number; color?: string
+}) {
+  const pct = Math.min(100, Math.round((value / max) * 100))
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-[10px] text-zinc-500 shrink-0 w-28">{label}</p>
+      <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.7, ease: 'easeOut' }}
+          className={cn('h-full rounded-full', color)}
+        />
+      </div>
+      <p className="text-[10px] text-zinc-400 tabular-nums w-8 text-right">{pct}%</p>
+    </div>
+  )
+}
+
 function AISidebar({
   conv,
   activityEvents,
@@ -845,26 +891,44 @@ function AISidebar({
   onAIModeChange: (m: AIMode) => void
 }) {
   const feedEvents = activityEvents.length > 0 ? activityEvents : [
-    { id: 'd1', icon: '✅', label: 'IA respondeu automaticamente',     time: new Date(Date.now() - 60000).toISOString(),  color: 'text-emerald-400' },
-    { id: 'd2', icon: '🔥', label: 'Lead quente identificado',         time: new Date(Date.now() - 180000).toISOString(), color: 'text-orange-400' },
-    { id: 'd3', icon: '📊', label: 'Oportunidade detectada no pipeline', time: new Date(Date.now() - 300000).toISOString(), color: 'text-violet-400' },
+    { id: 'd1', icon: '✅', label: 'IA respondeu automaticamente',      time: new Date(Date.now() - 60000).toISOString(),   color: 'text-emerald-400' },
+    { id: 'd2', icon: '🔥', label: 'Lead quente identificado',          time: new Date(Date.now() - 180000).toISOString(),  color: 'text-orange-400'  },
+    { id: 'd3', icon: '📊', label: 'Oportunidade detectada no pipeline', time: new Date(Date.now() - 300000).toISOString(),  color: 'text-violet-400'  },
+    { id: 'd4', icon: '⚡', label: 'Follow-up automático enviado',      time: new Date(Date.now() - 600000).toISOString(),   color: 'text-blue-400'    },
   ]
+
+  const AI_CAPABILITIES = [
+    'Responde mensagens automaticamente',
+    'Envia textos, áudios e PDFs',
+    'Identifica e qualifica leads',
+    'Inicia conversas com leads quentes',
+    'Envia ofertas e propostas',
+    'Faz follow-ups inteligentes',
+    'Agenda reuniões e fecha vendas',
+    'Trabalha 24 horas por dia',
+  ]
+
+  const MEDIA_TYPES = [
+    { icon: Image,    label: 'Imagem'    },
+    { icon: FileText, label: 'PDF'       },
+    { icon: Mic,      label: 'Áudio'     },
+    { icon: Globe,    label: 'Link'      },
+  ]
+
+  // ── No conversation selected ───────────────────────────────────
 
   if (!conv) {
     return (
       <div className="flex flex-col h-full overflow-y-auto">
-        {/* AI Mode control */}
-        <div className="p-4 border-b border-zinc-800/60">
+        {/* AI Mode */}
+        <div className="p-3 border-b border-zinc-800/60">
           <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Modo de operação</p>
           <AIModeToggle mode={aiMode} onChange={onAIModeChange} />
-          <p className="text-[10px] text-zinc-600 mt-2">
-            {AI_MODES.find(m => m.key === aiMode)?.desc}
-          </p>
         </div>
 
-        {/* Monitoring state */}
+        {/* Monitoring */}
         <div className="p-4 border-b border-zinc-800/60">
-          <div className="flex flex-col items-center gap-3 py-2">
+          <div className="flex flex-col items-center gap-3 py-1">
             <motion.div
               animate={{ scale: [1, 1.08, 1] }}
               transition={{ duration: 2.5, repeat: Infinity }}
@@ -874,7 +938,7 @@ function AISidebar({
             </motion.div>
             <div className="text-center">
               <p className="text-xs font-medium text-zinc-400">IA monitorando conversas</p>
-              <p className="text-[10px] text-zinc-600 mt-1">Selecione uma conversa para análise detalhada</p>
+              <p className="text-[10px] text-zinc-600 mt-0.5">Selecione uma conversa para análise</p>
             </div>
             <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/8 border border-emerald-500/15 rounded-full px-3 py-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -883,7 +947,38 @@ function AISidebar({
           </div>
         </div>
 
-        {/* Global activity feed */}
+        {/* A IA faz tudo */}
+        <div className="p-4 border-b border-zinc-800/60">
+          <div className="flex items-center gap-2 mb-3">
+            <ShieldCheck className="w-3.5 h-3.5 text-violet-400" />
+            <p className="text-xs font-semibold text-zinc-200">A IA faz tudo por você</p>
+          </div>
+          <div className="space-y-2">
+            {AI_CAPABILITIES.map((cap, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                <p className="text-[11px] text-zinc-400">{cap}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Media types */}
+        <div className="p-4 border-b border-zinc-800/60">
+          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-3">Tipos de mídia</p>
+          <div className="grid grid-cols-4 gap-2">
+            {MEDIA_TYPES.map(({ icon: Icon, label }) => (
+              <div key={label} className="flex flex-col items-center gap-1.5">
+                <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+                  <Icon className="w-4 h-4 text-zinc-500" />
+                </div>
+                <p className="text-[9px] text-zinc-600">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Activity feed */}
         <div className="p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -896,137 +991,123 @@ function AISidebar({
             </div>
           </div>
           <div className="space-y-2.5">
-            <AnimatePresence>
-              {feedEvents.map(a => (
-                <motion.div
-                  key={a.id}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 8 }}
-                  className="flex items-start gap-2.5"
-                >
-                  <span className="text-sm shrink-0 mt-0.5">{a.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className={cn('text-[11px]', a.color)}>{a.label}</p>
-                    <p className="text-[10px] text-zinc-600">{formatRelative(a.time)}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+            {feedEvents.map(a => (
+              <motion.div
+                key={a.id}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-start gap-2.5"
+              >
+                <span className="text-sm shrink-0 mt-0.5">{a.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={cn('text-[11px]', a.color)}>{a.label}</p>
+                  <p className="text-[10px] text-zinc-600">{formatRelative(a.time)}</p>
+                </div>
+              </motion.div>
+            ))}
           </div>
         </div>
       </div>
     )
   }
 
-  // ── Conversation selected — show lead intelligence ──
+  // ── Conversation selected — full lead intelligence panel ───────
+
   const score   = leadData?.score ?? 0
-  const tempMap: Record<string, string> = {
-    urgente: 'text-red-400', quente: 'text-orange-400',
-    morno: 'text-amber-400', frio: 'text-zinc-500',
-  }
-  const tempLabel: Record<string, string> = {
-    urgente: 'Urgente 🔥🔥', quente: 'Quente 🔥', morno: 'Morno', frio: 'Frio',
-  }
   const temp    = leadData?.temperatura ?? conv.temperatura ?? 'frio'
+  const tempCfg = TEMP_MAP[temp] ?? TEMP_MAP.frio
   const convPct = leadData?.conversion_pct ?? (score >= 70 ? 72 : score >= 40 ? 48 : 28)
+
+  const intentMap: Record<string, string> = {
+    negociando: 'Alta', interessado: 'Média', qualificado: 'Média', novo: 'Baixa', cliente: 'Fechado'
+  }
+  const intentLabel = intentMap[leadData?.stage ?? ''] ?? (score >= 70 ? 'Alta' : score >= 40 ? 'Média' : 'Baixa')
+  const intentColor = intentLabel === 'Alta' ? 'text-emerald-400' : intentLabel === 'Média' ? 'text-amber-400' : 'text-zinc-500'
+
+  const momentoLabel = score >= 70 ? '🟢 Agora' : score >= 40 ? '🟡 Em breve' : '⚪ Sem urgência'
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* AI Mode */}
+      {/* AI Mode compact */}
       <div className="p-3 border-b border-zinc-800/60">
         <AIModeToggle mode={aiMode} onChange={onAIModeChange} />
       </div>
 
-      {/* Lead Score */}
+      {/* Contact card */}
+      <div className="p-4 border-b border-zinc-800/60">
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-full bg-violet-600/20 text-violet-400 font-bold text-sm flex items-center justify-center shrink-0">
+            {initials(conv)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-white truncate">
+              {leadData?.name ?? displayName(conv)}
+            </p>
+            <p className="text-[10px] text-zinc-500">+{conv.phone}</p>
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full border', tempCfg.color, tempCfg.bg)}>
+                {tempCfg.label}
+              </span>
+              {conv.label && LABEL_CONFIG[conv.label] && (
+                <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full border', LABEL_CONFIG[conv.label].color, LABEL_CONFIG[conv.label].bg)}>
+                  {LABEL_CONFIG[conv.label].label}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Lead Analysis */}
       <div className="p-4 border-b border-zinc-800/60">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-3.5 h-3.5 text-violet-400" />
-            <p className="text-xs font-semibold text-zinc-200">Lead Intelligence</p>
+            <p className="text-xs font-semibold text-zinc-200">Análise da IA</p>
           </div>
-          {leadLoading && <Loader2 className="w-3.5 h-3.5 text-zinc-600 animate-spin" />}
-          {leadData?.has_real_data && !leadLoading && (
-            <span className="text-[9px] text-emerald-500 bg-emerald-500/10 rounded-full px-1.5 py-0.5">IA real</span>
-          )}
+          {leadLoading ? (
+            <Loader2 className="w-3 h-3 text-zinc-600 animate-spin" />
+          ) : leadData?.has_real_data ? (
+            <span className="text-[9px] text-emerald-400 bg-emerald-500/10 rounded-full px-1.5 py-0.5">IA real</span>
+          ) : null}
         </div>
 
         {leadLoading && !leadData ? (
-          <div className="flex flex-col items-center gap-2 py-4">
+          <div className="flex items-center gap-2 py-3">
             <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.5, repeat: Infinity }}>
-              <Brain className="w-8 h-8 text-violet-400/40" />
+              <Brain className="w-6 h-6 text-violet-400/40" />
             </motion.div>
             <p className="text-[11px] text-zinc-600">IA analisando conversa…</p>
           </div>
         ) : (
-          <div className="flex items-center gap-3">
-            <ScoreRing score={score} />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-white truncate">
-                {leadData?.name ?? displayName(conv)}
-              </p>
-              {leadData?.empresa && (
-                <p className="text-[10px] text-zinc-500 truncate">{leadData.empresa}</p>
-              )}
-              <div className="flex items-center gap-2 mt-1">
-                <span className={cn('text-[10px] font-semibold', tempMap[temp])}>
-                  {tempLabel[temp] ?? 'Frio'}
-                </span>
-                {leadData?.stage && (
-                  <>
-                    <span className="text-[10px] text-zinc-700">·</span>
-                    <span className="text-[10px] text-zinc-500">
-                      {STAGE_LABEL[leadData.stage] ?? leadData.stage}
-                    </span>
-                  </>
-                )}
-              </div>
+          <div className="space-y-2.5">
+            <ScoreBar label="Lead Score" value={score} color={score >= 70 ? 'bg-emerald-500' : score >= 40 ? 'bg-amber-500' : 'bg-zinc-600'} />
+            <ScoreBar label="Chance de fechar" value={convPct} color={convPct >= 70 ? 'bg-emerald-500' : 'bg-violet-500'} />
+
+            <div className="flex items-center justify-between pt-1">
+              <p className="text-[10px] text-zinc-500">Intenção de compra</p>
+              <p className={cn('text-[10px] font-semibold', intentColor)}>{intentLabel}</p>
             </div>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-zinc-500">Momento ideal</p>
+              <p className="text-[10px] font-medium text-zinc-300">{momentoLabel}</p>
+            </div>
+            {leadData?.estimated_revenue && (
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-zinc-500">Valor estimado</p>
+                <p className="text-[10px] font-bold text-emerald-400">{leadData.estimated_revenue}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Key metrics */}
-      {!leadLoading && (
-        <div className="p-4 border-b border-zinc-800/60">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-zinc-900/60 rounded-xl p-2.5">
-              <p className="text-[10px] text-zinc-600 mb-0.5">Chance de fechar</p>
-              <p className={cn(
-                'text-sm font-bold',
-                convPct >= 70 ? 'text-emerald-400' : convPct >= 40 ? 'text-amber-400' : 'text-zinc-400',
-              )}>
-                {convPct}%
-              </p>
-            </div>
-            <div className="bg-zinc-900/60 rounded-xl p-2.5">
-              <p className="text-[10px] text-zinc-600 mb-0.5">Valor estimado</p>
-              <p className="text-sm font-bold text-white">
-                {leadData?.estimated_revenue ?? '—'}
-              </p>
-            </div>
-            <div className="bg-zinc-900/60 rounded-xl p-2.5">
-              <p className="text-[10px] text-zinc-600 mb-0.5">Mensagens</p>
-              <p className="text-sm font-bold text-white">
-                {leadData?.message_count ?? conv.message_count}
-              </p>
-            </div>
-            <div className="bg-zinc-900/60 rounded-xl p-2.5">
-              <p className="text-[10px] text-zinc-600 mb-0.5">Último contato</p>
-              <p className="text-sm font-bold text-white">
-                {formatRelative(conv.last_message_at)}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Pain points & objective */}
+      {/* Tags / Context */}
       {leadData?.dores && leadData.dores.length > 0 && (
         <div className="p-4 border-b border-zinc-800/60">
           <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Dores identificadas</p>
           <div className="flex flex-wrap gap-1.5">
-            {leadData.dores.slice(0, 4).map((d, i) => (
+            {leadData.dores.slice(0, 5).map((d, i) => (
               <span key={i} className="text-[10px] text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded-full px-2 py-0.5">
                 {d}
               </span>
@@ -1040,60 +1121,55 @@ function AISidebar({
         </div>
       )}
 
-      {/* Business context */}
-      {leadData?.has_real_data && (leadData.usa_crm !== null || leadData.perde_whatsapp !== null) && (
-        <div className="p-4 border-b border-zinc-800/60">
-          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Contexto</p>
-          <div className="space-y-1.5">
-            {leadData.usa_crm !== null && (
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] text-zinc-500">Usa CRM</p>
-                <p className={cn('text-[11px] font-semibold', leadData.usa_crm ? 'text-emerald-400' : 'text-zinc-500')}>
-                  {leadData.usa_crm ? 'Sim' : 'Não'}
-                </p>
-              </div>
-            )}
-            {leadData.perde_whatsapp !== null && (
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] text-zinc-500">Perde leads no WhatsApp</p>
-                <p className={cn('text-[11px] font-semibold', leadData.perde_whatsapp ? 'text-red-400' : 'text-emerald-400')}>
-                  {leadData.perde_whatsapp ? 'Sim ⚠️' : 'Não'}
-                </p>
-              </div>
-            )}
-            {leadData.faturamento && (
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] text-zinc-500">Faturamento</p>
-                <p className="text-[11px] font-semibold text-white">{leadData.faturamento}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Suggested actions */}
+      {/* Quick actions */}
       <div className="p-4 border-b border-zinc-800/60">
-        <div className="flex items-center gap-2 mb-3">
-          <Target className="w-3.5 h-3.5 text-violet-400" />
-          <p className="text-xs font-semibold text-zinc-200">Próximas ações</p>
-        </div>
+        <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2.5">Ações rápidas</p>
         <div className="space-y-1.5">
-          {SUGGESTED_ACTIONS.map((a, i) => (
-            <button key={i} className="w-full flex items-center gap-3 py-2 px-3 rounded-xl hover:bg-zinc-800/50 transition-colors group text-left">
-              <span className="text-base shrink-0">{a.icon}</span>
-              <p className="flex-1 text-xs text-zinc-300 group-hover:text-white transition-colors truncate">{a.label}</p>
-              <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 shrink-0 transition-colors" />
+          {[
+            { icon: Image,       label: 'Enviar imagem',        color: 'text-blue-400'    },
+            { icon: FileText,    label: 'Enviar catálogo',       color: 'text-violet-400'  },
+            { icon: Target,      label: 'Enviar proposta',       color: 'text-emerald-400' },
+            { icon: PhoneCall,   label: 'Iniciar ligação',       color: 'text-orange-400'  },
+            { icon: UserCheck,   label: 'Transferir atend.',     color: 'text-zinc-400'    },
+          ].map(({ icon: Icon, label, color }) => (
+            <button
+              key={label}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-zinc-900/60 border border-zinc-800/60 hover:border-zinc-700/60 hover:bg-zinc-800/60 text-left transition-all group"
+            >
+              <Icon className={cn('w-3.5 h-3.5 shrink-0', color)} />
+              <span className="text-[11px] text-zinc-400 group-hover:text-zinc-200 transition-colors">{label}</span>
+              <ChevronRight className="w-3 h-3 text-zinc-700 ml-auto group-hover:text-zinc-500 transition-colors" />
             </button>
           ))}
         </div>
       </div>
 
-      {/* Live activity feed */}
+      {/* Key metrics */}
+      <div className="p-4 border-b border-zinc-800/60">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-zinc-900/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-zinc-600 mb-0.5">Mensagens</p>
+            <p className="text-sm font-bold text-white">{leadData?.message_count ?? conv.message_count}</p>
+          </div>
+          <div className="bg-zinc-900/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-zinc-600 mb-0.5">Último contato</p>
+            <p className="text-sm font-bold text-white">{formatRelative(conv.last_message_at)}</p>
+          </div>
+          {leadData?.empresa && (
+            <div className="col-span-2 bg-zinc-900/60 rounded-xl p-2.5">
+              <p className="text-[9px] text-zinc-600 mb-0.5">Empresa</p>
+              <p className="text-xs font-medium text-white truncate">{leadData.empresa}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Activity */}
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Activity className="w-3.5 h-3.5 text-violet-400" />
-            <p className="text-xs font-semibold text-zinc-200">Atividade da IA</p>
+            <p className="text-xs font-semibold text-zinc-200">Atividade</p>
           </div>
           <div className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1101,23 +1177,15 @@ function AISidebar({
           </div>
         </div>
         <div className="space-y-2.5">
-          <AnimatePresence>
-            {feedEvents.slice(0, 6).map(a => (
-              <motion.div
-                key={a.id}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 8 }}
-                className="flex items-start gap-2.5"
-              >
-                <span className="text-sm shrink-0 mt-0.5">{a.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className={cn('text-[11px]', a.color)}>{a.label}</p>
-                  <p className="text-[10px] text-zinc-600">{formatRelative(a.time)}</p>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+          {feedEvents.slice(0, 4).map(a => (
+            <motion.div key={a.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} className="flex items-start gap-2.5">
+              <span className="text-sm shrink-0 mt-0.5">{a.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className={cn('text-[11px]', a.color)}>{a.label}</p>
+                <p className="text-[10px] text-zinc-600">{formatRelative(a.time)}</p>
+              </div>
+            </motion.div>
+          ))}
         </div>
       </div>
     </div>
@@ -1146,6 +1214,7 @@ export default function WhatsAppPage() {
   const [leadData,       setLeadData]       = useState<LeadIntel | null>(null)
   const [leadLoading,    setLeadLoading]    = useState(false)
   const [aiMode,         setAiMode]         = useState<AIMode>('auto')
+  const [showAutomacoes, setShowAutomacoes] = useState(false)
 
   const messagesEnd = useRef<HTMLDivElement>(null)
   const inputRef    = useRef<HTMLInputElement>(null)
@@ -1605,6 +1674,50 @@ export default function WhatsAppPage() {
             )}
           </div>
 
+          {/* AUTOMAÇÕES section */}
+          <div className="border-t border-zinc-800/60 shrink-0">
+            <button
+              onClick={() => setShowAutomacoes(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-zinc-900/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5 text-violet-400" />
+                <span className="text-xs font-semibold text-zinc-300">AUTOMAÇÕES</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <ChevronDown className={cn('w-3.5 h-3.5 text-zinc-500 transition-transform', showAutomacoes && 'rotate-180')} />
+              </div>
+            </button>
+            {showAutomacoes && (
+              <div className="px-3 pb-3 space-y-1">
+                {[
+                  { icon: '⚡', label: 'Respostas automáticas', active: true  },
+                  { icon: '🕐', label: 'Mensagens programadas', active: false },
+                  { icon: '🔄', label: 'Follow-ups',           active: true  },
+                  { icon: '📢', label: 'Campanhas',            active: false },
+                  { icon: '🔀', label: 'Fluxos inteligentes',  active: false },
+                ].map(a => (
+                  <div key={a.label} className="flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-zinc-800/40 cursor-pointer transition-colors">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{a.icon}</span>
+                      <span className="text-[11px] text-zinc-400">{a.label}</span>
+                    </div>
+                    <div className={cn(
+                      'w-8 h-4 rounded-full relative transition-colors cursor-pointer',
+                      a.active ? 'bg-violet-600' : 'bg-zinc-700',
+                    )}>
+                      <div className={cn(
+                        'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all shadow-sm',
+                        a.active ? 'left-4.5' : 'left-0.5',
+                      )} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="p-3 border-t border-zinc-800/60">
             <button className="w-full flex items-center justify-center gap-2 text-xs text-zinc-600 hover:text-zinc-400 py-2 transition">
               <Plus className="w-3.5 h-3.5" /> Nova conversa
@@ -1774,11 +1887,33 @@ export default function WhatsAppPage() {
                 )}
               </AnimatePresence>
 
+              {/* Action chips */}
+              <div className="shrink-0 px-5 pt-2 pb-1 flex items-center gap-2 overflow-x-auto scrollbar-none">
+                {[
+                  { icon: '🤖', label: 'Resposta inteligente', onClick: () => { setShowSuggestion(true); setSuggestionIdx(0) } },
+                  { icon: '📄', label: 'Enviar proposta',      onClick: () => {} },
+                  { icon: '📅', label: 'Agendar follow-up',   onClick: () => {} },
+                  { icon: '✅', label: 'Finalizar conversa',   onClick: () => {} },
+                ].map(chip => (
+                  <button
+                    key={chip.label}
+                    onClick={chip.onClick}
+                    className="flex items-center gap-1.5 text-[11px] text-zinc-400 bg-zinc-900/60 border border-zinc-800/60 hover:border-violet-500/30 hover:text-violet-300 hover:bg-violet-500/5 rounded-full px-3 py-1.5 shrink-0 transition-all"
+                  >
+                    <span className="text-xs">{chip.icon}</span>
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
               {/* Input bar */}
               <div className="shrink-0 px-5 py-3 border-t border-zinc-800/60 bg-zinc-950">
                 <div className="flex items-center gap-3">
                   <button className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition shrink-0">
                     <Smile className="w-4 h-4" />
+                  </button>
+                  <button className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition shrink-0">
+                    <Paperclip className="w-4 h-4" />
                   </button>
                   <div className="flex-1 bg-zinc-900 border border-zinc-800/60 rounded-2xl px-4 py-2.5 flex items-center gap-2">
                     <input

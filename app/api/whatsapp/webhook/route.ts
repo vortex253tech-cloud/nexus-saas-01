@@ -415,6 +415,13 @@ async function syncToLeads(params: {
   }
 }
 
+// ── Anti-ban delay: random human-like pause (800ms–2800ms) ───────
+
+function humanDelay(): Promise<void> {
+  const ms = 800 + Math.random() * 2000
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 // ── Z-API send ────────────────────────────────────────────────────
 
 async function sendZapi(phone: string, text: string) {
@@ -426,6 +433,9 @@ async function sendZapi(phone: string, text: string) {
     console.error('ZAPI NOT CONFIGURED')
     return { error: 'not_configured' }
   }
+
+  // Simulate human typing delay to reduce ban risk
+  await humanDelay()
 
   try {
     const res = await fetch(
