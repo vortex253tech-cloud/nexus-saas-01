@@ -554,6 +554,202 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
   )
 }
 
+// ─── ConfigModal ─────────────────────────────────────────────────
+
+function ConfigModal({
+  onClose,
+  onReconnect,
+  waStatus,
+}: {
+  onClose:     () => void
+  onReconnect: () => void
+  waStatus:    WAStatus | null
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-zinc-800 flex items-center justify-center">
+              <Settings className="w-4 h-4 text-zinc-400" />
+            </div>
+            <p className="text-sm font-semibold text-white">Configurações</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Connection status */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-4">
+          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-3">Conexão WhatsApp</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className={cn('w-2 h-2 rounded-full', waStatus?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400')}>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-white">{waStatus?.connected ? 'Conectado' : 'Desconectado'}</p>
+                {waStatus?.phone && <p className="text-[10px] text-zinc-500">+{waStatus.phone}</p>}
+              </div>
+            </div>
+            <button
+              onClick={() => { onClose(); onReconnect() }}
+              className="text-[11px] text-violet-400 border border-violet-500/30 rounded-lg px-2.5 py-1 hover:bg-violet-500/10 transition"
+            >
+              {waStatus?.connected ? 'Reconectar' : 'Conectar'}
+            </button>
+          </div>
+        </div>
+
+        {/* Z-API info */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-4">
+          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-3">Z-API</p>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-zinc-500">Instance</p>
+              <p className="text-[11px] text-zinc-300 font-mono">
+                {process.env.NEXT_PUBLIC_ZAPI_INSTANCE_ID ? '●●●●●●●●' : 'Não configurado'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-zinc-500">Status</p>
+              <p className={cn('text-[11px] font-medium', waStatus?.connected ? 'text-emerald-400' : 'text-red-400')}>
+                {waStatus?.status ?? 'Unknown'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* AI settings note */}
+        <div className="bg-violet-500/8 border border-violet-500/20 rounded-xl p-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Brain className="w-3 h-3 text-violet-400" />
+            <p className="text-[11px] font-medium text-violet-300">NEXUS AI</p>
+          </div>
+          <p className="text-[10px] text-zinc-500 leading-relaxed">
+            Configure o modo de operação da IA (Auto, Híbrido, Manual) diretamente no painel lateral de cada conversa.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── NewConvModal ─────────────────────────────────────────────────
+
+function NewConvModal({
+  onClose,
+  onCreated,
+}: {
+  onClose:   () => void
+  onCreated: (convId: string, phone: string) => void
+}) {
+  const [phone,   setPhone]   = useState('')
+  const [name,    setName]    = useState('')
+  const [msg,     setMsg]     = useState('')
+  const [sending, setSending] = useState(false)
+  const [err,     setErr]     = useState<string | null>(null)
+
+  const handleSend = async () => {
+    const cleanPhone = phone.replace(/\D/g, '')
+    if (cleanPhone.length < 10) { setErr('Número inválido (mínimo 10 dígitos)'); return }
+    if (!msg.trim()) { setErr('Digite a primeira mensagem'); return }
+
+    setSending(true)
+    setErr(null)
+    try {
+      const res = await fetch('/api/nexus/whatsapp/new-conversation', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ phone: cleanPhone, message: msg.trim(), name: name.trim() || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setErr(data.error ?? 'Erro ao enviar'); return }
+      onCreated(data.conversation_id, data.phone)
+      onClose()
+    } catch {
+      setErr('Erro de conexão')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-violet-600/20 flex items-center justify-center">
+              <Plus className="w-4 h-4 text-violet-400" />
+            </div>
+            <p className="text-sm font-semibold text-white">Nova conversa</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block mb-1.5">Número*</label>
+            <input
+              type="tel"
+              placeholder="55 11 99999-9999"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block mb-1.5">Nome (opcional)</label>
+            <input
+              type="text"
+              placeholder="João Silva"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block mb-1.5">Primeira mensagem*</label>
+            <textarea
+              placeholder="Olá! Vi seu interesse e quero te ajudar..."
+              value={msg}
+              onChange={e => setMsg(e.target.value)}
+              rows={3}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition resize-none"
+            />
+          </div>
+          {err && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</p>}
+        </div>
+
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onClose}
+            className="flex-1 text-sm text-zinc-400 border border-zinc-800 rounded-xl py-2.5 hover:bg-zinc-800/50 transition"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending}
+            className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl py-2.5 transition"
+          >
+            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {sending ? 'Enviando…' : 'Enviar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Onboarding ───────────────────────────────────────────────────
 
 const MOCK_CONVS = [
@@ -880,13 +1076,19 @@ function AISidebar({
   leadLoading,
   aiMode,
   onAIModeChange,
+  onSendImage,
+  onTransfer,
+  onSendProposal,
 }: {
-  conv:           Conversation | null
-  activityEvents: ActivityEvent[]
-  leadData:       LeadIntel | null
-  leadLoading:    boolean
-  aiMode:         AIMode
-  onAIModeChange: (m: AIMode) => void
+  conv:            Conversation | null
+  activityEvents:  ActivityEvent[]
+  leadData:        LeadIntel | null
+  leadLoading:     boolean
+  aiMode:          AIMode
+  onAIModeChange:  (m: AIMode) => void
+  onSendImage:     () => void
+  onTransfer:      () => void
+  onSendProposal:  () => void
 }) {
   const feedEvents = activityEvents.length > 0 ? activityEvents : [
     { id: 'd1', icon: '✅', label: 'IA respondeu automaticamente',      time: new Date(Date.now() - 60000).toISOString(),   color: 'text-emerald-400' },
@@ -1124,14 +1326,15 @@ function AISidebar({
         <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2.5">Ações rápidas</p>
         <div className="space-y-1.5">
           {[
-            { icon: Image,       label: 'Enviar imagem',        color: 'text-blue-400'    },
-            { icon: FileText,    label: 'Enviar catálogo',       color: 'text-violet-400'  },
-            { icon: Target,      label: 'Enviar proposta',       color: 'text-emerald-400' },
-            { icon: PhoneCall,   label: 'Iniciar ligação',       color: 'text-orange-400'  },
-            { icon: UserCheck,   label: 'Transferir atend.',     color: 'text-zinc-400'    },
-          ].map(({ icon: Icon, label, color }) => (
+            { icon: Image,       label: 'Enviar imagem',        color: 'text-blue-400',    action: onSendImage    },
+            { icon: FileText,    label: 'Enviar catálogo',       color: 'text-violet-400',  action: onSendImage    },
+            { icon: Target,      label: 'Enviar proposta',       color: 'text-emerald-400', action: onSendProposal },
+            { icon: PhoneCall,   label: 'Iniciar ligação',       color: 'text-orange-400',  action: () => conv && window.open(`tel:+${conv.phone}`) },
+            { icon: UserCheck,   label: 'Transferir atend.',     color: 'text-zinc-400',    action: onTransfer     },
+          ].map(({ icon: Icon, label, color, action }) => (
             <button
               key={label}
+              onClick={action}
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-zinc-900/60 border border-zinc-800/60 hover:border-zinc-700/60 hover:bg-zinc-800/60 text-left transition-all group"
             >
               <Icon className={cn('w-3.5 h-3.5 shrink-0', color)} />
@@ -1211,12 +1414,21 @@ export default function WhatsAppPage() {
   const [companyId,      setCompanyId]      = useState<string | null>(null)
   const [leadData,       setLeadData]       = useState<LeadIntel | null>(null)
   const [leadLoading,    setLeadLoading]    = useState(false)
-  const [aiMode,         setAiMode]         = useState<AIMode>('auto')
-  const [showAutomacoes, setShowAutomacoes] = useState(false)
+  const [aiMode,           setAiMode]           = useState<AIMode>('auto')
+  const [showAutomacoes,   setShowAutomacoes]   = useState(false)
+  const [showConfig,       setShowConfig]       = useState(false)
+  const [showNewConv,      setShowNewConv]      = useState(false)
+  const [aiSuggestion,     setAiSuggestion]     = useState<string | null>(null)
+  const [suggestionLoading,setSuggestionLoading]= useState(false)
+  const [automations, setAutomations] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {}
+    try { return JSON.parse(localStorage.getItem('wa-automations') ?? '{}') } catch { return {} }
+  })
 
   const messagesEnd    = useRef<HTMLDivElement>(null)
   const messagesBox    = useRef<HTMLDivElement>(null)
   const inputRef       = useRef<HTMLInputElement>(null)
+  const fileInputRef   = useRef<HTMLInputElement>(null)
   const typingTimer    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevMsgCount   = useRef<number>(0)
 
@@ -1320,6 +1532,94 @@ export default function WhatsAppPage() {
       setLeadLoading(false)
     }
   }, [])
+
+  const fetchSuggestion = useCallback(async (convId: string) => {
+    setSuggestionLoading(true)
+    setAiSuggestion(null)
+    try {
+      const res  = await fetch('/api/nexus/whatsapp/suggest', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ conversation_id: convId }),
+      })
+      const data = await res.json()
+      setAiSuggestion(data.suggestion ?? null)
+    } catch { /* ignore */ } finally {
+      setSuggestionLoading(false)
+    }
+  }, [])
+
+  const toggleAutomation = useCallback((key: string) => {
+    setAutomations(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      try { localStorage.setItem('wa-automations', JSON.stringify(next)) } catch { /* ignore */ }
+      return next
+    })
+  }, [])
+
+  // ── Send image ─────────────────────────────────────────────────
+
+  const handleSendImage = useCallback(async (file: File) => {
+    if (!selected) return
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const base64 = (reader.result as string)
+      setSendingMsg(true)
+      const caption = ''
+      const optimisticMsg: Message = {
+        id:           `opt-img-${Date.now()}`,
+        direction:    'outgoing',
+        content:      '📷 Imagem',
+        from_me:      true,
+        ai_generated: false,
+        status:       'sent',
+        created_at:   new Date().toISOString(),
+      }
+      setMessages(prev => [...prev, optimisticMsg])
+      try {
+        await fetch('/api/nexus/whatsapp/send-image', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            phone:           selected.phone,
+            image:           base64,
+            caption,
+            conversation_id: selected.id,
+          }),
+        })
+      } catch { /* ignore */ } finally {
+        setSendingMsg(false)
+      }
+    }
+    reader.readAsDataURL(file)
+  }, [selected])
+
+  const handleTransfer = useCallback(async () => {
+    if (!selected) return
+    const note = window.prompt('Nota de transferência (opcional):') ?? undefined
+    try {
+      await fetch('/api/nexus/whatsapp/transfer', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ conversation_id: selected.id, note }),
+      })
+      setConversations(prev => prev.map(c => c.id === selected.id ? { ...c, ai_enabled: false } : c))
+      setSelected(prev => prev ? { ...prev, ai_enabled: false } : prev)
+    } catch { /* ignore */ }
+  }, [selected])
+
+  const handleSendProposal = useCallback(async () => {
+    if (!selected) return
+    const proposal =
+      `Olá${leadData?.name ? ', ' + leadData.name : ''}! 👋\n\n` +
+      `Preparei uma proposta personalizada para você baseada nas suas necessidades.\n\n` +
+      `✅ Solução completa para seu negócio\n` +
+      `✅ Implementação em até 7 dias\n` +
+      `✅ Suporte dedicado\n\n` +
+      `Posso te enviar os detalhes por aqui ou prefere uma reunião rápida de 20 minutos?`
+    setInputText(proposal)
+    inputRef.current?.focus()
+  }, [selected, leadData])
 
   // ── Send message ──────────────────────────────────────────────
 
@@ -1517,7 +1817,9 @@ export default function WhatsAppPage() {
     setMessages([])                         // clear previous conversation messages immediately
     fetchMessages(conv.id, true)            // true = show spinner on first load only
     fetchLeadData(conv.id)
+    setAiSuggestion(null)
     setShowSuggestion(aiMode !== 'manual')
+    if (aiMode !== 'manual') fetchSuggestion(conv.id)
     setSuggestionIdx(0)
     setShowTyping(false)
 
@@ -1589,11 +1891,14 @@ export default function WhatsAppPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition">
+          <button
+            onClick={() => setShowConfig(true)}
+            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition"
+          >
             <Settings className="w-3.5 h-3.5" /> Config
           </button>
           <button
-            onClick={() => setShowConnect(true)}
+            onClick={() => setShowNewConv(true)}
             className="flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-500 px-4 py-1.5 rounded-lg transition shadow-lg shadow-violet-600/20"
           >
             <Plus className="w-3.5 h-3.5" /> Nova mensagem
@@ -1750,34 +2055,44 @@ export default function WhatsAppPage() {
             {showAutomacoes && (
               <div className="px-3 pb-3 space-y-1">
                 {[
-                  { icon: '⚡', label: 'Respostas automáticas', active: true  },
-                  { icon: '🕐', label: 'Mensagens programadas', active: false },
-                  { icon: '🔄', label: 'Follow-ups',           active: true  },
-                  { icon: '📢', label: 'Campanhas',            active: false },
-                  { icon: '🔀', label: 'Fluxos inteligentes',  active: false },
-                ].map(a => (
-                  <div key={a.label} className="flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-zinc-800/40 cursor-pointer transition-colors">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{a.icon}</span>
-                      <span className="text-[11px] text-zinc-400">{a.label}</span>
-                    </div>
-                    <div className={cn(
-                      'w-8 h-4 rounded-full relative transition-colors cursor-pointer',
-                      a.active ? 'bg-violet-600' : 'bg-zinc-700',
-                    )}>
+                  { key: 'auto-replies',  icon: '⚡', label: 'Respostas automáticas', defaultOn: true  },
+                  { key: 'scheduled',     icon: '🕐', label: 'Mensagens programadas', defaultOn: false },
+                  { key: 'followups',     icon: '🔄', label: 'Follow-ups',            defaultOn: true  },
+                  { key: 'campaigns',     icon: '📢', label: 'Campanhas',             defaultOn: false },
+                  { key: 'smart-flows',   icon: '🔀', label: 'Fluxos inteligentes',   defaultOn: false },
+                ].map(a => {
+                  const active = a.key in automations ? automations[a.key] : a.defaultOn
+                  return (
+                    <div
+                      key={a.key}
+                      onClick={() => toggleAutomation(a.key)}
+                      className="flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-zinc-800/40 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{a.icon}</span>
+                        <span className="text-[11px] text-zinc-400">{a.label}</span>
+                      </div>
                       <div className={cn(
-                        'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all shadow-sm',
-                        a.active ? 'left-4.5' : 'left-0.5',
-                      )} />
+                        'w-8 h-4 rounded-full relative transition-colors',
+                        active ? 'bg-violet-600' : 'bg-zinc-700',
+                      )}>
+                        <div className={cn(
+                          'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all shadow-sm',
+                          active ? 'left-4.5' : 'left-0.5',
+                        )} />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
 
           <div className="p-3 border-t border-zinc-800/60">
-            <button className="w-full flex items-center justify-center gap-2 text-xs text-zinc-600 hover:text-zinc-400 py-2 transition">
+            <button
+              onClick={() => setShowNewConv(true)}
+              className="w-full flex items-center justify-center gap-2 text-xs text-zinc-600 hover:text-zinc-400 py-2 transition"
+            >
               <Plus className="w-3.5 h-3.5" /> Nova conversa
             </button>
           </div>
@@ -1906,40 +2221,53 @@ export default function WhatsAppPage() {
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      <p className="text-xs text-zinc-400 leading-relaxed mb-3">{QUICK_REPLIES[suggestionIdx]}</p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            if (aiMode === 'hybrid') {
-                              handleSend(QUICK_REPLIES[suggestionIdx])
-                            } else {
-                              setInputText(QUICK_REPLIES[suggestionIdx])
-                              setShowSuggestion(false)
-                              inputRef.current?.focus()
-                            }
-                          }}
-                          className="flex items-center gap-1.5 text-xs text-white bg-violet-600 hover:bg-violet-500 px-3 py-1.5 rounded-lg transition"
-                        >
-                          <Check className="w-3 h-3" />
-                          {aiMode === 'hybrid' ? 'Aprovar e Enviar' : 'Usar'}
-                        </button>
-                        <button
-                          onClick={() => setSuggestionIdx(i => (i + 1) % QUICK_REPLIES.length)}
-                          className="text-xs text-zinc-500 hover:text-zinc-300 transition"
-                        >
-                          Próxima
-                        </button>
-                        <button
-                          onClick={() => {
-                            setInputText(QUICK_REPLIES[suggestionIdx])
-                            setShowSuggestion(false)
-                            inputRef.current?.focus()
-                          }}
-                          className="text-xs text-zinc-500 hover:text-zinc-300 transition ml-auto"
-                        >
-                          ✏️ Editar
-                        </button>
-                      </div>
+                      {suggestionLoading ? (
+                        <div className="flex items-center gap-2 py-2">
+                          <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin" />
+                          <p className="text-[11px] text-zinc-500">IA gerando resposta…</p>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs text-zinc-400 leading-relaxed mb-3">
+                            {aiSuggestion ?? QUICK_REPLIES[suggestionIdx]}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                const text = aiSuggestion ?? QUICK_REPLIES[suggestionIdx]
+                                if (aiMode === 'hybrid') {
+                                  handleSend(text)
+                                } else {
+                                  setInputText(text)
+                                  setShowSuggestion(false)
+                                  inputRef.current?.focus()
+                                }
+                              }}
+                              className="flex items-center gap-1.5 text-xs text-white bg-violet-600 hover:bg-violet-500 px-3 py-1.5 rounded-lg transition"
+                            >
+                              <Check className="w-3 h-3" />
+                              {aiMode === 'hybrid' ? 'Aprovar e Enviar' : 'Usar'}
+                            </button>
+                            <button
+                              onClick={() => { if (selected) fetchSuggestion(selected.id) }}
+                              className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                            >
+                              ↺ Nova sugestão
+                            </button>
+                            <button
+                              onClick={() => {
+                                const text = aiSuggestion ?? QUICK_REPLIES[suggestionIdx]
+                                setInputText(text)
+                                setShowSuggestion(false)
+                                inputRef.current?.focus()
+                              }}
+                              className="text-xs text-zinc-500 hover:text-zinc-300 transition ml-auto"
+                            >
+                              ✏️ Editar
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -1948,10 +2276,10 @@ export default function WhatsAppPage() {
               {/* Action chips */}
               <div className="shrink-0 px-5 pt-2 pb-1 flex items-center gap-2 overflow-x-auto scrollbar-none">
                 {[
-                  { icon: '🤖', label: 'Resposta inteligente', onClick: () => { setShowSuggestion(true); setSuggestionIdx(0) } },
-                  { icon: '📄', label: 'Enviar proposta',      onClick: () => {} },
-                  { icon: '📅', label: 'Agendar follow-up',   onClick: () => {} },
-                  { icon: '✅', label: 'Finalizar conversa',   onClick: () => {} },
+                  { icon: '🤖', label: 'Resposta inteligente', onClick: () => { setShowSuggestion(true); setSuggestionIdx(0); if (selected) fetchSuggestion(selected.id) } },
+                  { icon: '📄', label: 'Enviar proposta',      onClick: handleSendProposal },
+                  { icon: '📷', label: 'Enviar imagem',        onClick: () => fileInputRef.current?.click() },
+                  { icon: '🔄', label: 'Transferir',           onClick: handleTransfer },
                 ].map(chip => (
                   <button
                     key={chip.label}
@@ -1966,11 +2294,26 @@ export default function WhatsAppPage() {
 
               {/* Input bar */}
               <div className="shrink-0 px-5 py-3 border-t border-zinc-800/60 bg-zinc-950">
+                {/* Hidden file input for image upload */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (file) handleSendImage(file)
+                    e.target.value = ''
+                  }}
+                />
                 <div className="flex items-center gap-3">
                   <button className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition shrink-0">
                     <Smile className="w-4 h-4" />
                   </button>
-                  <button className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition shrink-0">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition shrink-0"
+                  >
                     <Paperclip className="w-4 h-4" />
                   </button>
                   <div className="flex-1 bg-zinc-900 border border-zinc-800/60 rounded-2xl px-4 py-2.5 flex items-center gap-2">
@@ -2053,6 +2396,9 @@ export default function WhatsAppPage() {
             leadLoading={leadLoading}
             aiMode={aiMode}
             onAIModeChange={setAiMode}
+            onSendImage={() => fileInputRef.current?.click()}
+            onTransfer={handleTransfer}
+            onSendProposal={handleSendProposal}
           />
         </div>
       </div>
@@ -2085,6 +2431,39 @@ export default function WhatsAppPage() {
         <ConnectModal
           onClose={() => setShowConnect(false)}
           onConnected={() => { setShowConnect(false); fetchStatus(); fetchConversations() }}
+        />
+      )}
+
+      {showConfig && (
+        <ConfigModal
+          onClose={() => setShowConfig(false)}
+          onReconnect={() => setShowConnect(true)}
+          waStatus={waStatus}
+        />
+      )}
+
+      {showNewConv && (
+        <NewConvModal
+          onClose={() => setShowNewConv(false)}
+          onCreated={(convId, phone) => {
+            fetchConversations()
+            // Select the new conversation after a brief delay for DB consistency
+            setTimeout(() => {
+              const newConv: Conversation = {
+                id:              convId,
+                phone,
+                contact_name:    null,
+                status:          'active',
+                last_message_at: new Date().toISOString(),
+                message_count:   1,
+                ai_enabled:      true,
+                created_at:      new Date().toISOString(),
+                unread:          0,
+              }
+              handleSelectConv(newConv)
+              fetchConversations()
+            }, 800)
+          }}
         />
       )}
     </div>
