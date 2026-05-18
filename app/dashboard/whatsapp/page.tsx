@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, memo } from 'react'
 import { createClient }            from '@supabase/supabase-js'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -685,7 +685,7 @@ function isOnline(lastAt: string | null) {
   return Date.now() - new Date(lastAt).getTime() < 5 * 60 * 1000
 }
 
-function ConvItem({
+const ConvItem = memo(function ConvItem({
   conv, active, onClick,
 }: { conv: Conversation; active: boolean; onClick: () => void }) {
   const cfg    = conv.label ? LABEL_CONFIG[conv.label] : null
@@ -752,17 +752,15 @@ function ConvItem({
       </div>
     </button>
   )
-}
+})
 
 // ─── Message Bubble ───────────────────────────────────────────────
 
-function Bubble({ msg }: { msg: Message }) {
+const Bubble = memo(function Bubble({ msg }: { msg: Message }) {
   const isOut = msg.direction === 'outgoing'
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={cn('flex gap-2.5 max-w-[78%]', isOut ? 'flex-row-reverse ml-auto' : 'mr-auto')}
+    <div
+      className={cn('flex gap-2.5 max-w-[78%] animate-in fade-in slide-in-from-bottom-1 duration-200', isOut ? 'flex-row-reverse ml-auto' : 'mr-auto')}
     >
       {isOut && (
         <div className={cn(
@@ -796,9 +794,9 @@ function Bubble({ msg }: { msg: Message }) {
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   )
-}
+})
 
 // ─── AI Mode Toggle ───────────────────────────────────────────────
 
@@ -1240,14 +1238,31 @@ export default function WhatsAppPage() {
         return
       }
       const data = await res.json()
-      setConversations(data.conversations ?? [])
+      const next: Conversation[] = data.conversations ?? []
+      setConversations(prev => {
+        if (next.length === 0 && prev.length === 0) return prev
+        // Skip re-render if list is identical (same IDs, timestamps, unread counts)
+        if (
+          next.length === prev.length &&
+          next.every((c, i) =>
+            c.id              === prev[i]?.id &&
+            c.last_message_at === prev[i]?.last_message_at &&
+            (c.unread ?? 0)   === (prev[i]?.unread ?? 0) &&
+            c.status          === prev[i]?.status
+          )
+        ) return prev
+        return next
+      })
     } catch (e) {
       console.error('[WA] fetchConversations failed:', e)
     }
   }, [])
 
-  const fetchMessages = useCallback(async (convId: string) => {
-    setLoadingMsgs(true)
+  // showSpinner=true only on the first load when opening a conversation.
+  // Background polls (every 3s) pass showSpinner=false so the message list
+  // never unmounts/remounts and the UI never flickers or jumps.
+  const fetchMessages = useCallback(async (convId: string, showSpinner = false) => {
+    if (showSpinner) setLoadingMsgs(true)
     try {
       const res  = await fetch(`/api/whatsapp/messages?conversationId=${convId}&limit=100`)
       if (!res.ok) {
@@ -1255,11 +1270,26 @@ export default function WhatsAppPage() {
         return
       }
       const data = await res.json()
-      setMessages(data.messages ?? [])
+      const next: Message[] = data.messages ?? []
+      setMessages(prev => {
+        // Skip re-render when nothing changed (same length + same last message ID)
+        if (
+          next.length === prev.length &&
+          (next.length === 0 || next[next.length - 1]?.id === prev[prev.length - 1]?.id)
+        ) return prev
+        // When appending new messages, preserve existing object references so
+        // memoized Bubble components don't re-render for messages already shown.
+        if (next.length > prev.length) {
+          const prevIdSet = new Set(prev.map(m => m.id))
+          const added     = next.filter(m => !prevIdSet.has(m.id))
+          if (prev.length + added.length === next.length) return [...prev, ...added]
+        }
+        return next
+      })
     } catch (e) {
       console.error('[WA] fetchMessages failed:', e)
     } finally {
-      setLoadingMsgs(false)
+      if (showSpinner) setLoadingMsgs(false)
     }
   }, [])
 
@@ -1484,7 +1514,8 @@ export default function WhatsAppPage() {
       prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c)
     )
     setSelected({ ...conv, unread: 0 })
-    fetchMessages(conv.id)
+    setMessages([])                         // clear previous conversation messages immediately
+    fetchMessages(conv.id, true)            // true = show spinner on first load only
     fetchLeadData(conv.id)
     setShowSuggestion(aiMode !== 'manual')
     setSuggestionIdx(0)
