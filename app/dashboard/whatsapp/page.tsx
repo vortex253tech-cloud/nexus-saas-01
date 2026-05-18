@@ -1216,9 +1216,11 @@ export default function WhatsAppPage() {
   const [aiMode,         setAiMode]         = useState<AIMode>('auto')
   const [showAutomacoes, setShowAutomacoes] = useState(false)
 
-  const messagesEnd = useRef<HTMLDivElement>(null)
-  const inputRef    = useRef<HTMLInputElement>(null)
-  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const messagesEnd    = useRef<HTMLDivElement>(null)
+  const messagesBox    = useRef<HTMLDivElement>(null)
+  const inputRef       = useRef<HTMLInputElement>(null)
+  const typingTimer    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevMsgCount   = useRef<number>(0)
 
   // ── Fetchers ──────────────────────────────────────────────────
 
@@ -1425,9 +1427,21 @@ export default function WhatsAppPage() {
     return () => clearInterval(t)
   }, [selected, fetchMessages])
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom ONLY when a genuinely new message arrives
   useEffect(() => {
-    messagesEnd.current?.scrollIntoView({ behavior: 'smooth' })
+    const newCount = messages.length
+    const oldCount = prevMsgCount.current
+
+    if (newCount > oldCount) {
+      const box = messagesBox.current
+      const isNearBottom = !box || (box.scrollHeight - box.scrollTop - box.clientHeight < 120)
+
+      if (isNearBottom) {
+        messagesEnd.current?.scrollIntoView({ behavior: newCount - oldCount === 1 ? 'smooth' : 'instant' })
+      }
+    }
+
+    prevMsgCount.current = newCount
   }, [messages])
 
   // ── Derived ───────────────────────────────────────────────────
@@ -1787,7 +1801,7 @@ export default function WhatsAppPage() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-4">
+              <div ref={messagesBox} className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-4">
                 {loadingMsgs ? (
                   <div className="flex items-center justify-center flex-1 gap-3">
                     <Loader2 className="w-5 h-5 text-zinc-600 animate-spin" />
