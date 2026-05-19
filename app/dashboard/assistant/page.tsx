@@ -329,7 +329,9 @@ export default function AssistantPage() {
       const sessionRes = await fetch('/api/nexus/voice/session', { method: 'POST' })
       if (!sessionRes.ok) {
         const body = await sessionRes.json().catch(() => ({})) as Record<string, unknown>
-        throw new Error((body.error as string) ?? `HTTP ${sessionRes.status}`)
+        const msg = (body.error as string) ?? `HTTP ${sessionRes.status}`
+        // Surface the actual OpenAI error so the user knows what to fix
+        throw new Error(msg)
       }
       const { client_secret, model } = await sessionRes.json() as {
         session_id:    string
@@ -466,11 +468,18 @@ export default function AssistantPage() {
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs max-w-xs text-center"
+                  className="flex flex-col gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs max-w-sm"
                 >
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                  {errorMsg}
-                  <button onClick={() => setErrorMsg(null)}><X className="w-3 h-3" /></button>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    <span className="flex-1 leading-relaxed">{errorMsg}</span>
+                    <button onClick={() => setErrorMsg(null)} className="flex-shrink-0"><X className="w-3 h-3" /></button>
+                  </div>
+                  {(errorMsg.toLowerCase().includes('model') || errorMsg.toLowerCase().includes('api key') || errorMsg.toLowerCase().includes('auth') || errorMsg.toLowerCase().includes('403') || errorMsg.toLowerCase().includes('401')) && (
+                    <p className="text-red-400/70 text-[10px] pl-5">
+                      Verifique se <code className="bg-red-500/20 px-1 rounded">OPENAI_API_KEY</code> está configurada no Vercel e se a conta tem acesso à Realtime API (requer plano pago).
+                    </p>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

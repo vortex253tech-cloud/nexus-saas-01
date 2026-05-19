@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
         'Content-Type':  'application/json',
       },
       body: JSON.stringify({
-        model:        'gpt-4o-realtime-preview-2024-12-17',
+        model:        'gpt-4o-realtime-preview',
         voice:        'alloy',
         instructions: SYSTEM_PROMPT,
         tools:        TOOLS,
@@ -185,7 +185,19 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       const text = await res.text()
       console.error('[voice/session] OpenAI error:', res.status, text)
-      return NextResponse.json({ error: 'Failed to create Realtime session', details: text }, { status: 502 })
+
+      // Parse OpenAI error for a friendlier message
+      let friendlyError = `OpenAI ${res.status}`
+      try {
+        const parsed = JSON.parse(text) as { error?: { message?: string; code?: string } }
+        if (parsed.error?.message) friendlyError = parsed.error.message
+      } catch { /* use raw text */ }
+
+      return NextResponse.json({
+        error:   friendlyError,
+        details: text,
+        status:  res.status,
+      }, { status: 502 })
     }
 
     const data = await res.json() as {
@@ -196,7 +208,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       session_id:    data.id,
       client_secret: data.client_secret,
-      model:         'gpt-4o-realtime-preview-2024-12-17',
+      model:         'gpt-4o-realtime-preview',
     })
   } catch (err) {
     console.error('[voice/session] error:', err)
