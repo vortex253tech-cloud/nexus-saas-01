@@ -42,6 +42,11 @@ interface Message {
   ai_generated: boolean
   status:       string
   created_at:   string
+  raw_payload?: {
+    media_url?:    string | null
+    message_type?: string
+    caption?:      string
+  } | null
 }
 
 interface WAStatus {
@@ -953,7 +958,11 @@ const ConvItem = memo(function ConvItem({
 // ─── Message Bubble ───────────────────────────────────────────────
 
 const Bubble = memo(function Bubble({ msg }: { msg: Message }) {
-  const isOut = msg.direction === 'outgoing'
+  const isOut   = msg.direction === 'outgoing'
+  const mediaUrl = msg.raw_payload?.media_url
+  const msgType  = msg.raw_payload?.message_type ?? 'text'
+  const isImage  = msgType === 'image' && !!mediaUrl
+
   return (
     <div
       className={cn('flex gap-2.5 max-w-[78%] animate-in fade-in slide-in-from-bottom-1 duration-200', isOut ? 'flex-row-reverse ml-auto' : 'mr-auto')}
@@ -976,12 +985,28 @@ const Bubble = memo(function Bubble({ msg }: { msg: Message }) {
           </div>
         )}
         <div className={cn(
-          'px-4 py-2.5 rounded-2xl text-sm leading-relaxed',
+          'rounded-2xl text-sm leading-relaxed overflow-hidden',
+          isImage ? 'p-0' : 'px-4 py-2.5',
           isOut
             ? 'bg-violet-600 text-white rounded-tr-md shadow-lg shadow-violet-600/20'
             : 'bg-zinc-800 text-zinc-100 border border-zinc-700/60 rounded-tl-md',
         )}>
-          {msg.content}
+          {isImage ? (
+            <div className="flex flex-col">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={mediaUrl!}
+                alt="imagem"
+                className="max-w-[260px] max-h-[320px] object-cover rounded-2xl"
+                loading="lazy"
+              />
+              {msg.raw_payload?.caption && (
+                <span className="px-3 py-1.5 text-xs text-white/80">{msg.raw_payload.caption}</span>
+              )}
+            </div>
+          ) : (
+            msg.content
+          )}
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-zinc-600">
           <span>{formatTime(msg.created_at)}</span>
@@ -1484,19 +1509,51 @@ export default function WhatsAppPage() {
       const data = await res.json()
       const next: Message[] = data.messages ?? []
       setMessages(prev => {
-        // Skip re-render when nothing changed (same length + same last message ID)
-        if (
-          next.length === prev.length &&
-          (next.length === 0 || next[next.length - 1]?.id === prev[prev.length - 1]?.id)
-        ) return prev
-        // When appending new messages, preserve existing object references so
-        // memoized Bubble components don't re-render for messages already shown.
-        if (next.length > prev.length) {
-          const prevIdSet = new Set(prev.map(m => m.id))
-          const added     = next.filter(m => !prevIdSet.has(m.id))
-          if (prev.length + added.length === next.length) return [...prev, ...added]
+        // Strip optimistic messages that now have a real server counterpart.
+        // Match by: same content + direction + within 30s of creation.
+        const optimistics = prev.filter(m => m.id.startsWith('opt-'))
+        const real        = new Set(next.map(m => m.id))
+
+        // For each optimistic, try to find a matching real message
+        const reconciledOpts = new Set<string>()
+        for (const opt of optimistics) {
+          if (real.has(opt.id)) continue  // shouldn't happen but guard
+          const optTime = new Date(opt.created_at).getTime()
+          const match   = next.find(
+            r => r.direction === opt.direction &&
+                 r.content   === opt.content   &&
+                 Math.abs(new Date(r.created_at).getTime() - optTime) < 30_000
+          )
+          if (match) reconciledOpts.add(opt.id)
         }
-        return next
+
+        // If nothing changed at all, bail early (no re-render)
+        const prevIds = prev.filter(m => !reconciledOpts.has(m.id)).map(m => m.id)
+        const nextIds = next.map(m => m.id)
+        const sameContent =
+          prevIds.length === nextIds.length &&
+          prevIds[prevIds.length - 1] === nextIds[nextIds.length - 1]
+        if (sameContent && reconciledOpts.size === 0) return prev
+
+        // Build merged list: keep existing objects where possible
+        const prevById    = new Map(prev.map(m => [m.id, m]))
+        const withoutOpts = prev.filter(m => !reconciledOpts.has(m.id))
+        const prevRealIds = new Set(withoutOpts.filter(m => !m.id.startsWith('opt-')).map(m => m.id))
+        const added       = next.filter(m => !prevRealIds.has(m.id))
+
+        // Reuse existing objects for unchanged messages to preserve memo
+        const merged = [
+          ...withoutOpts.filter(m => m.id.startsWith('opt-')), // keep un-reconciled optimistics
+          ...next.map(m => prevById.get(m.id) ?? m),           // prefer cached object
+        ].filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)   // dedupe
+
+        // Stable check: if merged is identical to prev by IDs, return prev reference
+        if (merged.length === prev.length && merged.every((m, i) => m.id === prev[i]?.id)) {
+          return prev
+        }
+
+        void added  // used implicitly through merged
+        return merged
       })
     } catch (e) {
       console.error('[WA] fetchMessages failed:', e)
@@ -1683,6 +1740,19 @@ export default function WhatsAppPage() {
           if (sel && newMsg.conversation_id === sel.id) {
             setMessages(prev => {
               if (prev.some(m => m.id === newMsg.id)) return prev
+              // Reconcile optimistic: if a pending optimistic matches this real msg, replace it
+              const msgTime = new Date(newMsg.created_at).getTime()
+              const optIdx  = prev.findIndex(
+                m => m.id.startsWith('opt-') &&
+                     m.direction === newMsg.direction &&
+                     m.content   === newMsg.content &&
+                     Math.abs(new Date(m.created_at).getTime() - msgTime) < 30_000
+              )
+              if (optIdx !== -1) {
+                const next = [...prev]
+                next[optIdx] = newMsg
+                return next
+              }
               return [...prev, newMsg]
             })
             if (newMsg.direction === 'incoming') {

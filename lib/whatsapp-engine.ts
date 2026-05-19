@@ -494,7 +494,7 @@ export async function getMessages(conversationId: string, limit = 50) {
   const db = getDb()
   const { data } = await db
     .from('whatsapp_messages')
-    .select('id, direction, content, from_me, ai_generated, status, created_at')
+    .select('id, direction, content, from_me, ai_generated, status, created_at, raw_payload')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true })
     .limit(limit)
