@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles, Image as LucideImage, MessageSquare, Mail, Camera, FileText,
-  Megaphone, Globe, Zap, Copy, Download, Send,
+  Megaphone, Zap, Copy, Download, Send,
   Heart, Loader2, CheckCircle2, RefreshCw,
   ChevronRight, Plus, TrendingUp, Target,
   BarChart3, DollarSign, Palette, Wand2, Play, Bookmark,
@@ -19,7 +19,8 @@ import type { Variation }       from '@/app/api/creative/generate-multi/route'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type TabId     = 'imagens' | 'whatsapp' | 'email' | 'instagram' | 'pdfs' | 'campanhas' | 'landing' | 'automacao'
+type TabId     = 'imagens' | 'whatsapp' | 'email' | 'instagram' | 'pdfs' | 'campanhas' | 'automacao'
+type PdfType   = 'proposta' | 'relatorio' | 'contrato' | 'playbook'
 type Objective = 'cobranca' | 'reativacao' | 'lancamento' | 'promocao' | 'boas_vindas' | 'follow_up'
 type GenState  = 'idle' | 'generating' | 'done' | 'error'
 
@@ -49,14 +50,13 @@ interface Campaign {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TABS: Array<{ id: TabId; label: string; icon: React.ElementType; color: string }> = [
-  { id: 'whatsapp',  label: 'WhatsApp',      icon: MessageSquare,  color: 'emerald' },
-  { id: 'email',     label: 'Email',         icon: Mail,           color: 'blue'    },
-  { id: 'instagram', label: 'Instagram',     icon: Camera,         color: 'pink'    },
-  { id: 'imagens',   label: 'Imagens IA',    icon: LucideImage,    color: 'violet'  },
-  { id: 'campanhas', label: 'Campanhas',     icon: Megaphone,      color: 'orange'  },
-  { id: 'landing',   label: 'Landing Pages', icon: Globe,          color: 'cyan'    },
-  { id: 'pdfs',      label: 'PDFs',          icon: FileText,       color: 'amber'   },
-  { id: 'automacao', label: 'Automação IA',  icon: Zap,            color: 'purple'  },
+  { id: 'whatsapp',  label: 'WhatsApp',     icon: MessageSquare, color: 'emerald' },
+  { id: 'email',     label: 'Email',        icon: Mail,          color: 'blue'    },
+  { id: 'instagram', label: 'Instagram',    icon: Camera,        color: 'pink'    },
+  { id: 'imagens',   label: 'Imagens IA',   icon: LucideImage,   color: 'violet'  },
+  { id: 'campanhas', label: 'Campanhas',    icon: Megaphone,     color: 'orange'  },
+  { id: 'pdfs',      label: 'Documentos',   icon: FileText,      color: 'amber'   },
+  { id: 'automacao', label: 'Automação IA', icon: Zap,           color: 'purple'  },
 ]
 
 const OBJECTIVES: Array<{ value: Objective; label: string; emoji: string }> = [
@@ -730,123 +730,236 @@ function ImagensTab() {
   )
 }
 
-// ─── Tab: Landing Pages ───────────────────────────────────────────────────────
+// ─── Tab: Documentos (PDFs) ───────────────────────────────────────────────────
 
-type LandingContent = { headline: string; subheadline: string; body: string; benefits: string[]; cta: string }
+const PDF_TYPES: Array<{ id: PdfType; icon: string; label: string; desc: string; placeholder: string }> = [
+  { id: 'proposta',  icon: '📄', label: 'Proposta Comercial',  desc: 'Proposta profissional com valores, condições e próximos passos',     placeholder: 'Ex: Proposta para empresa de 50 funcionários, consultoria mensal R$5.000, 3 meses de contrato...' },
+  { id: 'relatorio', icon: '📊', label: 'Relatório Executivo', desc: 'Relatório de desempenho com análise e recomendações estratégicas',   placeholder: 'Ex: Relatório mensal de vendas, meta R$100k, atingimos R$87k, 3 novos clientes...' },
+  { id: 'contrato',  icon: '📋', label: 'Contrato de Serviço', desc: 'Contrato de prestação de serviços com cláusulas essenciais',         placeholder: 'Ex: Contrato de mentoria 3 meses, R$3.000/mês, acesso a grupo VIP e 2 sessões semanais...' },
+  { id: 'playbook',  icon: '🎯', label: 'Playbook de Vendas',  desc: 'Guia completo com scripts, objeções mapeadas e técnicas de fechamento', placeholder: 'Ex: Playbook para time de 5 closers, produto de ticket R$15.000, ICP: empresas 10-50 funcionários...' },
+]
 
-function LandingTab() {
-  const [objective, setObjective] = useState<Objective>('lancamento')
+function PdfsTab() {
+  const [selected,  setSelected]  = useState<PdfType | null>(null)
   const [context,   setContext]   = useState('')
   const [state,     setState]     = useState<GenState>('idle')
-  const [landing,   setLanding]   = useState<LandingContent | null>(null)
+  const [content,   setContent]   = useState('')
+
+  const selectedType = PDF_TYPES.find(p => p.id === selected)
 
   async function handleGenerate() {
+    if (!selected || !context.trim()) return
     setState('generating')
     try {
-      const res = await fetch('/api/creative/generate', {
+      const res = await fetch('/api/creative/pdf', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ type: 'landing_section', channel: 'general', objective, context }),
+        body:    JSON.stringify({ type: selected, context }),
       })
-      const data = await res.json() as { json?: unknown }
-      if (data.json) { setLanding(data.json as unknown as LandingContent); setState('done') }
-      else setState('error')
-    } catch { setState('error') }
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json() as { content: string }
+      setContent(data.content)
+      setState('done')
+    } catch {
+      setState('error')
+    }
   }
 
-  return (
-    <div className="space-y-6">
-      <ObjectiveSelector value={objective} onChange={setObjective} />
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Contexto</label>
-        <textarea
-          value={context}
-          onChange={e => setContext(e.target.value)}
-          placeholder="Ex: Landing page para captação de leads de consultoria financeira..."
-          rows={3}
-          className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-violet-500/50 transition"
-        />
-      </div>
-      <GenerateButton onClick={handleGenerate} loading={state === 'generating'} label="Gerar Seção de Landing Page" />
+  function reset() { setState('idle'); setContent('') }
 
-      {state === 'done' && landing && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-          <div className="border-b border-zinc-800 px-5 py-4 text-center space-y-1">
-            <h2 className="text-lg font-bold text-white">{landing.headline}</h2>
-            <p className="text-sm text-zinc-400">{landing.subheadline}</p>
-          </div>
-          <div className="px-5 py-4 space-y-4">
-            <p className="text-sm text-zinc-300 leading-relaxed">{landing.body}</p>
-            <ul className="space-y-2">
-              {landing.benefits?.map((b, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-zinc-300">
-                  <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-400" />
-                  {b}
-                </li>
-              ))}
-            </ul>
-            <button className="w-full rounded-xl bg-violet-600 py-3 text-sm font-semibold text-white hover:bg-violet-500 transition">
-              {landing.cta}
+  return (
+    <div className="space-y-5">
+      {/* Type selector */}
+      <div>
+        <label className="mb-3 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Tipo de Documento</label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {PDF_TYPES.map(item => (
+            <button
+              key={item.id}
+              onClick={() => { setSelected(item.id); reset() }}
+              className={cn(
+                'flex items-center gap-3 rounded-2xl border p-4 text-left transition-all',
+                selected === item.id
+                  ? 'border-amber-500/50 bg-amber-500/8 shadow-lg shadow-amber-500/10'
+                  : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700',
+              )}
+            >
+              <span className="text-2xl">{item.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white">{item.label}</p>
+                <p className="text-xs text-zinc-500 line-clamp-1">{item.desc}</p>
+              </div>
+              {selected === item.id
+                ? <Check size={14} className="shrink-0 text-amber-400" />
+                : <ChevronRight size={14} className="shrink-0 text-zinc-600" />
+              }
             </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Context input */}
+      {selected && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+          <div>
+            <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+              Contexto e Detalhes
+            </label>
+            <textarea
+              value={context}
+              onChange={e => setContext(e.target.value)}
+              placeholder={selectedType?.placeholder}
+              rows={4}
+              className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-amber-500/50 transition"
+            />
           </div>
-          <div className="border-t border-zinc-800 px-5 py-3 flex justify-end gap-2">
-            <CopyButton text={JSON.stringify(landing, null, 2)} />
+          <GenerateButton
+            onClick={handleGenerate}
+            loading={state === 'generating'}
+            label={`Gerar ${selectedType?.label ?? 'Documento'}`}
+          />
+        </motion.div>
+      )}
+
+      {/* Generated content */}
+      {state === 'done' && content && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden"
+        >
+          <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={13} className="text-emerald-400" />
+              <span className="text-xs font-semibold text-emerald-400">{selectedType?.label} gerado</span>
+            </div>
+            <div className="flex gap-2">
+              <CopyButton text={content} />
+              <button
+                onClick={reset}
+                className="flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-[10px] text-zinc-400 hover:border-zinc-600 transition"
+              >
+                <RefreshCw size={9} /> Novo
+              </button>
+            </div>
+          </div>
+          <div className="max-h-[480px] overflow-y-auto px-5 py-4">
+            <pre className="whitespace-pre-wrap font-sans text-sm text-zinc-300 leading-relaxed">{content}</pre>
           </div>
         </motion.div>
       )}
-    </div>
-  )
-}
 
-// ─── Tab: PDFs ────────────────────────────────────────────────────────────────
-
-function PdfsTab() {
-  return (
-    <div className="space-y-4">
-      {[
-        { icon: '📄', label: 'Proposta Comercial',    desc: 'Gera proposta profissional com valores e condições' },
-        { icon: '📊', label: 'Relatório Executivo',   desc: 'Relatório de desempenho do período com gráficos' },
-        { icon: '📋', label: 'Contrato Simples',      desc: 'Contrato de prestação de serviços editável' },
-        { icon: '🎯', label: 'Playbook de Vendas',    desc: 'Guia de vendas com scripts e objeções mapeadas' },
-      ].map((item, i) => (
-        <div key={i} className="flex items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 hover:border-zinc-700 transition cursor-pointer group">
-          <span className="text-2xl">{item.icon}</span>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-white">{item.label}</p>
-            <p className="text-xs text-zinc-500">{item.desc}</p>
-          </div>
-          <ChevronRight size={14} className="text-zinc-600 group-hover:text-violet-400 transition" />
+      {state === 'error' && (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+          <p className="text-xs text-red-400">Erro ao gerar documento. Verifique o contexto e tente novamente.</p>
         </div>
-      ))}
-      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
-        <p className="text-xs text-amber-400">📎 Em breve: geração de PDFs com layout da sua marca</p>
-      </div>
+      )}
     </div>
   )
 }
 
 // ─── Tab: Automação ───────────────────────────────────────────────────────────
 
+const AUTOMATION_TEMPLATES = [
+  {
+    emoji:        '💰',
+    name:         'Régua de Cobrança',
+    desc:         'Sequência automática para inadimplentes',
+    trigger_type: 'overdue_payment',
+    description:  'Régua de cobrança automática: WhatsApp D+1, Email D+3, WhatsApp D+7, Bloqueio D+15',
+    sequence:     ['D+1 WhatsApp', 'D+3 Email', 'D+7 WhatsApp', 'D+15 Bloqueio'],
+    steps: [
+      { type: 'whatsapp', delay_hours: 24,  message: 'Olá! Identificamos um pagamento pendente. Podemos resolver?' },
+      { type: 'email',    delay_hours: 72,  message: 'Lembrete de pagamento pendente. Clique aqui para regularizar.' },
+      { type: 'whatsapp', delay_hours: 168, message: 'Última oportunidade antes do bloqueio do serviço.' },
+    ],
+  },
+  {
+    emoji:        '🔥',
+    name:         'Reativação de Leads',
+    desc:         'Reengajamento de leads frios em 4 etapas',
+    trigger_type: 'lead_cold',
+    description:  'Reengajamento de leads sem atividade há 30+ dias: segmentação, oferta exclusiva, campanha e acompanhamento',
+    sequence:     ['Segmenta leads', 'Gera oferta', 'Dispara campanha', 'Mede resultado'],
+    steps: [
+      { type: 'whatsapp', delay_hours: 0,   message: 'Sentimos sua falta! Temos uma condição especial para você.' },
+      { type: 'email',    delay_hours: 48,  message: 'Oferta exclusiva de reativação — válida por 48h.' },
+      { type: 'whatsapp', delay_hours: 96,  message: 'Última chance! Sua oferta especial expira amanhã.' },
+    ],
+  },
+  {
+    emoji:        '👋',
+    name:         'Boas-vindas VIP',
+    desc:         'Onboarding completo para novos clientes',
+    trigger_type: 'new_customer',
+    description:  'Sequência de onboarding: WhatsApp D+0, Email D+1, Pesquisa D+3, Follow-up D+7',
+    sequence:     ['D+0 WhatsApp', 'D+1 Email', 'D+3 Pesquisa', 'D+7 Follow-up'],
+    steps: [
+      { type: 'whatsapp', delay_hours: 1,   message: 'Bem-vindo(a)! Estamos felizes em ter você conosco. Aqui está o que fazer agora.' },
+      { type: 'email',    delay_hours: 24,  message: 'Guia completo de início: tudo que você precisa saber.' },
+      { type: 'whatsapp', delay_hours: 72,  message: 'Como está sendo sua experiência? Sua opinião é importante!' },
+      { type: 'whatsapp', delay_hours: 168, message: 'Precisando de algo? Estamos aqui para ajudar!' },
+    ],
+  },
+  {
+    emoji:        '📈',
+    name:         'Upsell Inteligente',
+    desc:         'Detecta momento certo e propõe upgrade',
+    trigger_type: 'upsell_opportunity',
+    description:  'Identifica clientes com potencial de upgrade, analisa histórico e envia proposta personalizada',
+    sequence:     ['Analisa histórico', 'Detecta momento', 'Gera proposta', 'Acompanha'],
+    steps: [
+      { type: 'whatsapp', delay_hours: 0,   message: 'Com base no seu uso, temos uma proposta exclusiva de upgrade.' },
+      { type: 'email',    delay_hours: 72,  message: 'Proposta personalizada de upgrade — veja o que ganhas.' },
+      { type: 'whatsapp', delay_hours: 144, message: 'Ainda considerando? Posso tirar alguma dúvida?' },
+    ],
+  },
+]
+
 function AutomacaoTab() {
-  const automations = [
-    { emoji: '💰', name: 'Régua de Cobrança',   desc: 'Sequência automática para inadimplentes', sequence: ['D+1 WhatsApp', 'D+3 Email', 'D+7 WhatsApp', 'D+15 Bloqueio'] },
-    { emoji: '🔥', name: 'Reativação de Leads', desc: 'Reengajamento de leads frios',             sequence: ['Segmenta leads', 'Gera oferta', 'Dispara campanha', 'Mede resultado'] },
-    { emoji: '👋', name: 'Boas-vindas VIP',     desc: 'Onboarding para novos clientes',           sequence: ['D+0 WhatsApp', 'D+1 Email', 'D+3 Pesquisa', 'D+7 Follow-up'] },
-    { emoji: '📈', name: 'Upsell Inteligente',  desc: 'Identificação de oportunidade de upgrade', sequence: ['Analisa histórico', 'Detecta momento', 'Gera proposta', 'Acompanha'] },
-  ]
+  const [activating, setActivating] = useState<number | null>(null)
+  const [activated,  setActivated]  = useState<Set<number>>(new Set())
+  const [errors,     setErrors]     = useState<Record<number, string>>({})
+
+  async function handleActivate(index: number) {
+    const auto = AUTOMATION_TEMPLATES[index]
+    setActivating(index)
+    setErrors(prev => { const n = { ...prev }; delete n[index]; return n })
+    try {
+      const res = await fetch('/api/automations', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          name:         auto.name,
+          description:  auto.description,
+          trigger_type: auto.trigger_type,
+          steps:        auto.steps,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setActivated(prev => new Set([...prev, index]))
+    } catch {
+      setErrors(prev => ({ ...prev, [index]: 'Erro ao ativar. Tente novamente.' }))
+    }
+    setActivating(null)
+  }
 
   return (
     <div className="space-y-4">
-      {automations.map((a, i) => (
+      {AUTOMATION_TEMPLATES.map((a, i) => (
         <motion.div
           key={i}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.06 }}
-          className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 hover:border-zinc-700 transition"
+          className={cn(
+            'rounded-2xl border p-5 transition',
+            activated.has(i)
+              ? 'border-emerald-500/30 bg-emerald-500/5'
+              : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700',
+          )}
         >
-          <div className="mb-3 flex items-start justify-between">
+          <div className="mb-3 flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="text-xl">{a.emoji}</span>
               <div>
@@ -854,18 +967,45 @@ function AutomacaoTab() {
                 <p className="text-xs text-zinc-500">{a.desc}</p>
               </div>
             </div>
-            <button className="rounded-xl bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 transition">
-              Ativar
-            </button>
+            {activated.has(i) ? (
+              <div className="flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5">
+                <CheckCircle2 size={12} className="text-emerald-400" />
+                <span className="text-xs font-semibold text-emerald-300">Ativo</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => handleActivate(i)}
+                disabled={activating === i}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-white transition',
+                  activating === i
+                    ? 'bg-violet-600/60 cursor-not-allowed'
+                    : 'bg-violet-600 hover:bg-violet-500',
+                )}
+              >
+                {activating === i
+                  ? <><Loader2 size={11} className="animate-spin" /> Ativando...</>
+                  : <><Play size={11} /> Ativar</>
+                }
+              </button>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {a.sequence.map((step, si) => (
               <div key={si} className="flex items-center gap-1.5">
-                <span className="rounded-lg border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-[10px] font-medium text-zinc-300">{step}</span>
+                <span className={cn(
+                  'rounded-lg border px-2.5 py-1 text-[10px] font-medium',
+                  activated.has(i)
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                    : 'border-zinc-700 bg-zinc-800/60 text-zinc-300',
+                )}>{step}</span>
                 {si < a.sequence.length - 1 && <ArrowRight size={10} className="text-zinc-700" />}
               </div>
             ))}
           </div>
+          {errors[i] && (
+            <p className="mt-2 text-xs text-red-400">{errors[i]}</p>
+          )}
         </motion.div>
       ))}
     </div>
@@ -1080,9 +1220,27 @@ function AutoPilotToggle() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+interface CreativeStats {
+  generated:       number
+  response_rate:   string
+  conversion_rate: string
+  revenue:         string
+  loaded:          boolean
+}
+
 export default function CreativeAIPage() {
-  const [activeTab,    setActiveTab]    = useState<TabId>('whatsapp')
+  const [activeTab,     setActiveTab]     = useState<TabId>('whatsapp')
   const [jumpObjective, setJumpObjective] = useState<Objective | null>(null)
+  const [stats,         setStats]         = useState<CreativeStats>({
+    generated: 0, response_rate: '—', conversion_rate: '—', revenue: 'R$0', loaded: false,
+  })
+
+  useEffect(() => {
+    fetch('/api/creative/stats')
+      .then(r => r.json())
+      .then((d: Omit<CreativeStats, 'loaded'>) => setStats({ ...d, loaded: true }))
+      .catch(() => setStats(s => ({ ...s, loaded: true })))
+  }, [])
 
   function handleOpportunityAction(tab: TabId, obj: Objective) {
     setActiveTab(tab)
@@ -1101,7 +1259,6 @@ export default function CreativeAIPage() {
       case 'instagram': return <InstagramTab />
       case 'campanhas': return <CampanhasTab jumpObjective={jumpObjective} />
       case 'imagens':   return <ImagensTab />
-      case 'landing':   return <LandingTab />
       case 'pdfs':      return <PdfsTab />
       case 'automacao': return <AutomacaoTab />
     }
@@ -1147,21 +1304,24 @@ export default function CreativeAIPage() {
 
       {/* ── Quick Stats ── */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: 'Conteúdos gerados', value: '2.847', icon: Sparkles,   color: 'violet'  },
-          { label: 'Taxa de abertura',  value: '68,4%', icon: Eye,        color: 'emerald' },
-          { label: 'Conversão média',   value: '12,1%', icon: Target,     color: 'blue'    },
-          { label: 'Receita recuperada',value: 'R$47.8k',icon: DollarSign, color: 'amber'  },
-        ].map((s, i) => {
+        {([
+          { label: 'Conteúdos gerados',  value: stats.loaded ? stats.generated.toLocaleString('pt-BR') : null, icon: Sparkles,   color: 'violet'  },
+          { label: 'Respostas via IA',   value: stats.loaded ? stats.response_rate   : null,                   icon: Eye,        color: 'emerald' },
+          { label: 'Taxa de conversão',  value: stats.loaded ? stats.conversion_rate : null,                   icon: Target,     color: 'blue'    },
+          { label: 'Receita (30 dias)',  value: stats.loaded ? stats.revenue          : null,                   icon: DollarSign, color: 'amber'   },
+        ] as Array<{ label: string; value: string | null; icon: React.ElementType; color: string }>).map((s, i) => {
           const Icon = s.icon
           return (
-            <div key={i} className={cn('rounded-2xl border p-4 flex items-center gap-3 bg-zinc-900/40 border-zinc-800/60')}>
+            <div key={i} className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-4 flex items-center gap-3">
               <div className={cn('flex h-9 w-9 items-center justify-center rounded-xl border', colorClass(s.color, 'bg'), colorClass(s.color, 'border'))}>
                 <Icon size={16} className={colorClass(s.color, 'text')} />
               </div>
               <div>
                 <p className="text-[11px] text-zinc-500">{s.label}</p>
-                <p className="text-base font-bold text-white">{s.value}</p>
+                {s.value !== null
+                  ? <p className="text-base font-bold text-white">{s.value}</p>
+                  : <div className="mt-1 h-4 w-14 animate-pulse rounded bg-zinc-800" />
+                }
               </div>
             </div>
           )
