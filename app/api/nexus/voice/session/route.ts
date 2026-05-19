@@ -167,6 +167,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         session: {
+          type:         'realtime',
           model:        'gpt-realtime',
           voice:        'alloy',
           instructions: SYSTEM_PROMPT,

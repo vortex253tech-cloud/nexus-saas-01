@@ -12,7 +12,7 @@ export async function GET() {
     const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session: { model: 'gpt-realtime', voice: 'alloy' } }),
+      body: JSON.stringify({ session: { type: 'realtime', model: 'gpt-realtime', voice: 'alloy' } }),
       signal: AbortSignal.timeout(10000),
     })
 
