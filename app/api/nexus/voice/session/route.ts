@@ -159,24 +159,26 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
+    const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type':  'application/json',
       },
       body: JSON.stringify({
-        model:        'gpt-4o-realtime-preview',
-        voice:        'alloy',
-        instructions: SYSTEM_PROMPT,
-        tools:        TOOLS,
-        tool_choice:  'auto',
-        input_audio_transcription: { model: 'whisper-1' },
-        turn_detection: {
-          type:                 'server_vad',
-          threshold:            0.5,
-          prefix_padding_ms:    300,
-          silence_duration_ms:  700,
+        session: {
+          model:        'gpt-realtime',
+          voice:        'alloy',
+          instructions: SYSTEM_PROMPT,
+          tools:        TOOLS,
+          tool_choice:  'auto',
+          input_audio_transcription: { model: 'whisper-1' },
+          turn_detection: {
+            type:                 'server_vad',
+            threshold:            0.5,
+            prefix_padding_ms:    300,
+            silence_duration_ms:  700,
+          },
         },
       }),
       signal: AbortSignal.timeout(12000),
@@ -201,14 +203,12 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json() as {
-      id:            string
       client_secret: { value: string; expires_at: number }
     }
 
     return NextResponse.json({
-      session_id:    data.id,
       client_secret: data.client_secret,
-      model:         'gpt-4o-realtime-preview',
+      model:         'gpt-realtime',
     })
   } catch (err) {
     console.error('[voice/session] error:', err)

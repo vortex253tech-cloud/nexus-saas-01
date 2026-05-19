@@ -333,10 +333,8 @@ export default function AssistantPage() {
         // Surface the actual OpenAI error so the user knows what to fix
         throw new Error(msg)
       }
-      const { client_secret, model } = await sessionRes.json() as {
-        session_id:    string
+      const { client_secret } = await sessionRes.json() as {
         client_secret: { value: string }
-        model:         string
       }
       const ephemeralKey = client_secret.value
 
@@ -362,7 +360,7 @@ export default function AssistantPage() {
       await pc.setLocalDescription(offer)
 
       const sdpRes = await fetch(
-        `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
+        'https://api.openai.com/v1/realtime/calls',
         {
           method:  'POST',
           headers: {
@@ -372,7 +370,10 @@ export default function AssistantPage() {
           body: offer.sdp,
         },
       )
-      if (!sdpRes.ok) throw new Error(`OpenAI SDP error: ${sdpRes.status}`)
+      if (!sdpRes.ok) {
+        const errText = await sdpRes.text().catch(() => '')
+        throw new Error(`OpenAI SDP error ${sdpRes.status}: ${errText.slice(0, 200)}`)
+      }
 
       const answerSdp = await sdpRes.text()
       await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp })

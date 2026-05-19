@@ -9,10 +9,10 @@ export async function GET() {
   if (!key) return NextResponse.json({ ok: false, error: 'OPENAI_API_KEY not set' })
 
   try {
-    const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
+    const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4o-realtime-preview', voice: 'alloy' }),
+      body: JSON.stringify({ session: { model: 'gpt-realtime', voice: 'alloy' } }),
       signal: AbortSignal.timeout(10000),
     })
 
