@@ -52,6 +52,115 @@ const TOOL_LABELS: Record<string, string> = {
   createFollowUp:       'Criando follow-up',
 }
 
+// ── Voice session config (sent via DataChannel after connect) ─────────────
+
+const VOICE_SESSION_UPDATE = {
+  type: 'session.update',
+  session: {
+    voice:       'alloy',
+    tool_choice: 'auto',
+    input_audio_transcription: { model: 'whisper-1' },
+    turn_detection: {
+      type:                'server_vad',
+      threshold:           0.5,
+      prefix_padding_ms:   300,
+      silence_duration_ms: 700,
+    },
+    tools: [
+      {
+        type: 'function', name: 'navigate',
+        description: 'Navega para uma página do dashboard NEXUS',
+        parameters: {
+          type: 'object',
+          properties: {
+            path:      { type: 'string', description: 'Caminho da página' },
+            page_name: { type: 'string', description: 'Nome amigável da página' },
+          },
+          required: ['path'],
+        },
+      },
+      {
+        type: 'function', name: 'getWhatsAppStats',
+        description: 'Busca estatísticas do WhatsApp',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
+        type: 'function', name: 'getHotLeads',
+        description: 'Busca os leads mais quentes e ativos',
+        parameters: {
+          type: 'object',
+          properties: { limit: { type: 'number', description: 'Quantidade (máx 10)' } },
+        },
+      },
+      {
+        type: 'function', name: 'sendWhatsAppMessage',
+        description: 'Envia uma mensagem via WhatsApp',
+        parameters: {
+          type: 'object',
+          properties: {
+            phone:           { type: 'string' },
+            message:         { type: 'string' },
+            conversation_id: { type: 'string' },
+          },
+          required: ['phone', 'message'],
+        },
+      },
+      {
+        type: 'function', name: 'searchConversations',
+        description: 'Busca conversas por nome ou número',
+        parameters: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+        },
+      },
+      {
+        type: 'function', name: 'toggleAI',
+        description: 'Ativa ou desativa a IA em uma conversa',
+        parameters: {
+          type: 'object',
+          properties: {
+            conversation_id: { type: 'string' },
+            enabled:         { type: 'boolean' },
+          },
+          required: ['conversation_id', 'enabled'],
+        },
+      },
+      {
+        type: 'function', name: 'transferToHuman',
+        description: 'Transfere conversa para atendimento humano',
+        parameters: {
+          type: 'object',
+          properties: {
+            conversation_id: { type: 'string' },
+            note:            { type: 'string' },
+          },
+          required: ['conversation_id'],
+        },
+      },
+      {
+        type: 'function', name: 'getDashboardSummary',
+        description: 'Resumo executivo do negócio',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
+        type: 'function', name: 'createFollowUp',
+        description: 'Cria lembrete de follow-up',
+        parameters: {
+          type: 'object',
+          properties: {
+            phone:        { type: 'string' },
+            contact_name: { type: 'string' },
+            message:      { type: 'string' },
+            scheduled_at: { type: 'string' },
+          },
+          required: ['phone', 'message', 'scheduled_at'],
+        },
+      },
+    ],
+  },
+} as const
+
 const QUICK: { icon: React.ElementType; label: string; prompt: string }[] = [
   { icon: BarChart2,  label: 'Resumo do dia',   prompt: 'NEXUS, qual é o resumo do dia?' },
   { icon: Users,      label: 'Leads quentes',    prompt: 'NEXUS, mostra os leads mais quentes' },
@@ -352,7 +461,10 @@ export default function AssistantPage() {
 
       const dc = pc.createDataChannel('oai-events')
       dcRef.current = dc
-      dc.onopen    = () => setVoiceState('idle')
+      dc.onopen    = () => {
+        dc.send(JSON.stringify(VOICE_SESSION_UPDATE))
+        setVoiceState('idle')
+      }
       dc.onclose   = () => { if (pcRef.current) setVoiceState('off') }
       dc.onmessage = handleDCMessage
 
