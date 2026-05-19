@@ -8,9 +8,12 @@ import {
   Bell, Brain, BarChart3, TrendingUp, Play, Pause,
   ArrowRight, Clock, AlertTriangle, Target, Lightbulb,
   TrendingDown, ChevronRight, ToggleLeft, ToggleRight,
+  Activity, Cpu,
 } from 'lucide-react'
 import { resolveCompanyId } from '@/lib/get-company-id'
 import { cn } from '@/lib/cn'
+import { useNexusRealtime } from '@/lib/hooks/use-nexus-realtime'
+import type { NexusEvent } from '@/lib/core/types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,6 +84,42 @@ function MetricCard({ label, value, sub, accent }: { label: string; value: strin
   )
 }
 
+// ── Event label helpers ───────────────────────────────────────────────────────
+
+function eventLabel(ev: NexusEvent): { text: string; sub: string } {
+  const p = ev.payload as Record<string, unknown>
+  switch (ev.type) {
+    case 'message.received': return { text: `Nova mensagem de ${(p.name as string) ?? (p.phone as string) ?? 'contato'}`, sub: 'WhatsApp' }
+    case 'message.sent':     return { text: 'Resposta enviada pela IA', sub: 'WhatsApp' }
+    case 'lead.created':     return { text: `Novo lead: ${(p.name as string) ?? '—'}`, sub: 'CRM' }
+    case 'lead.updated':     return { text: `Lead atualizado: ${(p.name as string) ?? '—'}`, sub: 'CRM' }
+    case 'automation.executed': return { text: `Automação executada: ${(p.automation_name as string) ?? '—'}`, sub: 'Automações' }
+    case 'automation.triggered': return { text: `Automação disparada: ${(p.automation_name as string) ?? '—'}`, sub: 'Automações' }
+    case 'ai.action.completed': return { text: `Ação IA: ${(p.action_type as string) ?? '—'}`, sub: 'Core Engine' }
+    case 'assistant.command': return { text: `Comando: ${((p.command as string) ?? '').slice(0, 60)}`, sub: 'Assistente' }
+    case 'payment.received':  return { text: `Pagamento recebido`, sub: 'Financeiro' }
+    default: return { text: ev.type.replace('.', ' '), sub: ev.source }
+  }
+}
+
+// ── Engine Status Badge ───────────────────────────────────────────────────────
+
+function EngineBadge({ connected }: { connected: boolean }) {
+  return (
+    <div className={cn(
+      'inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium',
+      connected
+        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+        : 'bg-zinc-800 text-zinc-500 border border-zinc-700/40',
+    )}>
+      {connected
+        ? <><Activity className="w-3 h-3" /> Engine online</>
+        : <><Cpu className="w-3 h-3" /> Conectando…</>
+      }
+    </div>
+  )
+}
+
 // ── Painel Principal ──────────────────────────────────────────────────────────
 
 function PainelTab({
@@ -96,6 +135,23 @@ function PainelTab({
   onToggle: () => void
   toggling: boolean
 }) {
+  const { events: liveEvents, connected } = useNexusRealtime({
+    company_id:   companyId,
+    auto_metrics: false,
+  })
+
+  // Merge live events with static events from overview, deduplicated
+  const liveItems = liveEvents.slice(0, 8).map(ev => {
+    const { text, sub } = eventLabel(ev)
+    return { text, sub, ts: ev.created_at, key: ev.id }
+  })
+
+  const staticItems = data.events.slice(0, Math.max(0, 8 - liveItems.length)).map((ev, i) => ({
+    text: ev.conteudo, sub: ev.canal, ts: ev.created_at, key: `static-${i}`,
+  }))
+
+  const allItems = [...liveItems, ...staticItems]
+
   return (
     <div className="space-y-6">
       {/* Hero */}
@@ -117,6 +173,7 @@ function PainelTab({
           </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <EngineBadge connected={connected} />
           <WABadge wa={wa} />
           <button
             onClick={onToggle}
@@ -144,23 +201,28 @@ function PainelTab({
         <MetricCard label="Leads quentes" value={data.pipeline.hot}      sub={`de ${data.pipeline.total} total`} accent="text-orange-400" />
       </div>
 
-      {/* Activity */}
+      {/* Live Activity Feed */}
       <div className="bg-zinc-900 border border-zinc-800/60 rounded-2xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-zinc-800/60">
-          <p className="text-sm font-medium text-zinc-300">Atividade recente</p>
+        <div className="px-5 py-3.5 border-b border-zinc-800/60 flex items-center justify-between">
+          <p className="text-sm font-medium text-zinc-300">Atividade em tempo real</p>
+          {liveItems.length > 0 && (
+            <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 font-medium">
+              {liveItems.length} ao vivo
+            </span>
+          )}
         </div>
-        {!data.events.length ? (
-          <div className="py-12 text-center text-zinc-600 text-sm">Nenhuma atividade registrada ainda</div>
+        {!allItems.length ? (
+          <div className="py-12 text-center text-zinc-600 text-sm">Aguardando eventos…</div>
         ) : (
           <div className="divide-y divide-zinc-800/40">
-            {data.events.slice(0, 8).map((ev, i) => (
-              <div key={i} className="flex items-start gap-3 px-5 py-3.5">
+            {allItems.map((item) => (
+              <div key={item.key} className="flex items-start gap-3 px-5 py-3.5">
                 <div className="mt-0.5 w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
                   <Zap className="w-3.5 h-3.5 text-violet-400" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-zinc-300 leading-snug truncate">{ev.conteudo}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5">{ev.canal} · {timeAgo(ev.created_at)}</p>
+                  <p className="text-sm text-zinc-300 leading-snug truncate">{item.text}</p>
+                  <p className="text-xs text-zinc-600 mt-0.5">{item.sub} · {timeAgo(item.ts)}</p>
                 </div>
               </div>
             ))}
@@ -440,66 +502,52 @@ function InsightsTab({ companyId }: { companyId: string }) {
 
 // ── Automações Tab ────────────────────────────────────────────────────────────
 
-interface AutomationRule {
-  id:       string
-  label:    string
-  desc:     string
-  icon:     React.ElementType
-  active:   boolean
-  category: string
+interface DBAutomation {
+  id:           string
+  name:         string
+  description:  string
+  trigger_type: string
+  is_active:    boolean
 }
 
-const DEFAULT_RULES: AutomationRule[] = [
-  {
-    id: 'new-lead-welcome',
-    label: 'Boas-vindas ao novo lead',
-    desc: 'Envia mensagem de boas-vindas automática quando um lead entra no pipeline.',
-    icon: MessageSquare,
-    active: true,
-    category: 'Engajamento',
-  },
-  {
-    id: 'hot-lead-followup',
-    label: 'Follow-up lead quente',
-    desc: 'Notifica sobre leads quentes sem resposta há mais de 1 hora.',
-    icon: Target,
-    active: true,
-    category: 'Engajamento',
-  },
-  {
-    id: 'cold-reactivation',
-    label: 'Reativação de leads frios',
-    desc: 'Envia mensagem de reativação para leads sem interação há 3 dias.',
-    icon: Zap,
-    active: false,
-    category: 'Recuperação',
-  },
-  {
-    id: 'proposal-reminder',
-    label: 'Lembrete de proposta',
-    desc: 'Lembra leads na etapa "Proposta" que ainda não responderam após 24h.',
-    icon: Bell,
-    active: false,
-    category: 'Vendas',
-  },
-  {
-    id: 'closed-congrats',
-    label: 'Parabéns pós-fechamento',
-    desc: 'Envia mensagem de boas-vindas após lead ser marcado como fechado.',
-    icon: CheckCircle,
-    active: true,
-    category: 'Pós-venda',
-  },
-]
+function AutomacoesTab({ companyId }: { companyId: string }) {
+  const [automations, setAutomations] = useState<DBAutomation[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [toggling,    setToggling]    = useState<string | null>(null)
 
-function AutomacoesTab() {
-  const [rules, setRules] = useState<AutomationRule[]>(DEFAULT_RULES)
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res  = await fetch(`/api/automations?company_id=${companyId}`)
+      const data = await res.json()
+      setAutomations(data.automations ?? data ?? [])
+    } catch {
+      setAutomations([])
+    } finally {
+      setLoading(false)
+    }
+  }, [companyId])
 
-  function toggle(id: string) {
-    setRules(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r))
+  useEffect(() => { load() }, [load])
+
+  async function toggle(id: string, current: boolean) {
+    setToggling(id)
+    await fetch(`/api/automations/${id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ is_active: !current }),
+    })
+    setAutomations(prev => prev.map(a => a.id === id ? { ...a, is_active: !current } : a))
+    setToggling(null)
   }
 
-  const categories = [...new Set(rules.map(r => r.category))]
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw className="w-5 h-5 text-zinc-600 animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -507,46 +555,48 @@ function AutomacoesTab() {
         <Sparkles className="w-4 h-4 text-violet-400 mt-0.5 shrink-0" />
         <div>
           <p className="text-sm font-medium text-violet-300 mb-0.5">Automações inteligentes</p>
-          <p className="text-xs text-zinc-500">A IA NEXUS executa estas regras automaticamente. Ative ou desative conforme sua estratégia de vendas.</p>
+          <p className="text-xs text-zinc-500">A IA NEXUS executa estas regras automaticamente. Ative ou desative conforme sua estratégia.</p>
         </div>
       </div>
 
-      {categories.map(cat => (
-        <div key={cat} className="space-y-2">
-          <p className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider px-1">{cat}</p>
-          {rules.filter(r => r.category === cat).map(rule => {
-            const Icon = rule.icon
-            return (
-              <div
-                key={rule.id}
-                className="bg-zinc-900 border border-zinc-800/60 rounded-2xl px-5 py-4 flex items-center gap-4 hover:border-zinc-700/60 transition-colors"
+      {!automations.length ? (
+        <div className="py-12 text-center text-zinc-600 text-sm">
+          Nenhuma automação criada ainda.{' '}
+          <a href="/dashboard/automations" className="text-violet-400 hover:text-violet-300 transition">
+            Criar automação →
+          </a>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {automations.map(a => (
+            <div
+              key={a.id}
+              className="bg-zinc-900 border border-zinc-800/60 rounded-2xl px-5 py-4 flex items-center gap-4 hover:border-zinc-700/60 transition-colors"
+            >
+              <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0', a.is_active ? 'bg-violet-600/20' : 'bg-zinc-800')}>
+                <Zap className={cn('w-4 h-4', a.is_active ? 'text-violet-400' : 'text-zinc-500')} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-zinc-200">{a.name}</p>
+                <p className="text-xs text-zinc-600 mt-0.5 leading-snug">{a.description || a.trigger_type}</p>
+              </div>
+              <button
+                onClick={() => toggle(a.id, a.is_active)}
+                disabled={toggling === a.id}
+                className="shrink-0 ml-2"
+                title={a.is_active ? 'Desativar' : 'Ativar'}
               >
-                <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0', rule.active ? 'bg-violet-600/20' : 'bg-zinc-800')}>
-                  <Icon className={cn('w-4 h-4', rule.active ? 'text-violet-400' : 'text-zinc-500')} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-zinc-200">{rule.label}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5 leading-snug">{rule.desc}</p>
-                </div>
-                <button
-                  onClick={() => toggle(rule.id)}
-                  className="shrink-0 ml-2"
-                  title={rule.active ? 'Desativar' : 'Ativar'}
-                >
-                  {rule.active
+                {toggling === a.id
+                  ? <RefreshCw className="w-5 h-5 text-zinc-600 animate-spin" />
+                  : a.is_active
                     ? <ToggleRight className="w-7 h-7 text-violet-400" />
                     : <ToggleLeft  className="w-7 h-7 text-zinc-600" />
-                  }
-                </button>
-              </div>
-            )
-          })}
+                }
+              </button>
+            </div>
+          ))}
         </div>
-      ))}
-
-      <p className="text-[11px] text-zinc-700 text-center pt-2">
-        Novas automações com triggers avançados chegando em breve.
-      </p>
+      )}
     </div>
   )
 }
@@ -682,7 +732,7 @@ function NexusContent() {
       )}
       {tab === 'pipeline' && <PipelineTab data={data} />}
       {tab === 'ia'       && companyId && <IAConfigTab persona={data.ai} companyId={companyId} />}
-      {tab === 'automacoes' && <AutomacoesTab />}
+      {tab === 'automacoes' && companyId && <AutomacoesTab companyId={companyId} />}
       {tab === 'insights'   && companyId && <InsightsTab companyId={companyId} />}
       {tab === 'criativos' && (
         <ComingSoon icon={<Brain className="w-6 h-6" />} title="Criativos" desc="Geração automática de copies, campanhas e mensagens personalizadas por segmento." />

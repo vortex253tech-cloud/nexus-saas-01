@@ -10,7 +10,18 @@ import {
   Bot, Megaphone, Wallet, Settings, Layout, ShoppingCart,
   GitBranch, FileText, ChevronUp, Cpu, Globe, Layers,
   LogIn, Eye, EyeOff, Lock, Mail, Check,
+  Mic, Play, Phone,
 } from 'lucide-react'
+
+function InstagramIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+      <circle cx="12" cy="12" r="4.5" />
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
 
 // ─── Static Data ──────────────────────────────────────────────────────────────
 
@@ -91,6 +102,34 @@ const TRUST_ITEMS = [
 ]
 
 const CHART_BASE = [18, 22, 19, 28, 24, 32, 27, 38, 34, 45, 40, 52, 47, 60, 55, 68, 62, 75, 70, 82, 76, 85, 80, 90, 85, 95, 88, 98, 92, 100]
+
+const NEXUS_CONTROLS = [
+  { icon: '💬', title: 'WhatsApp IA', desc: 'Atende, qualifica e cobra clientes pelo WhatsApp 24/7 com IA.', color: '#22C55E' },
+  { icon: '🎯', title: 'CRM Inteligente', desc: 'Pipeline de vendas com scoring automático e follow-up inteligente.', color: '#7C3AED' },
+  { icon: '💰', title: 'Financeiro IA', desc: 'DRE, fluxo de caixa e alertas inteligentes de inadimplência.', color: '#06B6D4' },
+  { icon: '⚡', title: 'Automações', desc: 'Flows, triggers e automações que executam sem intervenção humana.', color: '#F59E0B' },
+  { icon: '📣', title: 'Campanhas', desc: 'Criação, disparo e análise de campanhas de marketing autônomas.', color: '#EC4899' },
+  { icon: '🎙️', title: 'Assistente de Voz', desc: 'Comande sua empresa com linguagem natural. Fale, a IA executa.', color: '#A78BFA' },
+  { icon: '📊', title: 'Analytics', desc: 'Dashboards em tempo real com insights e previsões automáticas.', color: '#3B82F6' },
+  { icon: '✍️', title: 'IA Criativa', desc: 'Copy, posts, scripts e conteúdo gerado automaticamente.', color: '#F97316' },
+  { icon: '🚀', title: 'Pipeline de Vendas', desc: 'Conversão otimizada com IA que identifica o momento certo.', color: '#10B981' },
+  { icon: '📱', title: 'Social Media', desc: 'Publicações automáticas, comentários e engajamento gerenciados.', color: '#E879F9' },
+]
+
+const HOW_IT_WORKS = [
+  { step: '01', icon: '🔌', title: 'Conecte sua empresa', desc: 'Integre WhatsApp, CRM, financeiro e demais ferramentas em minutos. Setup zero código.', color: '#7C3AED' },
+  { step: '02', icon: '🧠', title: 'IA mapeia operações', desc: 'O NEXUS analisa seu negócio, entende padrões e cria o mapa operacional da sua empresa.', color: '#06B6D4' },
+  { step: '03', icon: '⚡', title: 'Executa automaticamente', desc: 'Cobranças, campanhas, atendimento e análises executam sozinhas enquanto você dorme.', color: '#22C55E' },
+  { step: '04', icon: '📈', title: 'Aprende e melhora', desc: 'A cada interação, o sistema fica mais inteligente e personalizado para o seu negócio.', color: '#F59E0B' },
+  { step: '05', icon: '🚀', title: 'Você escala', desc: 'Foco no que importa. A IA cuida da operação, você cuida do crescimento.', color: '#EC4899' },
+]
+
+const AI_COMMANDS = [
+  { cmd: 'Gere uma campanha de reativação agora', time: '0.8s', result: 'Campanha criada — 12.430 contatos', color: '#7C3AED' },
+  { cmd: 'Analise meu fluxo de caixa do mês', time: '1.1s', result: 'R$ 94.200 projetados — alerta: 3 inadimplentes', color: '#06B6D4' },
+  { cmd: 'Qualifique os leads de hoje', time: '0.6s', result: '23 leads — 4 hot, 12 warm, 7 cold', color: '#22C55E' },
+  { cmd: 'Envie cobrança para clientes atrasados', time: '0.9s', result: 'R$ 18.400 em cobranças disparadas', color: '#F59E0B' },
+]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -236,6 +275,107 @@ function FloatingNotification() {
         </motion.div>
       )}
     </AnimatePresence>
+  )
+}
+
+function AICommandOrb() {
+  const [cmdIdx, setCmdIdx] = useState(0)
+  const [executing, setExecuting] = useState(false)
+  const [showResult, setShowResult] = useState(false)
+
+  useEffect(() => {
+    const cycle = () => {
+      setExecuting(true)
+      setShowResult(false)
+      setTimeout(() => { setShowResult(true); setExecuting(false) }, 1200)
+      setTimeout(() => {
+        setShowResult(false)
+        setCmdIdx(i => (i + 1) % AI_COMMANDS.length)
+      }, 3800)
+    }
+    cycle()
+    const t = setInterval(cycle, 4400)
+    return () => clearInterval(t)
+  }, [])
+
+  const cmd = AI_COMMANDS[cmdIdx]
+
+  return (
+    <div className="relative flex flex-col items-center">
+      {/* Orb */}
+      <div className="relative flex items-center justify-center" style={{ width: 180, height: 180 }}>
+        {/* Outer pulse rings */}
+        {[1, 2, 3].map(i => (
+          <motion.div key={i} className="absolute rounded-full"
+            style={{ border: '1px solid rgba(124,58,237,0.2)', top: '50%', left: '50%' }}
+            animate={{ width: [60, 180], height: [60, 180], marginTop: [-30, -90], marginLeft: [-30, -90], opacity: [0.6, 0] }}
+            transition={{ duration: 3, repeat: Infinity, delay: i * 0.9, ease: 'easeOut' }}
+          />
+        ))}
+        {/* Core orb */}
+        <motion.div
+          className="relative z-10 w-28 h-28 rounded-full flex items-center justify-center"
+          style={{
+            background: 'radial-gradient(circle at 38% 35%, rgba(167,139,250,0.9) 0%, rgba(124,58,237,0.8) 45%, rgba(91,33,182,0.9) 100%)',
+            boxShadow: '0 0 60px rgba(124,58,237,0.7), 0 0 120px rgba(124,58,237,0.3), inset 0 0 30px rgba(167,139,250,0.3)',
+          }}
+          animate={{ scale: executing ? [1, 1.1, 1] : [1, 1.04, 1] }}
+          transition={{ duration: executing ? 0.6 : 3, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 1.5, repeat: Infinity }}>
+            <Mic size={36} color="#fff" />
+          </motion.div>
+        </motion.div>
+      </div>
+
+      {/* Waveform */}
+      <div className="flex items-center gap-1 mt-6" style={{ height: 40 }}>
+        {Array.from({ length: 24 }, (_, i) => (
+          <motion.div key={i} className="rounded-full w-1"
+            style={{ background: `rgba(124,58,237,${0.4 + (i % 3) * 0.2})`, minHeight: 4 }}
+            animate={{ height: executing ? [6, 32 + (i % 5) * 8, 6] : [4, 8 + (i % 4) * 4, 4] }}
+            transition={{ duration: 0.4 + (i % 3) * 0.15, repeat: Infinity, delay: i * 0.04, ease: 'easeInOut' }}
+          />
+        ))}
+      </div>
+
+      {/* Command input */}
+      <AnimatePresence mode="wait">
+        <motion.div key={cmdIdx}
+          className="mt-5 px-5 py-3 rounded-2xl max-w-sm text-center"
+          style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.3)', backdropFilter: 'blur(20px)' }}
+          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.3 }}
+        >
+          <p className="text-sm font-medium text-white/80">&ldquo;{cmd.cmd}&rdquo;</p>
+          {executing && (
+            <div className="flex items-center justify-center gap-1.5 mt-2">
+              {[0, 1, 2].map(i => (
+                <motion.div key={i} className="w-1.5 h-1.5 rounded-full bg-violet-400"
+                  animate={{ opacity: [0.3, 1, 0.3] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }} />
+              ))}
+              <span className="text-xs text-white/40 ml-1">Executando em {cmd.time}</span>
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Result card */}
+      <AnimatePresence>
+        {showResult && (
+          <motion.div
+            className="mt-3 px-4 py-2.5 rounded-xl flex items-center gap-2.5"
+            style={{ background: `${cmd.color}15`, border: `1px solid ${cmd.color}40` }}
+            initial={{ opacity: 0, scale: 0.9, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.35 }}
+          >
+            <CheckCircle2 size={14} style={{ color: cmd.color, flexShrink: 0 }} />
+            <span className="text-xs font-semibold" style={{ color: cmd.color }}>{cmd.result}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
 
@@ -724,6 +864,19 @@ export default function HomePage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Social links */}
+          <a href="https://www.instagram.com/nexus.saas.ia/" target="_blank" rel="noopener noreferrer"
+            className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg transition-all hover:scale-110"
+            style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.45)' }}
+            title="Instagram">
+            <InstagramIcon size={14} />
+          </a>
+          <a href="https://wa.me/5511987415930" target="_blank" rel="noopener noreferrer"
+            className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg transition-all hover:scale-110"
+            style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.45)' }}
+            title="WhatsApp">
+            <Phone size={14} />
+          </a>
           <button
             onClick={() => setLoginOpen(true)}
             className="text-sm text-white/55 hover:text-white/90 transition-all px-3.5 py-2 rounded-xl hidden md:flex items-center gap-1.5"
@@ -912,6 +1065,60 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── AI ASSISTANT ─────────────────────────────────────────────────────── */}
+      <section className="px-6 lg:px-12 py-20 relative overflow-hidden">
+        <GlowBg />
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, rgba(124,58,237,0.1) 0%, transparent 65%)' }} />
+        <div className="relative z-10 max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            <div>
+              <Reveal>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-6" style={{ background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.4)' }}>
+                  <Mic size={11} style={{ color: '#A78BFA' }} />
+                  <span className="text-xs font-black tracking-widest" style={{ color: '#A78BFA' }}>ASSISTENTE EXECUTIVO IA</span>
+                </div>
+                <h2 className="text-3xl md:text-4xl font-black leading-tight mb-6">
+                  <span className="text-white">Comande sua empresa</span><br />
+                  <span style={{ background: 'linear-gradient(90deg,#7C3AED,#A78BFA,#00F5D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                    com a sua voz.
+                  </span>
+                </h2>
+                <p className="text-sm leading-relaxed mb-8" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: 440 }}>
+                  Fale em linguagem natural. O NEXUS entende, decide e executa em segundos — cobranças, campanhas, análises e muito mais.
+                </p>
+              </Reveal>
+
+              <div className="space-y-3">
+                {AI_COMMANDS.map((cmd, i) => (
+                  <Reveal key={cmd.cmd} delay={i * 0.08}>
+                    <div className="flex items-start gap-3 p-3.5 rounded-xl transition-all duration-300 hover:scale-[1.01]"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${cmd.color}18`, border: `1px solid ${cmd.color}35` }}>
+                        <Mic size={13} style={{ color: cmd.color }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-white/65 mb-1 italic">&ldquo;{cmd.cmd}&rdquo;</p>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={11} style={{ color: cmd.color }} />
+                          <span className="text-xs font-semibold" style={{ color: cmd.color }}>{cmd.result}</span>
+                          <span className="text-[10px] text-white/25 ml-auto">{cmd.time}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Reveal>
+                ))}
+              </div>
+            </div>
+
+            <Reveal delay={0.15}>
+              <div className="flex justify-center">
+                <AICommandOrb />
+              </div>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
       {/* ── PROBLEMA ─────────────────────────────────────────────────────────── */}
       <section className="px-6 lg:px-12 py-16 relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.012)' }}>
         <GridBackground />
@@ -948,6 +1155,54 @@ export default function HomePage() {
                 </div>
               </Reveal>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── COMO FUNCIONA ────────────────────────────────────────────────────── */}
+      <section className="px-6 lg:px-12 py-20 relative overflow-hidden">
+        <GridBackground />
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, rgba(124,58,237,0.06) 0%, transparent 60%)' }} />
+        <div className="relative z-10 max-w-5xl mx-auto">
+          <Reveal className="text-center mb-14">
+            <p className="text-xs font-black tracking-widest mb-3" style={{ color: '#7C3AED' }}>COMO FUNCIONA</p>
+            <h2 className="text-3xl md:text-4xl font-black text-white">De zero a IA operando<br />em 5 passos.</h2>
+          </Reveal>
+
+          <div className="relative">
+            {/* Connecting line */}
+            <div className="hidden lg:block absolute left-1/2 top-8 bottom-8 w-px" style={{ background: 'linear-gradient(180deg, rgba(124,58,237,0.5) 0%, rgba(0,245,212,0.3) 100%)', transform: 'translateX(-50%)' }} />
+
+            <div className="space-y-8">
+              {HOW_IT_WORKS.map((step, i) => (
+                <Reveal key={step.step} delay={i * 0.1}>
+                  <div className={`flex gap-8 items-center ${i % 2 === 0 ? 'lg:flex-row' : 'lg:flex-row-reverse'}`}>
+                    {/* Content */}
+                    <div className={`flex-1 ${i % 2 === 0 ? 'lg:text-right' : 'lg:text-left'}`}>
+                      <div className={`p-6 rounded-2xl transition-all duration-300 hover:scale-[1.02]`}
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = `${step.color}40`; e.currentTarget.style.boxShadow = `0 0 30px ${step.color}10` }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.boxShadow = 'none' }}>
+                        <div className={`flex items-center gap-2 mb-2 ${i % 2 === 0 ? 'lg:justify-end' : ''}`}>
+                          <span className="text-[10px] font-black tracking-widest" style={{ color: step.color }}>PASSO {step.step}</span>
+                        </div>
+                        <h3 className="font-black text-white text-lg mb-2">{step.title}</h3>
+                        <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>{step.desc}</p>
+                      </div>
+                    </div>
+
+                    {/* Center node */}
+                    <div className="shrink-0 relative z-10 flex items-center justify-center"
+                      style={{ width: 64, height: 64, background: `${step.color}18`, border: `2px solid ${step.color}50`, borderRadius: '50%', boxShadow: `0 0 24px ${step.color}30` }}>
+                      <span style={{ fontSize: 26 }}>{step.icon}</span>
+                    </div>
+
+                    {/* Spacer (opposite side on desktop) */}
+                    <div className="flex-1 hidden lg:block" />
+                  </div>
+                </Reveal>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -990,6 +1245,41 @@ export default function HomePage() {
                 </Reveal>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── O QUE O NEXUS CONTROLA ───────────────────────────────────────────── */}
+      <section className="px-6 lg:px-12 py-20 relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.012)' }}>
+        <GridBackground />
+        <div className="relative z-10 max-w-7xl mx-auto">
+          <Reveal className="text-center mb-12">
+            <p className="text-xs font-black tracking-widest mb-3" style={{ color: '#A78BFA' }}>COBERTURA TOTAL</p>
+            <h2 className="text-3xl md:text-4xl font-black text-white mb-4">O que o NEXUS controla.</h2>
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.42)', maxWidth: 480, margin: '0 auto' }}>
+              Uma plataforma. 10 módulos. A empresa inteira operando com inteligência artificial.
+            </p>
+          </Reveal>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {NEXUS_CONTROLS.map((ctrl, i) => (
+              <Reveal key={ctrl.title} delay={i * 0.05}>
+                <motion.div
+                  className="group p-5 rounded-2xl cursor-default h-full flex flex-col transition-all duration-300"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+                  whileHover={{ scale: 1.04, borderColor: `${ctrl.color}50`, boxShadow: `0 0 32px ${ctrl.color}15`, background: `${ctrl.color}08` }}
+                >
+                  <div className="text-3xl mb-3">{ctrl.icon}</div>
+                  <h3 className="font-black text-white text-sm mb-1.5">{ctrl.title}</h3>
+                  <p className="text-[11px] leading-relaxed flex-1" style={{ color: 'rgba(255,255,255,0.38)' }}>{ctrl.desc}</p>
+                  <div className="mt-3 flex items-center gap-1">
+                    <motion.div className="w-1.5 h-1.5 rounded-full" style={{ background: ctrl.color }}
+                      animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity, delay: i * 0.2 }} />
+                    <span className="text-[10px] font-bold" style={{ color: ctrl.color }}>ATIVO</span>
+                  </div>
+                </motion.div>
+              </Reveal>
+            ))}
           </div>
         </div>
       </section>
@@ -1278,7 +1568,7 @@ export default function HomePage() {
               Junte-se a centenas de empresas que já operam com inteligência artificial executiva. Comece hoje.
             </p>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
               <motion.button
                 onClick={() => setLoginOpen(true)}
                 className="flex items-center gap-2 px-8 py-4 rounded-xl font-black text-base transition-all"
@@ -1286,16 +1576,37 @@ export default function HomePage() {
                 whileHover={{ scale: 1.04, boxShadow: '0 0 60px rgba(124,58,237,0.65)' }}
                 whileTap={{ scale: 0.97 }}
               >
-                <LogIn size={16} /> Acessar o NEXUS
+                <LogIn size={16} /> Entrar no NEXUS
               </motion.button>
 
               <motion.a
-                href="#"
+                href="https://wa.me/5511987415930"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-base transition-all"
-                style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.65)', background: 'rgba(255,255,255,0.03)' }}
-                whileHover={{ scale: 1.03, color: 'rgba(255,255,255,0.9)', borderColor: 'rgba(255,255,255,0.3)' }}
+                style={{ border: '1px solid rgba(34,197,94,0.35)', color: '#4ADE80', background: 'rgba(34,197,94,0.07)' }}
+                whileHover={{ scale: 1.03, borderColor: 'rgba(34,197,94,0.6)', boxShadow: '0 0 28px rgba(34,197,94,0.15)' }}
               >
-                Agendar uma demo <ArrowRight size={15} />
+                <Phone size={15} /> Conversar com IA
+              </motion.a>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <motion.button
+                onClick={() => setLoginOpen(true)}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
+                style={{ border: '1px solid rgba(124,58,237,0.3)', color: '#A78BFA', background: 'rgba(124,58,237,0.07)' }}
+                whileHover={{ scale: 1.03, borderColor: 'rgba(124,58,237,0.6)' }}
+              >
+                <Mic size={14} /> Testar assistente
+              </motion.button>
+
+              <motion.a
+                href="#demo"
+                className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
+                style={{ border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.03)' }}
+                whileHover={{ scale: 1.03, color: 'rgba(255,255,255,0.85)' }}
+              >
+                <Play size={14} /> Ver demonstração
               </motion.a>
             </div>
 
@@ -1331,13 +1642,26 @@ export default function HomePage() {
               <p className="text-xs leading-relaxed mb-5" style={{ color: 'rgba(255,255,255,0.3)', maxWidth: 220 }}>
                 O sistema operacional inteligente para empresas que querem operar no futuro.
               </p>
-              <div className="space-y-2">
+              <div className="space-y-2 mb-5">
                 <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.15)' }}>
                   <motion.span className="w-1.5 h-1.5 rounded-full bg-green-400"
                     animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.3, repeat: Infinity }} />
                   <span className="text-[10px] font-black" style={{ color: '#22C55E' }}>IA OPERANDO 24/7</span>
                 </div>
                 <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>Todos os sistemas funcionando</p>
+              </div>
+              {/* Social links */}
+              <div className="flex items-center gap-3">
+                <a href="https://www.instagram.com/nexus.saas.ia/" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:scale-105"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}>
+                  <InstagramIcon size={13} /> Instagram
+                </a>
+                <a href="https://wa.me/5511987415930" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:scale-105"
+                  style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', color: '#4ADE80' }}>
+                  <Phone size={13} /> WhatsApp
+                </a>
               </div>
             </div>
 
@@ -1364,8 +1688,23 @@ export default function HomePage() {
             ))}
           </div>
 
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-6 text-[11px]"
-            style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.18)' }}>
+          {/* Social bar */}
+          <div className="flex flex-wrap items-center justify-center gap-4 py-6" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: 20 }}>
+            <a href="https://www.instagram.com/nexus.saas.ia/" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}>
+              <InstagramIcon size={15} /> @nexus.saas.ia
+            </a>
+            <a href="https://wa.me/5511987415930" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105"
+              style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)', color: '#4ADE80' }}>
+              <Phone size={15} /> +55 11 98741-5930
+            </a>
+            <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Fale com a nossa IA ou com o time</span>
+          </div>
+
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-2 text-[11px]"
+            style={{ color: 'rgba(255,255,255,0.18)' }}>
             <p>© 2026 NEXUS IA. Todos os direitos reservados.</p>
             <div className="flex gap-5">
               <a href="#" className="hover:text-white/40 transition-colors">Privacidade</a>

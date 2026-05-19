@@ -4,6 +4,7 @@ import { replyWhatsApp } from '@/lib/whatsapp'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { captureLead, classifyTier } from '@/lib/lead-capture'
 import { generateSalesResponse, type Lead, type BusinessContext } from '@/lib/sales-engine'
+import { emitEvent } from '@/lib/core/event-bus'
 
 export const dynamic = 'force-dynamic'
 
@@ -153,6 +154,11 @@ async function handleTextMessage(params: {
     const companyId = await resolveCompanyFromPhoneId(phoneNumberId)
 
     if (companyId) {
+      // ── Emit incoming message event ───────────────────────────────────────
+      emitEvent('message.received', companyId, {
+        phone: from, name: senderName, text: userText, phone_number_id: phoneNumberId,
+      }, 'whatsapp-webhook').catch(() => {})
+
       // ── Sales Engine Path: capture lead + AI sales response ───────────────
       const { lead, isNew } = await captureLead({
         name:      senderName ?? `WhatsApp ${from}`,
@@ -224,6 +230,12 @@ async function handleTextMessage(params: {
 
       // Send via WhatsApp
       await replyWhatsApp({ phoneNumberId, to: from, message: aiReply })
+
+      // Emit sent event
+      emitEvent('message.sent', companyId, {
+        phone: from, ai_generated: true, lead_id: lead.id,
+      }, 'whatsapp-webhook').catch(() => {})
+
       return
     }
 
