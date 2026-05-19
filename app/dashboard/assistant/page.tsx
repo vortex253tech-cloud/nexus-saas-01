@@ -346,6 +346,7 @@ export default function AssistantPage() {
     try { msg = JSON.parse(ev.data as string) } catch { return }
 
     const type = msg.type as string
+    console.log('[NEXUS realtime]', type, msg)
 
     if (type === 'input_audio_buffer.speech_started') {
       setVoiceState('listening')
@@ -442,10 +443,14 @@ export default function AssistantPage() {
         // Surface the actual OpenAI error so the user knows what to fix
         throw new Error(msg)
       }
-      const { client_secret } = await sessionRes.json() as {
-        client_secret: { value: string }
+      const sessionData = await sessionRes.json() as Record<string, unknown>
+      console.log('[NEXUS voice] session response:', JSON.stringify(sessionData))
+
+      const ephemeralKey = sessionData?.ephemeral_key as string | undefined
+        ?? (sessionData?.client_secret as { value?: string } | undefined)?.value
+      if (!ephemeralKey) {
+        throw new Error(`Sem chave efêmera na resposta: ${JSON.stringify(sessionData).slice(0, 200)}`)
       }
-      const ephemeralKey = client_secret.value
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 

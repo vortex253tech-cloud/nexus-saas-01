@@ -193,13 +193,29 @@ export async function POST(req: NextRequest) {
       }, { status: 502 })
     }
 
-    const data = await res.json() as {
-      client_secret: { value: string; expires_at: number }
+    // Log the full response to diagnose structure changes between API versions
+    const raw = await res.text()
+    console.log('[voice/session] OpenAI raw response:', raw.slice(0, 500))
+
+    let data: Record<string, unknown> = {}
+    try { data = JSON.parse(raw) } catch { /* non-JSON */ }
+
+    // Resolve ephemeral key regardless of nesting level
+    type MaybeSecret = { value?: string; expires_at?: number } | undefined
+    const csObj   = (data?.client_secret as MaybeSecret) ?? (data as MaybeSecret)
+    const ekValue = csObj?.value ?? null
+
+    if (!ekValue) {
+      console.error('[voice/session] No ephemeral key found in:', raw.slice(0, 500))
+      return NextResponse.json(
+        { error: 'OpenAI did not return an ephemeral key', raw: raw.slice(0, 500) },
+        { status: 502 },
+      )
     }
 
     return NextResponse.json({
-      client_secret: data.client_secret,
-      model:         'gpt-realtime',
+      ephemeral_key: ekValue,
+      expires_at:    csObj?.expires_at ?? null,
     })
   } catch (err) {
     console.error('[voice/session] error:', err)
