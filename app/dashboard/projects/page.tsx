@@ -1,159 +1,52 @@
 'use client'
 
-import { useEffect, useState, useCallback, type ReactNode } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
-  FolderOpen, Plus, TrendingUp, TrendingDown, DollarSign,
-  Loader2, ChevronRight, BarChart3, Trash2, X,
-  Package, Wrench, ShoppingCart, Monitor,
+  Plus, FolderKanban, Search, CheckSquare, Clock,
+  AlertCircle, Trash2, ArrowRight, Target, X, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface Task { id: string; status: string; priority: string }
+
 interface Project {
-  id:            string
-  name:          string
-  type:          string
-  description:   string
-  goal:          string
-  created_at:    string
-  totalRevenue:  number
-  totalExpenses: number
-  profit:        number
+  id:           string
+  name:         string
+  type?:        string
+  description?: string
+  goal?:        number
+  status?:      string
+  created_at:   string
+  tasks?:       Task[]
 }
 
-const TYPE_META: Record<string, { label: string; icon: ReactNode; color: string }> = {
-  product:   { label: 'Produto',    icon: <Package size={16} />,      color: 'text-violet-400 bg-violet-600/15 border-violet-600/20' },
-  service:   { label: 'Serviço',   icon: <Wrench size={16} />,       color: 'text-blue-400 bg-blue-600/15 border-blue-600/20' },
-  ecommerce: { label: 'E-commerce', icon: <ShoppingCart size={16} />, color: 'text-emerald-400 bg-emerald-600/15 border-emerald-600/20' },
-  saas:      { label: 'SaaS',      icon: <Monitor size={16} />,      color: 'text-cyan-400 bg-cyan-600/15 border-cyan-600/20' },
-  other:     { label: 'Outro',     icon: <FolderOpen size={16} />,   color: 'text-zinc-400 bg-zinc-700/40 border-zinc-700/40' },
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const STATUS_CFG = {
+  active:    { label: 'Ativo',      cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20' },
+  paused:    { label: 'Pausado',    cls: 'bg-amber-500/20  text-amber-400  border-amber-500/20' },
+  completed: { label: 'Concluído',  cls: 'bg-violet-500/20 text-violet-400 border-violet-500/20' },
+  archived:  { label: 'Arquivado', cls: 'bg-zinc-500/20   text-zinc-400   border-zinc-500/20' },
+} as const
+
+function getStats(tasks: Task[] = []) {
+  const total      = tasks.length
+  const done       = tasks.filter(t => t.status === 'done').length
+  const inProgress = tasks.filter(t => t.status === 'in_progress').length
+  const urgent     = tasks.filter(t => t.priority === 'urgent').length
+  const progress   = total > 0 ? Math.round((done / total) * 100) : 0
+  return { total, done, inProgress, urgent, progress }
 }
 
-// legacy compat
-const TYPE_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(TYPE_META).map(([k, v]) => [k, v.label])
-)
-
-const FORM_DEFAULTS = { name: '', type: 'product', description: '', goal: '' }
-
-// ─── Create modal ─────────────────────────────────────────────────────────────
-
-function CreateModal({
-  onClose,
-  onCreated,
-}: {
-  onClose:   () => void
-  onCreated: (id: string) => void
-}) {
-  const [form, setForm]   = useState(FORM_DEFAULTS)
-  const [saving, setSaving] = useState(false)
-  const [error, setError]   = useState('')
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!form.name.trim()) { setError('Nome é obrigatório'); return }
-    setSaving(true)
-    setError('')
-    try {
-      const res  = await fetch('/api/projects', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(form),
-      })
-      const data = await res.json() as { id?: string; error?: string }
-      if (!res.ok) { setError(data.error ?? 'Erro ao criar projeto'); return }
-      onCreated(data.id!)
-    } finally {
-      setSaving(false)
-    }
-  }
-
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6"
-      >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-white">Novo projeto</h2>
-          <button onClick={onClose} className="p-1.5 text-zinc-500 hover:text-white rounded-lg hover:bg-zinc-800">
-            <X size={16} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Nome do projeto *</label>
-            <input
-              value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="Ex: Loja de roupas online"
-              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Tipo</label>
-            <select
-              value={form.type}
-              onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
-            >
-              <option value="product">📦 Produto</option>
-              <option value="service">🛠️ Serviço</option>
-              <option value="ecommerce">🛒 E-commerce</option>
-              <option value="saas">💻 SaaS</option>
-              <option value="other">📁 Outro</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Descrição</label>
-            <textarea
-              value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="Descreva brevemente o projeto..."
-              rows={2}
-              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500 resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Objetivo principal</label>
-            <input
-              value={form.goal}
-              onChange={e => setForm(f => ({ ...f, goal: e.target.value }))}
-              placeholder="Ex: Faturar R$ 50k/mês"
-              className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
-            />
-          </div>
-
-          {error && <p className="text-xs text-red-400">{error}</p>}
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2 rounded-lg text-sm font-medium text-zinc-400 bg-zinc-800 hover:bg-zinc-700"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 py-2 rounded-lg text-sm font-semibold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-              Criar projeto
-            </button>
-          </div>
-        </form>
-      </motion.div>
+    <div>
+      <label className="block text-xs font-medium text-zinc-400 mb-1.5">{label}</label>
+      {children}
     </div>
   )
 }
@@ -162,188 +55,320 @@ function CreateModal({
 
 export default function ProjectsPage() {
   const router = useRouter()
+
   const [projects, setProjects] = useState<Project[]>([])
   const [loading,  setLoading]  = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [deleting, setDeleting]  = useState<string | null>(null)
+  const [search,   setSearch]   = useState('')
+  const [showNew,  setShowNew]  = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [saving,   setSaving]   = useState(false)
+  const [form, setForm] = useState({ name: '', type: 'produto', description: '', goal: '' })
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res  = await fetch('/api/projects')
-      const data = await res.json() as { projects?: Project[] }
-      setProjects(data.projects ?? [])
-    } finally {
-      setLoading(false)
-    }
+      const res = await fetch('/api/projects')
+      if (!res.ok) return
+      const { data } = await res.json()
+
+      const withTasks = await Promise.all(
+        (data || []).map(async (p: Project) => {
+          try {
+            const tr = await fetch(`/api/projects/${p.id}/tasks`)
+            if (tr.ok) {
+              const { data: tasks } = await tr.json()
+              return { ...p, tasks: tasks || [] }
+            }
+          } catch { /* ignore */ }
+          return { ...p, tasks: [] }
+        }),
+      )
+      setProjects(withTasks)
+    } catch { /* ignore */ }
+    setLoading(false)
   }, [])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { load() }, [load])
+
+  const filtered = projects.filter(p =>
+    p.name.toLowerCase().includes(search.toLowerCase()),
+  )
+
+  const totalTasks  = projects.reduce((s, p) => s + (p.tasks?.length ?? 0), 0)
+  const doneTasks   = projects.reduce((s, p) => s + (p.tasks?.filter(t => t.status === 'done').length ?? 0), 0)
+  const inProgTasks = projects.reduce((s, p) => s + (p.tasks?.filter(t => t.status === 'in_progress').length ?? 0), 0)
+  const overallPct  = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
+
+  async function handleCreate() {
+    if (!form.name.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/projects', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          name:        form.name.trim(),
+          type:        form.type,
+          description: form.description || null,
+          goal:        form.goal ? Number(form.goal) : null,
+        }),
+      })
+      if (res.ok) {
+        setShowNew(false)
+        setForm({ name: '', type: 'produto', description: '', goal: '' })
+        load()
+      }
+    } catch { /* ignore */ }
+    setSaving(false)
+  }
 
   async function handleDelete(id: string) {
-    if (!confirm('Remover projeto e todos os dados?')) return
     setDeleting(id)
-    await fetch(`/api/projects/${id}`, { method: 'DELETE' })
-    setProjects(p => p.filter(x => x.id !== id))
+    try {
+      await fetch(`/api/projects/${id}`, { method: 'DELETE' })
+      setProjects(prev => prev.filter(p => p.id !== id))
+    } catch { /* ignore */ }
     setDeleting(null)
   }
 
-  const fmtBRL = (v: number) => `R$ ${Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="min-h-screen bg-zinc-950 p-6 max-w-7xl mx-auto">
+
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2.5">
-            <FolderOpen size={24} className="text-violet-400" />
-            Projetos
-          </h1>
-          <p className="text-zinc-400 text-sm mt-1">Organize produtos, receitas e custos — analise com IA</p>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
+            <FolderKanban size={20} className="text-violet-400" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white">Projetos</h1>
+            <p className="text-xs text-zinc-500">
+              {projects.length} projeto{projects.length !== 1 ? 's' : ''} · {totalTasks} tarefa{totalTasks !== 1 ? 's' : ''}
+            </p>
+          </div>
         </div>
         <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors"
+          onClick={() => setShowNew(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-xl transition"
         >
-          <Plus size={16} />
-          Criar projeto
+          <Plus size={15} />
+          Novo projeto
         </button>
       </div>
 
-      {/* Content */}
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[
+          { label: 'Projetos',        value: projects.length, icon: FolderKanban, color: 'text-violet-400' },
+          { label: 'Em andamento',    value: inProgTasks,     icon: Clock,        color: 'text-amber-400' },
+          { label: 'Conclusão geral', value: `${overallPct}%`, icon: Target,      color: 'text-emerald-400' },
+        ].map(s => (
+          <div key={s.label} className="bg-zinc-900/60 border border-zinc-800/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-1.5">
+              <s.icon size={13} className={s.color} />
+              <span className="text-xs text-zinc-500">{s.label}</span>
+            </div>
+            <div className="text-2xl font-bold text-white">{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="relative mb-6">
+        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar projetos..."
+          className="w-full pl-9 pr-4 py-2.5 bg-zinc-900/60 border border-zinc-800/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 transition"
+        />
+      </div>
+
+      {/* Projects */}
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <Loader2 size={32} className="animate-spin text-violet-400" />
+          <Loader2 size={22} className="animate-spin text-violet-400" />
         </div>
-      ) : projects.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col items-center justify-center py-24 text-center"
-        >
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-800/60 border border-zinc-700/50 mb-4">
-            <BarChart3 size={28} className="text-zinc-500" />
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+            <FolderKanban size={28} className="text-zinc-700" />
           </div>
-          <h3 className="text-lg font-semibold text-white mb-2">Nenhum projeto ainda</h3>
-          <p className="text-zinc-500 text-sm max-w-xs mb-6">
-            Crie seu primeiro projeto para organizar produtos, receitas e despesas com inteligência artificial.
-          </p>
+          <div>
+            <p className="text-zinc-400 font-medium">Nenhum projeto encontrado</p>
+            <p className="text-zinc-600 text-sm mt-1">Crie seu primeiro projeto para começar</p>
+          </div>
           <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 px-5 py-2.5 text-sm font-semibold text-white"
+            onClick={() => setShowNew(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 text-sm font-medium rounded-xl transition border border-violet-500/20"
           >
-            <Plus size={16} />
-            Criar primeiro projeto
+            <Plus size={14} /> Criar projeto
           </button>
-        </motion.div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <AnimatePresence>
-            {projects.map((p, i) => (
+          {filtered.map((project, i) => {
+            const s   = getStats(project.tasks)
+            const cfg = STATUS_CFG[project.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.active
+            return (
               <motion.div
-                key={p.id}
-                initial={{ opacity: 0, y: 10 }}
+                key={project.id}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                whileHover={{ y: -3 }}
-                transition={{ delay: i * 0.04, type: 'spring', stiffness: 360, damping: 26 }}
-                className="group relative bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-violet-600/40 nexus-card cursor-pointer"
-                onClick={() => router.push(`/dashboard/projects/${p.id}`)}
+                transition={{ delay: i * 0.04 }}
+                className="group bg-zinc-900/60 border border-zinc-800/50 rounded-2xl p-5 hover:border-zinc-700/50 transition cursor-pointer relative"
+                onClick={() => router.push(`/dashboard/projects/${project.id}`)}
               >
-                {/* Delete btn */}
+                {/* Delete */}
                 <button
-                  onClick={e => { e.stopPropagation(); void handleDelete(p.id) }}
-                  disabled={deleting === p.id}
-                  className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                  onClick={e => { e.stopPropagation(); handleDelete(project.id) }}
+                  disabled={deleting === project.id}
+                  className="absolute top-4 right-4 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition"
                 >
-                  {deleting === p.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  {deleting === project.id
+                    ? <Loader2 size={13} className="animate-spin" />
+                    : <Trash2 size={13} />}
                 </button>
 
-                <div className="flex items-start gap-3 mb-4">
-                  <div className={cn(
-                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border',
-                    TYPE_META[p.type]?.color ?? 'text-zinc-400 bg-zinc-700/40 border-zinc-700/40',
-                  )}>
-                    {TYPE_META[p.type]?.icon ?? <FolderOpen size={16} />}
+                {/* Name */}
+                <div className="mb-4 pr-6">
+                  <span className={cn('inline-flex px-2 py-0.5 text-xs font-medium rounded-full border mb-1.5', cfg.cls)}>
+                    {cfg.label}
+                  </span>
+                  <h3 className="font-semibold text-white text-sm leading-snug">{project.name}</h3>
+                  {project.description && (
+                    <p className="text-xs text-zinc-500 mt-1 line-clamp-2">{project.description}</p>
+                  )}
+                </div>
+
+                {/* Progress */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-zinc-500">Progresso</span>
+                    <span className="font-medium text-white">{s.progress}%</span>
                   </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-white truncate">{p.name}</h3>
-                    <p className="text-xs text-zinc-500 mt-0.5">{TYPE_META[p.type]?.label ?? p.type}</p>
+                  <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-violet-500 rounded-full transition-all duration-300"
+                      style={{ width: `${s.progress}%` }}
+                    />
                   </div>
                 </div>
 
-                {p.goal && (
-                  <p className="text-xs text-zinc-500 mb-4 line-clamp-1 flex items-center gap-1">
-                    <TrendingUp size={10} className="text-violet-400 shrink-0" />
-                    {p.goal}
-                  </p>
-                )}
-
-                {/* Metrics */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  <div className="rounded-lg bg-zinc-800/60 px-2 py-2 text-center">
-                    <p className="text-[10px] text-zinc-500 mb-0.5">Receita</p>
-                    <p className="text-xs font-bold text-emerald-400">{fmtBRL(p.totalRevenue)}</p>
+                {/* Task chips */}
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <div className="flex items-center gap-1.5 text-zinc-400">
+                    <CheckSquare size={12} className="text-emerald-400" />
+                    {s.done}/{s.total} concluídas
                   </div>
-                  <div className="rounded-lg bg-zinc-800/60 px-2 py-2 text-center">
-                    <p className="text-[10px] text-zinc-500 mb-0.5">Custos</p>
-                    <p className="text-xs font-bold text-red-400">{fmtBRL(p.totalExpenses)}</p>
-                  </div>
-                  <div className={cn('rounded-lg px-2 py-2 text-center',
-                    p.profit >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'
-                  )}>
-                    <p className="text-[10px] text-zinc-500 mb-0.5">Lucro</p>
-                    <p className={cn('text-xs font-bold flex items-center justify-center gap-0.5',
-                      p.profit >= 0 ? 'text-emerald-400' : 'text-red-400'
-                    )}>
-                      {p.profit >= 0
-                        ? <TrendingUp size={10} />
-                        : <TrendingDown size={10} />
-                      }
-                      {fmtBRL(p.profit)}
-                    </p>
-                  </div>
+                  {s.inProgress > 0 && (
+                    <div className="flex items-center gap-1.5 text-zinc-400">
+                      <Clock size={12} className="text-amber-400" />
+                      {s.inProgress} andando
+                    </div>
+                  )}
+                  {s.urgent > 0 && (
+                    <div className="flex items-center gap-1.5 text-zinc-400">
+                      <AlertCircle size={12} className="text-red-400" />
+                      {s.urgent} urgentes
+                    </div>
+                  )}
                 </div>
 
-                {/* Profit bar */}
-                {p.totalRevenue > 0 && (
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between text-[10px] text-zinc-600 mb-1">
-                      <span>Margem</span>
-                      <span>{Math.round((p.profit / p.totalRevenue) * 100)}%</span>
-                    </div>
-                    <div className="h-1 w-full rounded-full bg-zinc-800 overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.max(0, Math.min(100, (p.profit / p.totalRevenue) * 100))}%` }}
-                        transition={{ duration: 0.8, ease: 'easeOut', delay: i * 0.05 }}
-                        className={cn('h-full rounded-full', p.profit >= 0 ? 'bg-emerald-500' : 'bg-red-500')}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-zinc-600">
-                    {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center justify-between">
+                  <span className="text-xs text-zinc-600">
+                    {new Date(project.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
                   </span>
-                  <span className="flex items-center gap-1 text-xs text-violet-400 font-medium">
-                    Ver detalhes <ChevronRight size={12} />
-                  </span>
+                  <ArrowRight size={13} className="text-zinc-600 group-hover:text-violet-400 transition" />
                 </div>
               </motion.div>
-            ))}
-          </AnimatePresence>
+            )
+          })}
         </div>
       )}
 
-      {/* Modal */}
+      {/* Create Modal */}
       <AnimatePresence>
-        {showModal && (
-          <CreateModal
-            onClose={() => setShowModal(false)}
-            onCreated={(id) => { setShowModal(false); router.push(`/dashboard/projects/${id}`) }}
-          />
+        {showNew && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowNew(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-bold text-white">Novo Projeto</h2>
+                <button onClick={() => setShowNew(false)} className="text-zinc-500 hover:text-white transition">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <Field label="Nome do projeto *">
+                  <input
+                    autoFocus
+                    value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                    placeholder="Ex: Lançamento Produto X"
+                    className="w-full px-3.5 py-2.5 bg-zinc-800/50 border border-zinc-700/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50"
+                  />
+                </Field>
+                <Field label="Tipo">
+                  <select
+                    value={form.type}
+                    onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 bg-zinc-800/50 border border-zinc-700/50 rounded-xl text-sm text-white focus:outline-none focus:border-violet-500/50"
+                  >
+                    <option value="produto">Produto</option>
+                    <option value="servico">Serviço</option>
+                    <option value="marketing">Marketing</option>
+                    <option value="interno">Interno</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </Field>
+                <Field label="Descrição">
+                  <textarea
+                    value={form.description}
+                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                    placeholder="Objetivo do projeto..."
+                    rows={2}
+                    className="w-full px-3.5 py-2.5 bg-zinc-800/50 border border-zinc-700/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 resize-none"
+                  />
+                </Field>
+                <Field label="Meta de receita (R$)">
+                  <input
+                    type="number"
+                    value={form.goal}
+                    onChange={e => setForm(f => ({ ...f, goal: e.target.value }))}
+                    placeholder="0,00"
+                    className="w-full px-3.5 py-2.5 bg-zinc-800/50 border border-zinc-700/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50"
+                  />
+                </Field>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowNew(false)}
+                  className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium rounded-xl transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCreate}
+                  disabled={!form.name.trim() || saving}
+                  className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition flex items-center justify-center gap-2"
+                >
+                  {saving && <Loader2 size={14} className="animate-spin" />}
+                  Criar projeto
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

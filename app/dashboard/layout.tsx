@@ -13,7 +13,7 @@ import {
   Loader2, RefreshCw, CheckCircle2, AlertCircle,
   ExternalLink, Activity, Moon, Brain, BarChart3,
   Package, Bot, Wallet, Sparkles, MessageCircle,
-  Users, Database, Wand2, ChevronDown, Mic,
+  Users, Database, Wand2, ChevronDown, Mic, FolderKanban,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -69,6 +69,11 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    href:  '/dashboard/projects',
+    label: 'Projetos',
+    icon:  FolderKanban,
+  },
+  {
     href:  '/dashboard/financeiro',
     label: 'Financeiro',
     icon:  DollarSign,
@@ -84,12 +89,11 @@ const NAV: NavGroup[] = [
     label: 'IA NEXUS',
     icon:  Bot,
     children: [
-      { href: '/dashboard/nexus',          label: 'Painel IA',    icon: Bot },
-      { href: '/dashboard/advisor',        label: 'Consultor',    icon: Brain },
-      { href: '/dashboard/creative-ai',    label: 'Criativos',    icon: Sparkles },
-      { href: '/dashboard/automations',    label: 'Automações',   icon: Wand2 },
-      { href: '/dashboard/actions',        label: 'Ações',        icon: Zap },
-      { href: '/dashboard/alerts',         label: 'Alertas',      icon: Bell },
+      { href: '/dashboard/nexus',       label: 'Painel IA',  icon: Bot },
+      { href: '/dashboard/advisor',     label: 'Consultor',  icon: Brain },
+      { href: '/dashboard/creative-ai', label: 'Criativos',  icon: Sparkles },
+      { href: '/dashboard/actions',     label: 'Ações',      icon: Zap },
+      { href: '/dashboard/alerts',      label: 'Alertas',    icon: Bell },
     ],
   },
   {
