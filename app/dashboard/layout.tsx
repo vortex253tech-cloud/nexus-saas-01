@@ -13,7 +13,7 @@ import {
   Loader2, RefreshCw, CheckCircle2, AlertCircle,
   ExternalLink, Activity, Moon, Brain, BarChart3,
   Package, Bot, Wallet, Sparkles, MessageCircle,
-  Users, Database, Wand2, ChevronDown,
+  Users, Database, Wand2, ChevronDown, Mic,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -956,6 +956,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <main>{children}</main>
         </div>
+
+        {/* Floating voice assistant — desktop */}
+        <Link
+          href="/dashboard/assistant"
+          title="NEXUS Voice Assistant"
+          className="fixed bottom-22 right-6 z-40 hidden lg:flex items-center justify-center rounded-2xl h-12 w-12 bg-gradient-to-br from-violet-700 to-purple-900 text-white hover:scale-105 transition-all duration-200 shadow-xl"
+          style={{ boxShadow: '0 0 20px rgba(139,92,246,0.45), 0 8px 16px rgba(0,0,0,0.4)', bottom: '5.5rem' }}
+        >
+          <Mic size={19} />
+          <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-purple-400 ring-2 ring-zinc-950">
+            <span className="h-1.5 w-1.5 rounded-full bg-white" />
+          </span>
+        </Link>
 
         {/* Floating AI chat — desktop */}
         <button
