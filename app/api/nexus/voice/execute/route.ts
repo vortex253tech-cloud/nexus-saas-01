@@ -343,6 +343,187 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      // ── getUnreadMessages ─────────────────────────────────────────
+      case 'getUnreadMessages': {
+        const { data: convs } = await supabase
+          .from('whatsapp_conversations')
+          .select('id, phone, contact_name, unread_count, last_message_at, status')
+          .eq('company_id', companyId)
+          .gt('unread_count', 0)
+          .order('last_message_at', { ascending: false })
+          .limit(10)
+
+        const totalUnread = convs?.reduce((s, c) => s + (c.unread_count ?? 0), 0) ?? 0
+        return NextResponse.json({
+          conversations: (convs ?? []).map(c => ({
+            id: c.id, phone: c.phone,
+            name: c.contact_name ?? `+${c.phone}`,
+            unread: c.unread_count,
+            last_contact: c.last_message_at,
+          })),
+          total_unread: totalUnread,
+          count: convs?.length ?? 0,
+          summary: totalUnread > 0
+            ? `${totalUnread} mensagens não lidas em ${convs?.length} conversas: ${(convs ?? []).map(c => c.contact_name ?? c.phone).join(', ')}.`
+            : 'Nenhuma mensagem não lida.',
+        })
+      }
+
+      // ── getFinancialSummary ───────────────────────────────────────
+      case 'getFinancialSummary': {
+        const now     = new Date()
+        const som     = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+        const prevSom = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+
+        // Try `transactions` table first; gracefully degrade on missing tables
+        const { data: txs, error: txErr } = await supabase
+          .from('transactions')
+          .select('amount, type, status, created_at')
+          .eq('company_id', companyId)
+          .gte('created_at', som)
+
+        if (txErr?.code === '42P01') {
+          // Table doesn't exist — try `payments`
+          const { data: pays } = await supabase
+            .from('payments')
+            .select('amount, status, created_at')
+            .eq('company_id', companyId)
+            .gte('created_at', som)
+
+          if (pays) {
+            const rev = pays.filter(p => p.status === 'paid').reduce((s, p) => s + (p.amount ?? 0), 0)
+            return NextResponse.json({
+              revenue_month: rev,
+              summary: `Faturamento do mês: R$${rev.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            })
+          }
+          return NextResponse.json({ revenue_month: 0, summary: 'Dados financeiros não configurados.' })
+        }
+
+        const revenue  = (txs ?? []).filter(t => ['revenue','sale','recebimento'].includes(t.type ?? '')).reduce((s, t) => s + (t.amount ?? 0), 0)
+        const expenses = (txs ?? []).filter(t => ['expense','despesa'].includes(t.type ?? '')).reduce((s, t) => s + (t.amount ?? 0), 0)
+        const net      = revenue - expenses
+
+        return NextResponse.json({
+          revenue_month: revenue,
+          expenses_month: expenses,
+          net_month: net,
+          transactions: txs?.length ?? 0,
+          summary: `Faturamento: R$${revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} | Despesas: R$${expenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} | Líquido: R$${net.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        })
+      }
+
+      // ── getPipelineLeads ──────────────────────────────────────────
+      case 'getPipelineLeads': {
+        const stage = params.stage ? String(params.stage) : undefined
+        const limit = Math.min(Number(params.limit ?? 20), 50)
+
+        const q = supabase
+          .from('lead_context')
+          .select('conversation_id, nome, empresa, nicho, estagio, objetivo, faturamento')
+          .eq('company_id', companyId)
+          .limit(limit)
+
+        if (stage) q.ilike('estagio', `%${stage}%`)
+
+        const { data: leads } = await q
+        const byStage: Record<string, number> = {}
+        ;(leads ?? []).forEach(l => {
+          const s = l.estagio ?? 'novo'
+          byStage[s] = (byStage[s] ?? 0) + 1
+        })
+
+        return NextResponse.json({
+          leads: leads ?? [],
+          by_stage: byStage,
+          total: leads?.length ?? 0,
+          summary: leads?.length
+            ? `${leads.length} leads no CRM. Distribuição: ${Object.entries(byStage).map(([k, v]) => `${k} (${v})`).join(', ')}.`
+            : 'Nenhum lead encontrado no CRM.',
+        })
+      }
+
+      // ── updateLeadStage ───────────────────────────────────────────
+      case 'updateLeadStage': {
+        const convId = String(params.conversation_id ?? '')
+        const stage  = String(params.stage ?? '').trim()
+
+        if (!convId || !stage) return NextResponse.json({ error: 'conversation_id and stage required' })
+
+        const { error: upsertErr } = await supabase
+          .from('lead_context')
+          .upsert({ conversation_id: convId, company_id: companyId, estagio: stage }, { onConflict: 'conversation_id' })
+
+        if (upsertErr) return NextResponse.json({ success: false, error: upsertErr.message })
+        return NextResponse.json({ success: true, summary: `Lead movido para o estágio "${stage}".` })
+      }
+
+      // ── markConversationRead ──────────────────────────────────────
+      case 'markConversationRead': {
+        const convId = String(params.conversation_id ?? '')
+        if (!convId) return NextResponse.json({ error: 'conversation_id required' })
+
+        await supabase
+          .from('whatsapp_conversations')
+          .update({ unread_count: 0, updated_at: new Date().toISOString() })
+          .eq('id', convId)
+          .eq('company_id', companyId)
+
+        return NextResponse.json({ success: true, summary: 'Conversa marcada como lida.' })
+      }
+
+      // ── getConversationHistory ────────────────────────────────────
+      case 'getConversationHistory': {
+        const convId = String(params.conversation_id ?? '')
+        const limit  = Math.min(Number(params.limit ?? 10), 30)
+
+        if (!convId) return NextResponse.json({ error: 'conversation_id required' })
+
+        const { data: msgs } = await supabase
+          .from('whatsapp_messages')
+          .select('direction, content, created_at, ai_generated')
+          .eq('conversation_id', convId)
+          .eq('company_id', companyId)
+          .order('created_at', { ascending: false })
+          .limit(limit)
+
+        const reversed = [...(msgs ?? [])].reverse()
+        return NextResponse.json({
+          messages: reversed,
+          count: reversed.length,
+          summary: reversed.length > 0
+            ? `Últimas ${reversed.length} mensagens carregadas.`
+            : 'Nenhuma mensagem encontrada.',
+        })
+      }
+
+      // ── getSystemStatus ───────────────────────────────────────────
+      case 'getSystemStatus': {
+        const [{ data: convs }, { data: followups }] = await Promise.all([
+          supabase
+            .from('whatsapp_conversations')
+            .select('id, status, ai_enabled, unread_count')
+            .eq('company_id', companyId),
+          supabase
+            .from('voice_followups')
+            .select('id, status, scheduled_at')
+            .eq('company_id', companyId)
+            .eq('status', 'pending'),
+        ])
+
+        const total      = convs?.length ?? 0
+        const aiOn       = convs?.filter(c => c.ai_enabled).length ?? 0
+        const unread     = convs?.reduce((s, c) => s + (c.unread_count ?? 0), 0) ?? 0
+        const pending_fu = followups?.length ?? 0
+
+        return NextResponse.json({
+          whatsapp: { total_conversations: total, ai_active: aiOn, unread },
+          followups: { pending: pending_fu },
+          health: aiOn > 0 ? 'operacional' : 'atenção',
+          summary: `Sistema ${aiOn > 0 ? 'operacional' : 'requer atenção'}. ${total} conversas, IA ativa em ${aiOn}, ${unread} não lidas, ${pending_fu} follow-ups pendentes.`,
+        })
+      }
+
       default:
         return NextResponse.json({ error: `Unknown tool: ${tool}` }, { status: 400 })
     }

@@ -7,6 +7,8 @@ import {
   Mic, MicOff, Zap, MessageSquare, Activity, Navigation,
   Users, Send, Search, ToggleLeft, UserCheck, BarChart2,
   Calendar, Loader2, Volume2, AlertCircle, X, ChevronRight,
+  TrendingUp, DollarSign, Bell, CheckCircle, Wifi, WifiOff,
+  MessageCircle, GitBranch, Eye, Clock,
 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -26,6 +28,16 @@ interface ActionLog {
   label: string
   ts:    number
   ok:    boolean
+  detail?: string
+}
+
+interface LiveMetrics {
+  conversations: number
+  unread:        number
+  ai_active:     number
+  mrr:           string | null
+  system_ok:     boolean
+  loaded:        boolean
 }
 
 // ── Orb config per state ───────────────────────────────────────────────────
@@ -43,16 +55,25 @@ const ORB: Record<VoiceState, { gradient: string; glow: string; label: string; p
 const TOOL_LABELS: Record<string, string> = {
   navigate:             'Navegando',
   getWhatsAppStats:     'Stats WhatsApp',
-  getHotLeads:          'Buscando leads',
+  getHotLeads:          'Buscando leads quentes',
   sendWhatsAppMessage:  'Enviando mensagem',
-  searchConversations:  'Pesquisando',
+  searchConversations:  'Pesquisando conversa',
   toggleAI:             'Ajustando IA',
-  transferToHuman:      'Transferindo',
+  transferToHuman:      'Transferindo para humano',
   getDashboardSummary:  'Resumo executivo',
   createFollowUp:       'Criando follow-up',
+  getUnreadMessages:    'Mensagens não lidas',
+  getFinancialSummary:  'Resumo financeiro',
+  getPipelineLeads:     'Pipeline de leads',
+  updateLeadStage:      'Atualizando estágio',
+  markConversationRead: 'Marcando como lida',
+  getConversationHistory: 'Histórico de conversa',
+  getSystemStatus:      'Status do sistema',
 }
 
-// ── Voice session config (sent via DataChannel after connect) ─────────────
+// ── Voice session config (sent via DataChannel after WebRTC connects) ──────
+// Only fields accepted by OpenAI GA client_secrets POST are type/model/instructions.
+// Everything else goes here via session.update over the DataChannel.
 
 const VOICE_SESSION_UPDATE = {
   type: 'session.update',
@@ -67,110 +88,188 @@ const VOICE_SESSION_UPDATE = {
       silence_duration_ms: 700,
     },
     tools: [
+      // ── Navigation ──────────────────────────────────────────────────────
       {
         type: 'function', name: 'navigate',
         description: 'Navega para uma página do dashboard NEXUS',
         parameters: {
           type: 'object',
           properties: {
-            path:      { type: 'string', description: 'Caminho da página' },
+            path:      { type: 'string', description: 'Caminho da página. Ex: /dashboard/whatsapp' },
             page_name: { type: 'string', description: 'Nome amigável da página' },
           },
           required: ['path'],
         },
       },
+      // ── WhatsApp & Atendimento ───────────────────────────────────────────
       {
         type: 'function', name: 'getWhatsAppStats',
-        description: 'Busca estatísticas do WhatsApp',
+        description: 'Busca estatísticas gerais do WhatsApp: total de conversas, ativas, com IA ligada',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
+        type: 'function', name: 'getUnreadMessages',
+        description: 'Busca conversas com mensagens não lidas pendentes',
         parameters: { type: 'object', properties: {} },
       },
       {
         type: 'function', name: 'getHotLeads',
-        description: 'Busca os leads mais quentes e ativos',
+        description: 'Busca os leads mais quentes e ativos, ordenados por atividade recente',
         parameters: {
           type: 'object',
-          properties: { limit: { type: 'number', description: 'Quantidade (máx 10)' } },
+          properties: { limit: { type: 'number', description: 'Quantidade de leads (padrão 5, máx 10)' } },
         },
       },
       {
         type: 'function', name: 'sendWhatsAppMessage',
-        description: 'Envia uma mensagem via WhatsApp',
+        description: 'Envia uma mensagem via WhatsApp para um contato específico',
         parameters: {
           type: 'object',
           properties: {
-            phone:           { type: 'string' },
-            message:         { type: 'string' },
-            conversation_id: { type: 'string' },
+            phone:           { type: 'string', description: 'Número com DDI (somente dígitos)' },
+            message:         { type: 'string', description: 'Conteúdo da mensagem' },
+            conversation_id: { type: 'string', description: 'ID da conversa (opcional)' },
           },
           required: ['phone', 'message'],
         },
       },
       {
         type: 'function', name: 'searchConversations',
-        description: 'Busca conversas por nome ou número',
+        description: 'Busca conversas do WhatsApp por nome ou número de telefone',
         parameters: {
           type: 'object',
-          properties: { query: { type: 'string' } },
+          properties: { query: { type: 'string', description: 'Nome ou número para buscar' } },
           required: ['query'],
         },
       },
       {
-        type: 'function', name: 'toggleAI',
-        description: 'Ativa ou desativa a IA em uma conversa',
+        type: 'function', name: 'getConversationHistory',
+        description: 'Busca o histórico de mensagens de uma conversa específica',
         parameters: {
           type: 'object',
           properties: {
-            conversation_id: { type: 'string' },
-            enabled:         { type: 'boolean' },
+            conversation_id: { type: 'string', description: 'ID da conversa' },
+            limit:           { type: 'number', description: 'Número de mensagens (padrão 20)' },
+          },
+          required: ['conversation_id'],
+        },
+      },
+      {
+        type: 'function', name: 'toggleAI',
+        description: 'Ativa ou desativa a IA de auto-resposta em uma conversa do WhatsApp',
+        parameters: {
+          type: 'object',
+          properties: {
+            conversation_id: { type: 'string', description: 'ID da conversa' },
+            enabled:         { type: 'boolean', description: 'true para ativar, false para desativar' },
           },
           required: ['conversation_id', 'enabled'],
         },
       },
       {
         type: 'function', name: 'transferToHuman',
-        description: 'Transfere conversa para atendimento humano',
+        description: 'Transfere uma conversa do WhatsApp para atendimento humano',
         parameters: {
           type: 'object',
           properties: {
-            conversation_id: { type: 'string' },
-            note:            { type: 'string' },
+            conversation_id: { type: 'string', description: 'ID da conversa' },
+            note:            { type: 'string', description: 'Nota de transferência (opcional)' },
           },
           required: ['conversation_id'],
         },
       },
       {
-        type: 'function', name: 'getDashboardSummary',
-        description: 'Resumo executivo do negócio',
+        type: 'function', name: 'markConversationRead',
+        description: 'Marca uma conversa como lida (zera contador de não lidas)',
+        parameters: {
+          type: 'object',
+          properties: { conversation_id: { type: 'string', description: 'ID da conversa' } },
+          required: ['conversation_id'],
+        },
+      },
+      // ── CRM & Pipeline ───────────────────────────────────────────────────
+      {
+        type: 'function', name: 'getPipelineLeads',
+        description: 'Busca leads e distribuição por estágio do pipeline',
         parameters: { type: 'object', properties: {} },
       },
       {
-        type: 'function', name: 'createFollowUp',
-        description: 'Cria lembrete de follow-up',
+        type: 'function', name: 'updateLeadStage',
+        description: 'Move um lead para outro estágio do pipeline',
         parameters: {
           type: 'object',
           properties: {
-            phone:        { type: 'string' },
-            contact_name: { type: 'string' },
-            message:      { type: 'string' },
-            scheduled_at: { type: 'string' },
+            conversation_id: { type: 'string', description: 'ID da conversa / lead' },
+            stage:           { type: 'string', description: 'Novo estágio. Ex: proposta, negociação, fechado' },
+          },
+          required: ['conversation_id', 'stage'],
+        },
+      },
+      {
+        type: 'function', name: 'createFollowUp',
+        description: 'Cria um lembrete de follow-up para retornar contato com um cliente',
+        parameters: {
+          type: 'object',
+          properties: {
+            phone:        { type: 'string', description: 'Número do contato' },
+            contact_name: { type: 'string', description: 'Nome do contato' },
+            message:      { type: 'string', description: 'Contexto do follow-up' },
+            scheduled_at: { type: 'string', description: 'Data/hora ISO 8601' },
           },
           required: ['phone', 'message', 'scheduled_at'],
         },
+      },
+      // ── Financeiro & Negócio ─────────────────────────────────────────────
+      {
+        type: 'function', name: 'getFinancialSummary',
+        description: 'Busca faturamento, despesas e resultado financeiro do mês',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
+        type: 'function', name: 'getDashboardSummary',
+        description: 'Visão executiva completa: conversas, leads, mensagens, financeiro',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
+        type: 'function', name: 'getSystemStatus',
+        description: 'Verifica a saúde operacional do sistema: conversas, IA, follow-ups pendentes',
+        parameters: { type: 'object', properties: {} },
       },
     ],
   },
 } as const
 
-const QUICK: { icon: React.ElementType; label: string; prompt: string }[] = [
-  { icon: BarChart2,  label: 'Resumo do dia',   prompt: 'NEXUS, qual é o resumo do dia?' },
-  { icon: Users,      label: 'Leads quentes',    prompt: 'NEXUS, mostra os leads mais quentes' },
-  { icon: Activity,   label: 'Stats WhatsApp',   prompt: 'NEXUS, como está o WhatsApp?' },
-  { icon: Navigation, label: 'Abrir WhatsApp',   prompt: 'NEXUS, abre o painel do WhatsApp' },
-  { icon: Search,     label: 'Buscar conversa',  prompt: 'NEXUS, busca uma conversa' },
-  { icon: Send,       label: 'Enviar mensagem',  prompt: 'NEXUS, quero enviar uma mensagem' },
-  { icon: ToggleLeft, label: 'Controlar IA',     prompt: 'NEXUS, ativa a IA em uma conversa' },
-  { icon: Calendar,   label: 'Follow-up',        prompt: 'NEXUS, cria um follow-up' },
+// ── Quick commands ─────────────────────────────────────────────────────────
+
+const QUICK: { icon: React.ElementType; label: string; prompt: string; color: string }[] = [
+  { icon: BarChart2,      label: 'Resumo do dia',     prompt: 'NEXUS, qual é o resumo executivo do dia?',         color: 'violet' },
+  { icon: Users,          label: 'Leads quentes',      prompt: 'NEXUS, mostra os leads mais quentes',              color: 'cyan'   },
+  { icon: Bell,           label: 'Não lidas',          prompt: 'NEXUS, tem mensagem não lida?',                    color: 'amber'  },
+  { icon: DollarSign,     label: 'Financeiro',         prompt: 'NEXUS, como está o faturamento do mês?',           color: 'emerald'},
+  { icon: Activity,       label: 'Stats WhatsApp',     prompt: 'NEXUS, como está o WhatsApp?',                     color: 'blue'   },
+  { icon: GitBranch,      label: 'Pipeline',           prompt: 'NEXUS, mostra a distribuição do pipeline',         color: 'purple' },
+  { icon: Navigation,     label: 'Abrir WhatsApp',     prompt: 'NEXUS, abre o painel do WhatsApp',                 color: 'teal'   },
+  { icon: Search,         label: 'Buscar conversa',    prompt: 'NEXUS, busca uma conversa',                        color: 'indigo' },
+  { icon: Send,           label: 'Enviar mensagem',    prompt: 'NEXUS, quero enviar uma mensagem',                 color: 'sky'    },
+  { icon: TrendingUp,     label: 'Status sistema',     prompt: 'NEXUS, qual é o status do sistema?',               color: 'green'  },
+  { icon: Calendar,       label: 'Follow-up',          prompt: 'NEXUS, cria um follow-up para hoje',               color: 'orange' },
+  { icon: CheckCircle,    label: 'Marcar lida',        prompt: 'NEXUS, marca uma conversa como lida',              color: 'rose'   },
 ]
+
+const COLOR_MAP: Record<string, string> = {
+  violet:  'hover:border-violet-500/40 hover:text-violet-300',
+  cyan:    'hover:border-cyan-500/40   hover:text-cyan-300',
+  amber:   'hover:border-amber-500/40  hover:text-amber-300',
+  emerald: 'hover:border-emerald-500/40 hover:text-emerald-300',
+  blue:    'hover:border-blue-500/40   hover:text-blue-300',
+  purple:  'hover:border-purple-500/40 hover:text-purple-300',
+  teal:    'hover:border-teal-500/40   hover:text-teal-300',
+  indigo:  'hover:border-indigo-500/40 hover:text-indigo-300',
+  sky:     'hover:border-sky-500/40    hover:text-sky-300',
+  green:   'hover:border-green-500/40  hover:text-green-300',
+  orange:  'hover:border-orange-500/40 hover:text-orange-300',
+  rose:    'hover:border-rose-500/40   hover:text-rose-300',
+}
 
 // ── WaveformBars ───────────────────────────────────────────────────────────
 
@@ -269,6 +368,69 @@ function TranscriptBubble({ entry }: { entry: TranscriptEntry }) {
   )
 }
 
+// ── LiveMetricsBar ─────────────────────────────────────────────────────────
+
+function LiveMetricsBar({ metrics }: { metrics: LiveMetrics }) {
+  if (!metrics.loaded) {
+    return (
+      <div className="flex items-center gap-6 px-6 py-2.5 border-b border-white/5 bg-white/2">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="h-3 w-16 rounded bg-white/8 animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  const items = [
+    {
+      icon: MessageCircle,
+      label: 'Conversas',
+      value: metrics.conversations,
+      color: 'text-violet-400',
+    },
+    {
+      icon: Bell,
+      label: 'Não lidas',
+      value: metrics.unread,
+      color: metrics.unread > 0 ? 'text-amber-400' : 'text-white/40',
+    },
+    {
+      icon: Zap,
+      label: 'IA ativa',
+      value: metrics.ai_active,
+      color: 'text-emerald-400',
+    },
+    {
+      icon: metrics.system_ok ? Wifi : WifiOff,
+      label: 'Sistema',
+      value: metrics.system_ok ? 'Online' : 'Alerta',
+      color: metrics.system_ok ? 'text-emerald-400' : 'text-red-400',
+    },
+  ]
+
+  return (
+    <div className="flex items-center gap-6 px-6 py-2.5 border-b border-white/5 bg-white/2">
+      {items.map(item => {
+        const Icon = item.icon
+        return (
+          <div key={item.label} className="flex items-center gap-1.5">
+            <Icon className={`w-3 h-3 ${item.color}`} />
+            <span className="text-[10px] text-white/40">{item.label}</span>
+            <span className={`text-[10px] font-semibold ${item.color}`}>{item.value}</span>
+          </div>
+        )
+      })}
+      {metrics.mrr && (
+        <div className="flex items-center gap-1.5 ml-auto">
+          <DollarSign className="w-3 h-3 text-emerald-400" />
+          <span className="text-[10px] text-white/40">MRR</span>
+          <span className="text-[10px] font-semibold text-emerald-400">{metrics.mrr}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function AssistantPage() {
@@ -279,21 +441,70 @@ export default function AssistantPage() {
   const [actionLog, setActionLog]      = useState<ActionLog[]>([])
   const [errorMsg, setErrorMsg]        = useState<string | null>(null)
   const [sessionDuration, setDuration] = useState(0)
+  const [metrics, setMetrics]          = useState<LiveMetrics>({
+    conversations: 0, unread: 0, ai_active: 0, mrr: null, system_ok: true, loaded: false,
+  })
+  const [recentCommands, setRecentCommands] = useState<string[]>([])
 
-  const pcRef          = useRef<RTCPeerConnection | null>(null)
-  const dcRef          = useRef<RTCDataChannel | null>(null)
-  const audioElRef     = useRef<HTMLAudioElement | null>(null)
-  const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null)
-  const transcriptRef  = useRef<HTMLDivElement>(null)
+  const pcRef         = useRef<RTCPeerConnection | null>(null)
+  const dcRef         = useRef<RTCDataChannel | null>(null)
+  const audioElRef    = useRef<HTMLAudioElement | null>(null)
+  const timerRef      = useRef<ReturnType<typeof setInterval> | null>(null)
+  const transcriptRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll transcript
+  // ── Load localStorage memory on mount ───────────────────────────────────
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('nexus_recent_commands')
+      if (saved) setRecentCommands(JSON.parse(saved) as string[])
+    } catch {}
+  }, [])
+
+  // ── Load live metrics on mount ───────────────────────────────────────────
+  useEffect(() => {
+    async function loadMetrics() {
+      try {
+        const [summaryRes, statusRes] = await Promise.all([
+          fetch('/api/nexus/voice/execute', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ tool: 'getDashboardSummary', params: {} }),
+          }),
+          fetch('/api/nexus/voice/execute', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ tool: 'getSystemStatus', params: {} }),
+          }),
+        ])
+        const summary = await summaryRes.json() as Record<string, unknown>
+        const status  = await statusRes.json()  as Record<string, unknown>
+
+        const convs = summary.conversations as Record<string, number> | undefined
+        const rev   = summary.revenue       as Record<string, unknown> | undefined
+
+        setMetrics({
+          conversations: convs?.total    ?? 0,
+          unread:        convs?.unread   ?? 0,
+          ai_active:     convs?.ai_active ?? 0,
+          mrr:           rev?.mrr != null ? String(rev.mrr) : null,
+          system_ok:     (status.status as string) !== 'error',
+          loaded:        true,
+        })
+      } catch {
+        setMetrics(m => ({ ...m, loaded: true }))
+      }
+    }
+    loadMetrics()
+  }, [])
+
+  // ── Auto-scroll transcript ───────────────────────────────────────────────
   useEffect(() => {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
     }
   }, [transcript])
 
-  // Session timer
+  // ── Session timer ────────────────────────────────────────────────────────
   useEffect(() => {
     if (voiceState !== 'off' && voiceState !== 'error') {
       timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
@@ -310,15 +521,17 @@ export default function AssistantPage() {
     return `${m}:${sec.toString().padStart(2, '0')}`
   }
 
-  // ── Tool execution ─────────────────────────────────────────────────────
+  // ── Tool execution ───────────────────────────────────────────────────────
 
   const executeTool = useCallback(async (toolName: string, params: Record<string, unknown>) => {
     const logId = `act-${Date.now()}`
     setActionLog(prev => [{
-      id: logId, tool: toolName,
+      id:    logId,
+      tool:  toolName,
       label: TOOL_LABELS[toolName] ?? toolName,
-      ts: Date.now(), ok: true,
-    }, ...prev.slice(0, 19)])
+      ts:    Date.now(),
+      ok:    true,
+    }, ...prev.slice(0, 29)])
 
     if (toolName === 'navigate') {
       const path = params.path as string
@@ -332,14 +545,33 @@ export default function AssistantPage() {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ tool: toolName, params }),
       })
-      return await res.json()
+      const data = await res.json() as Record<string, unknown>
+      // Refresh metrics after mutating tools
+      if (['markConversationRead', 'sendWhatsAppMessage', 'updateLeadStage', 'toggleAI'].includes(toolName)) {
+        setTimeout(() => {
+          fetch('/api/nexus/voice/execute', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tool: 'getDashboardSummary', params: {} }),
+          }).then(r => r.json()).then((s: unknown) => {
+            const summary = s as Record<string, unknown>
+            const convs   = summary.conversations as Record<string, number> | undefined
+            if (convs) setMetrics(m => ({
+              ...m,
+              conversations: convs.total    ?? m.conversations,
+              unread:        convs.unread   ?? m.unread,
+              ai_active:     convs.ai_active ?? m.ai_active,
+            }))
+          }).catch(() => {})
+        }, 1500)
+      }
+      return data
     } catch {
       setActionLog(prev => prev.map(a => a.id === logId ? { ...a, ok: false } : a))
       return { error: 'Falha na execução' }
     }
   }, [router])
 
-  // ── DataChannel message handler ────────────────────────────────────────
+  // ── DataChannel message handler ──────────────────────────────────────────
 
   const handleDCMessage = useCallback((ev: MessageEvent) => {
     let msg: Record<string, unknown>
@@ -348,20 +580,13 @@ export default function AssistantPage() {
     const type = msg.type as string
     console.log('[NEXUS realtime]', type, msg)
 
-    if (type === 'input_audio_buffer.speech_started') {
-      setVoiceState('listening')
-    }
-
-    if (type === 'input_audio_buffer.speech_stopped') {
-      setVoiceState('thinking')
-    }
+    if (type === 'input_audio_buffer.speech_started') setVoiceState('listening')
+    if (type === 'input_audio_buffer.speech_stopped')  setVoiceState('thinking')
 
     if (type === 'conversation.item.input_audio_transcription.completed') {
       const text = (msg.transcript as string | undefined)?.trim()
       if (text) {
-        setTranscript(prev => [...prev, {
-          id: `u-${Date.now()}`, role: 'user', text, ts: Date.now(),
-        }])
+        setTranscript(prev => [...prev, { id: `u-${Date.now()}`, role: 'user', text, ts: Date.now() }])
       }
     }
 
@@ -374,16 +599,12 @@ export default function AssistantPage() {
           if (last?.role === 'assistant' && last.id.startsWith('ai-stream')) {
             return [...prev.slice(0, -1), { ...last, text: last.text + delta }]
           }
-          return [...prev, {
-            id: `ai-stream-${Date.now()}`, role: 'assistant', text: delta, ts: Date.now(),
-          }]
+          return [...prev, { id: `ai-stream-${Date.now()}`, role: 'assistant', text: delta, ts: Date.now() }]
         })
       }
     }
 
-    if (type === 'response.done') {
-      setVoiceState('idle')
-    }
+    if (type === 'response.done')     setVoiceState('idle')
 
     if (type === 'response.output_item.done') {
       const item = msg.item as Record<string, unknown> | undefined
@@ -416,7 +637,7 @@ export default function AssistantPage() {
     }
   }, [executeTool])
 
-  // ── Start session ──────────────────────────────────────────────────────
+  // ── Session control ──────────────────────────────────────────────────────
 
   const stopSession = useCallback(() => {
     dcRef.current?.close()
@@ -439,9 +660,7 @@ export default function AssistantPage() {
       const sessionRes = await fetch('/api/nexus/voice/session', { method: 'POST' })
       if (!sessionRes.ok) {
         const body = await sessionRes.json().catch(() => ({})) as Record<string, unknown>
-        const msg = (body.error as string) ?? `HTTP ${sessionRes.status}`
-        // Surface the actual OpenAI error so the user knows what to fix
-        throw new Error(msg)
+        throw new Error((body.error as string) ?? `HTTP ${sessionRes.status}`)
       }
       const sessionData = await sessionRes.json() as Record<string, unknown>
       console.log('[NEXUS voice] session response:', JSON.stringify(sessionData))
@@ -476,17 +695,14 @@ export default function AssistantPage() {
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
 
-      const sdpRes = await fetch(
-        'https://api.openai.com/v1/realtime/calls',
-        {
-          method:  'POST',
-          headers: {
-            'Authorization': `Bearer ${ephemeralKey}`,
-            'Content-Type':  'application/sdp',
-          },
-          body: offer.sdp,
+      const sdpRes = await fetch('https://api.openai.com/v1/realtime/calls', {
+        method:  'POST',
+        headers: {
+          'Authorization': `Bearer ${ephemeralKey}`,
+          'Content-Type':  'application/sdp',
         },
-      )
+        body: offer.sdp,
+      })
       if (!sdpRes.ok) {
         const errText = await sdpRes.text().catch(() => '')
         throw new Error(`OpenAI SDP error ${sdpRes.status}: ${errText.slice(0, 200)}`)
@@ -511,6 +727,7 @@ export default function AssistantPage() {
   const sendTextCommand = useCallback((prompt: string) => {
     const dc = dcRef.current
     if (!dc || dc.readyState !== 'open') return
+
     dc.send(JSON.stringify({
       type: 'conversation.item.create',
       item: {
@@ -520,17 +737,26 @@ export default function AssistantPage() {
       },
     }))
     dc.send(JSON.stringify({ type: 'response.create' }))
+
     setTranscript(prev => [...prev, {
       id: `u-cmd-${Date.now()}`, role: 'user', text: prompt, ts: Date.now(),
     }])
+
+    // Persist to operational memory
+    setRecentCommands(prev => {
+      const updated = [prompt, ...prev.filter(p => p !== prompt)].slice(0, 10)
+      try { localStorage.setItem('nexus_recent_commands', JSON.stringify(updated)) } catch {}
+      return updated
+    })
   }, [])
 
   const isActive = voiceState !== 'off' && voiceState !== 'error'
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white flex flex-col">
+
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
         <div className="flex items-center gap-3">
@@ -538,45 +764,48 @@ export default function AssistantPage() {
             <Zap className="w-4 h-4 text-violet-400" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-wider text-white/90 uppercase">NEXUS Assistant</h1>
-            <p className="text-xs text-white/40">COO de IA Executivo</p>
+            <h1 className="text-sm font-bold tracking-wider text-white/90 uppercase">NEXUS</h1>
+            <p className="text-xs text-white/40">COO de IA Executivo · 16 ferramentas operacionais</p>
           </div>
         </div>
 
-        {isActive && (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-xs text-white/50">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Sessão ativa · {formatDuration(sessionDuration)}
-            </div>
-            <button
-              onClick={stopSession}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs hover:bg-red-500/20 transition-colors"
-            >
-              <MicOff className="w-3.5 h-3.5" />
-              Encerrar
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {isActive && (
+            <>
+              <div className="flex items-center gap-2 text-xs text-white/50">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Sessão ativa · {formatDuration(sessionDuration)}
+              </div>
+              <button
+                onClick={stopSession}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs hover:bg-red-500/20 transition-colors"
+              >
+                <MicOff className="w-3.5 h-3.5" />
+                Encerrar
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Live metrics bar */}
+      <LiveMetricsBar metrics={metrics} />
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left — Orb + transcript */}
+        {/* Left — Orb + transcript + commands */}
         <div className="flex flex-1 flex-col items-center overflow-hidden">
 
           {/* Orb section */}
-          <div className="flex flex-col items-center gap-6 py-8">
+          <div className="flex flex-col items-center gap-5 py-6">
             <VoiceOrb state={voiceState} onClick={handleOrbClick} />
 
-            <div
-              className={`transition-colors duration-300 ${
-                voiceState === 'listening' ? 'text-cyan-400'
-                : voiceState === 'speaking' ? 'text-emerald-400'
-                : 'text-white/20'
-              }`}
-            >
+            <div className={`transition-colors duration-300 ${
+              voiceState === 'listening' ? 'text-cyan-400'
+              : voiceState === 'speaking' ? 'text-emerald-400'
+              : 'text-white/20'
+            }`}>
               <WaveformBars active={voiceState === 'listening' || voiceState === 'speaking'} />
             </div>
 
@@ -591,11 +820,18 @@ export default function AssistantPage() {
                   <div className="flex items-start gap-2">
                     <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                     <span className="flex-1 leading-relaxed">{errorMsg}</span>
-                    <button onClick={() => setErrorMsg(null)} className="flex-shrink-0"><X className="w-3 h-3" /></button>
+                    <button onClick={() => setErrorMsg(null)} className="flex-shrink-0">
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
-                  {(errorMsg.toLowerCase().includes('model') || errorMsg.toLowerCase().includes('api key') || errorMsg.toLowerCase().includes('auth') || errorMsg.toLowerCase().includes('403') || errorMsg.toLowerCase().includes('401')) && (
+                  {(errorMsg.toLowerCase().includes('model') ||
+                    errorMsg.toLowerCase().includes('api key') ||
+                    errorMsg.toLowerCase().includes('auth') ||
+                    errorMsg.toLowerCase().includes('403') ||
+                    errorMsg.toLowerCase().includes('401')) && (
                     <p className="text-red-400/70 text-[10px] pl-5">
-                      Verifique se <code className="bg-red-500/20 px-1 rounded">OPENAI_API_KEY</code> está configurada no Vercel e se a conta tem acesso à Realtime API (requer plano pago).
+                      Verifique se <code className="bg-red-500/20 px-1 rounded">OPENAI_API_KEY</code> está
+                      configurada no Vercel e se a conta tem acesso à Realtime API (requer plano pago).
                     </p>
                   )}
                 </motion.div>
@@ -604,13 +840,13 @@ export default function AssistantPage() {
 
             {voiceState === 'off' && !errorMsg && (
               <p className="text-white/30 text-xs text-center">
-                Clique no orb para iniciar o assistente
+                Clique no orb para ativar o COO de IA
               </p>
             )}
           </div>
 
           {/* Transcript */}
-          <div className="flex-1 w-full max-w-2xl px-4 overflow-hidden flex flex-col">
+          <div className="flex-1 w-full max-w-2xl px-4 overflow-hidden flex flex-col min-h-0">
             <div className="flex items-center gap-2 mb-3">
               <MessageSquare className="w-3.5 h-3.5 text-white/30" />
               <span className="text-xs text-white/30 uppercase tracking-wider">Transcrição</span>
@@ -629,18 +865,19 @@ export default function AssistantPage() {
             </div>
           </div>
 
-          {/* Quick commands */}
-          <div className="w-full max-w-2xl px-4 py-4 border-t border-white/5">
+          {/* Quick commands — 3×4 grid */}
+          <div className="w-full max-w-2xl px-4 py-4 border-t border-white/5 flex-shrink-0">
             <p className="text-xs text-white/30 uppercase tracking-wider mb-3">Comandos rápidos</p>
             <div className="grid grid-cols-4 gap-2">
               {QUICK.map(q => {
-                const Icon = q.icon
+                const Icon      = q.icon
+                const colorCls  = COLOR_MAP[q.color] ?? ''
                 return (
                   <button
                     key={q.label}
                     disabled={!isActive}
                     onClick={() => sendTextCommand(q.prompt)}
-                    className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl bg-white/4 border border-white/8 text-white/50 hover:bg-white/8 hover:text-white/80 hover:border-violet-500/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed text-[10px] leading-tight text-center"
+                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl bg-white/4 border border-white/8 text-white/50 hover:bg-white/7 transition-all disabled:opacity-30 disabled:cursor-not-allowed text-[10px] leading-tight text-center ${colorCls}`}
                   >
                     <Icon className="w-4 h-4" />
                     {q.label}
@@ -651,8 +888,8 @@ export default function AssistantPage() {
           </div>
         </div>
 
-        {/* Right — Action log */}
-        <div className="w-72 border-l border-white/5 flex flex-col overflow-hidden">
+        {/* Right — action log + memory */}
+        <div className="w-72 border-l border-white/5 flex flex-col overflow-hidden flex-shrink-0">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-white/5">
             <Activity className="w-3.5 h-3.5 text-white/30" />
             <span className="text-xs text-white/30 uppercase tracking-wider">Ações executadas</span>
@@ -675,7 +912,8 @@ export default function AssistantPage() {
                     <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.ok ? 'bg-emerald-400' : 'bg-red-400'}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-white/70 truncate">{a.label}</p>
-                      <p className="text-[10px] text-white/30">
+                      <p className="text-[10px] text-white/30 flex items-center gap-1">
+                        <Clock className="w-2.5 h-2.5" />
                         {new Date(a.ts).toLocaleTimeString('pt-BR', {
                           hour: '2-digit', minute: '2-digit', second: '2-digit',
                         })}
@@ -688,9 +926,31 @@ export default function AssistantPage() {
             )}
           </div>
 
+          {/* Recent commands (operational memory) */}
+          {recentCommands.length > 0 && (
+            <div className="border-t border-white/5">
+              <div className="flex items-center gap-2 px-4 py-2">
+                <Eye className="w-3 h-3 text-white/25" />
+                <span className="text-[10px] text-white/25 uppercase tracking-wider">Memória</span>
+              </div>
+              <div className="px-3 pb-3 space-y-1">
+                {recentCommands.slice(0, 5).map((cmd, i) => (
+                  <button
+                    key={i}
+                    disabled={!isActive}
+                    onClick={() => sendTextCommand(cmd)}
+                    className="w-full text-left px-2 py-1.5 rounded-lg text-[10px] text-white/35 hover:bg-white/6 hover:text-white/60 transition-colors truncate disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    {cmd}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="px-4 py-3 border-t border-white/5">
             <div className="flex items-center justify-between text-[10px] text-white/25">
-              <span>GPT-4o Realtime</span>
+              <span>gpt-realtime GA</span>
               <span className={`flex items-center gap-1 ${isActive ? 'text-emerald-400/60' : ''}`}>
                 <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-white/20'}`} />
                 {isActive ? 'Online' : 'Offline'}
