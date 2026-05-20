@@ -21,7 +21,7 @@ export async function POST(
   const db = getSupabaseServerClient()
   const { data: project } = await db
     .from('projects')
-    .select('id, name, type, description, company_id')
+    .select('id, name, type, description, goal, company_id')
     .eq('id', id)
     .single()
 
@@ -41,33 +41,44 @@ export async function POST(
   }
 
   const typeLabel = typeLabels[project.type] ?? project.type
+  const goalLine  = project.goal ? `Meta de receita: R$ ${Number(project.goal).toLocaleString('pt-BR')}` : ''
 
   const prompt = `Você é especialista em gestão de projetos operacionais para empresas digitais.
 
 Projeto: "${project.name}"
 Tipo: ${typeLabel}
 ${project.description ? `Objetivo: ${project.description}` : ''}
+${goalLine}
 
-Crie entre 6 e 8 tarefas iniciais essenciais para este projeto.
-As tarefas devem ser:
-- Práticas, acionáveis e específicas
-- Ordenadas logicamente (do início ao fim)
-- Cobrir as etapas mais críticas do tipo de projeto
+Crie entre 10 e 14 tarefas essenciais para este projeto, cobrindo todo o ciclo operacional.
+As tarefas devem:
+- Ser práticas, acionáveis e específicas (não genéricas)
+- Cobrir fases distintas: planejamento → execução → otimização → escala
+- Ter mix de prioridades (2-3 urgentes, 4-5 high, 3-4 medium, 1-2 low)
+- Ter descrições detalhadas e úteis (20-50 palavras cada)
+- Ser ordenadas logicamente
+
+Para tipo "${typeLabel}", inclua especificamente tarefas relacionadas a:
+${getTypeSpecificInstructions(project.type)}
 
 Responda APENAS com um JSON array válido, sem texto adicional:
 [
-  {"title": "...", "description": "...", "priority": "high|medium|low", "status": "todo"},
-  ...
+  {
+    "title": "...",
+    "description": "...",
+    "priority": "urgent|high|medium|low",
+    "status": "todo"
+  }
 ]`
 
   try {
     const res = await ai.messages.create({
       model:      'claude-sonnet-4-6',
-      max_tokens: 1200,
+      max_tokens: 2000,
       messages:   [{ role: 'user', content: prompt }],
     })
 
-    const raw = res.content[0].type === 'text' ? res.content[0].text : '[]'
+    const raw   = res.content[0].type === 'text' ? res.content[0].text : '[]'
     const match = raw.match(/\[[\s\S]*\]/)
 
     type RawTask = { title?: string; description?: string; priority?: string; status?: string }
@@ -98,4 +109,20 @@ Responda APENAS com um JSON array válido, sem texto adicional:
     console.error('[ai-setup] error', err)
     return NextResponse.json({ error: 'AI setup failed', tasks: [], count: 0 }, { status: 500 })
   }
+}
+
+function getTypeSpecificInstructions(type: string): string {
+  const map: Record<string, string> = {
+    lancamento: 'copy de vendas, página de vendas, CPL (Conteúdo de Pré-Lançamento), remarketing, sequência de e-mails, checkout e upsell, métricas de conversão',
+    produto:    'definição de MVP, roadmap de features, testes com usuários, documentação técnica, lançamento beta, métricas de produto',
+    marketing:  'criação de criativos, segmentação de público, calendário editorial, A/B testing, análise de concorrência, métricas de campanha',
+    automacao:  'mapeamento de fluxos atuais, ferramentas de automação, integração de sistemas, testes de fluxo, documentação, treinamento da equipe',
+    crm:        'configuração do CRM, importação de contatos, funil de vendas, sequências de follow-up, relatórios de pipeline, treinamento de SDRs',
+    trafego:    'estrutura de campanhas, criativos por etapa do funil, pixels e rastreamento, otimização de lances, relatórios de ROAS, escala de campanhas',
+    conteudo:   'calendário editorial, produção de roteiros, gravação e edição, distribuição multicanal, análise de engajamento, reaproveitamento de conteúdo',
+    operacao:   'mapeamento de processos, definição de KPIs, SOPs (procedimentos), treinamentos, ferramentas operacionais, relatórios de performance',
+    servico:    'onboarding do cliente, cronograma de entrega, checkpoints de qualidade, documentação do projeto, relatórios de progresso, pesquisa de satisfação',
+    interno:    'definição de objetivos, cronograma, alocação de recursos, reuniões de alinhamento, documentação, revisão de resultados',
+  }
+  return map[type] ?? 'planejamento estratégico, execução, monitoramento e otimização de resultados'
 }

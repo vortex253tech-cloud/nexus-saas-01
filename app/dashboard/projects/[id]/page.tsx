@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Plus, Trash2, Loader2, Sparkles, X,
   List, Kanban, DollarSign, BarChart3, MessageSquare,
@@ -104,9 +104,11 @@ function TaskField({ label, children }: { label: string; children: React.ReactNo
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProjectDetailPage() {
-  const router   = useRouter()
-  const { id }   = useParams<{ id: string }>()
-  const typeCfg  = useRef(TYPE_CFG.outro)
+  const router       = useRouter()
+  const { id }       = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
+  const isWelcome    = searchParams.get('welcome') === '1'
+  const typeCfg      = useRef(TYPE_CFG.outro)
 
   const [project,  setProject]  = useState<Project | null>(null)
   const [tasks,    setTasks]    = useState<Task[]>([])
@@ -158,6 +160,36 @@ export default function ProjectDetailPage() {
   }, [id])
 
   useEffect(() => { loadProject() }, [loadProject])
+
+  // Auto-trigger copilot briefing when project just created
+  const welcomeSent = useRef(false)
+  useEffect(() => {
+    if (!isWelcome || loading || !project || welcomeSent.current) return
+    welcomeSent.current = true
+    setTab('copilot')
+    const initialMsg = `Este projeto acabou de ser criado. Faça um briefing operacional completo: analise o nome, tipo e objetivo do projeto, liste as 3 prioridades imediatas, identifique possíveis riscos, e sugira os primeiros passos concretos para os próximos 7 dias.`
+    const sendWelcome = async () => {
+      setChatLoading(true)
+      try {
+        const res = await fetch(`/api/projects/${id}/copilot`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: initialMsg, history: [] }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setChatHistory([
+            { role: 'user',      content: initialMsg },
+            { role: 'assistant', content: data.message, tasks_created: data.tasks_created?.length ? data.tasks_created : undefined },
+          ])
+          if (data.tasks_created?.length) setTasks(prev => [...prev, ...data.tasks_created])
+        }
+      } catch { /* ignore */ }
+      setChatLoading(false)
+    }
+    // Small delay so the page finishes rendering
+    setTimeout(sendWelcome, 600)
+  }, [isWelcome, loading, project, id])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })

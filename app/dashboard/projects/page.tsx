@@ -85,38 +85,83 @@ function AnimatedCount({ value }: { value: number }) {
 
 // ─── Wizard ───────────────────────────────────────────────────────────────────
 
+type StepState = 'pending' | 'active' | 'done'
+interface CreationStep { id: string; label: string; state: StepState }
+
+const CREATION_STEPS: CreationStep[] = [
+  { id: 'analyze',  label: 'Analisando objetivo',      state: 'pending' },
+  { id: 'create',   label: 'Criando projeto',           state: 'pending' },
+  { id: 'ai',       label: 'Gerando tarefas com IA',   state: 'pending' },
+  { id: 'pipeline', label: 'Estruturando pipeline',    state: 'pending' },
+  { id: 'copilot',  label: 'Ativando Copilot',         state: 'pending' },
+  { id: 'ready',    label: 'Projeto pronto!',          state: 'pending' },
+]
+
 function NewProjectWizard({ onClose, onCreated }: {
   onClose: () => void
   onCreated: (id: string) => void
 }) {
-  const [step,    setStep]    = useState<1|2>(1)
-  const [type,    setType]    = useState<TypeKey>('produto')
-  const [name,    setName]    = useState('')
-  const [desc,    setDesc]    = useState('')
-  const [goal,    setGoal]    = useState('')
-  const [saving,  setSaving]  = useState(false)
-  const [status,  setStatus]  = useState('')
+  const [step,   setStep]   = useState<1|2>(1)
+  const [type,   setType]   = useState<TypeKey>('produto')
+  const [name,   setName]   = useState('')
+  const [desc,   setDesc]   = useState('')
+  const [goal,   setGoal]   = useState('')
+  const [saving, setSaving] = useState(false)
+  const [steps,  setSteps]  = useState<CreationStep[]>(CREATION_STEPS)
+  const [error,  setError]  = useState('')
+
+  function markStep(id: string, state: StepState) {
+    setSteps(prev => prev.map(s => s.id === id ? { ...s, state } : s))
+  }
 
   async function handleCreate() {
     if (!name.trim()) return
     setSaving(true)
+    setError('')
+    setSteps(CREATION_STEPS.map(s => ({ ...s, state: 'pending' as StepState })))
+
     try {
-      setStatus('Criando projeto...')
+      // Step 0: Analyze (real intent: short pause while we read the inputs)
+      markStep('analyze', 'active')
+      await delay(700)
+      markStep('analyze', 'done')
+
+      // Step 1: Create project in DB
+      markStep('create', 'active')
       const r1 = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), type, description: desc || null, goal: goal ? Number(goal) : null }),
       })
-      if (!r1.ok) throw new Error('create failed')
+      if (!r1.ok) throw new Error('Falha ao criar projeto')
       const { data: proj } = await r1.json()
+      markStep('create', 'done')
 
-      setStatus('IA configurando estrutura...')
+      // Step 2: AI generates tasks
+      markStep('ai', 'active')
       await fetch(`/api/projects/${proj.id}/ai-setup`, { method: 'POST' })
+      markStep('ai', 'done')
 
-      setStatus('')
+      // Step 3: Structure the pipeline (visual confirmation step)
+      markStep('pipeline', 'active')
+      await delay(500)
+      markStep('pipeline', 'done')
+
+      // Step 4: Activate copilot
+      markStep('copilot', 'active')
+      await delay(400)
+      markStep('copilot', 'done')
+
+      // Step 5: Done
+      markStep('ready', 'active')
+      await delay(300)
+      markStep('ready', 'done')
+
+      await delay(400)
       onCreated(proj.id)
-    } catch {
-      setStatus('')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao criar projeto'
+      setError(msg)
       setSaving(false)
     }
   }
@@ -125,7 +170,7 @@ function NewProjectWizard({ onClose, onCreated }: {
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4"
-      onClick={onClose}
+      onClick={saving ? undefined : onClose}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -146,34 +191,36 @@ function NewProjectWizard({ onClose, onCreated }: {
               </div>
               <h2 className="font-bold text-white">Novo Projeto</h2>
             </div>
-            <button onClick={onClose} className="text-zinc-600 hover:text-white transition p-1">
-              <X size={16} />
-            </button>
+            {!saving && (
+              <button onClick={onClose} className="text-zinc-600 hover:text-white transition p-1">
+                <X size={16} />
+              </button>
+            )}
           </div>
 
-          {/* Step indicators */}
-          <div className="flex items-center gap-2 mb-7">
-            {([1, 2] as const).map(s => (
-              <div key={s} className="flex items-center gap-2">
-                <div className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition',
-                  step >= s
-                    ? 'bg-violet-600 text-white'
-                    : 'bg-zinc-800 text-zinc-600',
-                )}>
-                  {s}
+          {/* Step indicators (hide during saving) */}
+          {!saving && (
+            <div className="flex items-center gap-2 mb-7">
+              {([1, 2] as const).map(s => (
+                <div key={s} className="flex items-center gap-2">
+                  <div className={cn(
+                    'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition',
+                    step >= s ? 'bg-violet-600 text-white' : 'bg-zinc-800 text-zinc-600',
+                  )}>
+                    {s}
+                  </div>
+                  {s < 2 && <div className={cn('h-px w-8 transition', step > s ? 'bg-violet-600' : 'bg-zinc-800')} />}
                 </div>
-                {s < 2 && <div className={cn('h-px w-8 transition', step > s ? 'bg-violet-600' : 'bg-zinc-800')} />}
-              </div>
-            ))}
-            <span className="text-xs text-zinc-500 ml-2">
-              {step === 1 ? 'Tipo do projeto' : 'Detalhes'}
-            </span>
-          </div>
+              ))}
+              <span className="text-xs text-zinc-500 ml-2">
+                {step === 1 ? 'Tipo do projeto' : 'Detalhes'}
+              </span>
+            </div>
+          )}
 
           <AnimatePresence mode="wait">
-            {/* Step 1: Type selection */}
-            {step === 1 && (
+            {/* ── Step 1: Type selection ── */}
+            {step === 1 && !saving && (
               <motion.div key="s1" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
                 <p className="text-sm text-zinc-400 mb-4">Qual é o tipo deste projeto?</p>
                 <div className="grid grid-cols-3 gap-3">
@@ -192,10 +239,7 @@ function NewProjectWizard({ onClose, onCreated }: {
                             : 'border-zinc-800/60 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-800/40',
                         )}
                       >
-                        <div
-                          className="w-9 h-9 rounded-lg flex items-center justify-center"
-                          style={{ background: `${cfg.color}18` }}
-                        >
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: `${cfg.color}18` }}>
                           <Icon size={16} style={{ color: cfg.color }} />
                         </div>
                         <span className="text-xs font-medium text-zinc-300 leading-tight">{cfg.label}</span>
@@ -217,90 +261,152 @@ function NewProjectWizard({ onClose, onCreated }: {
               </motion.div>
             )}
 
-            {/* Step 2: Details + create */}
-            {step === 2 && (
+            {/* ── Step 2: Details ── */}
+            {step === 2 && !saving && (
               <motion.div key="s2" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
-                {saving ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-4">
-                    <div className="relative">
-                      <div className="w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-                        <Sparkles size={24} className="text-violet-400 animate-pulse" />
-                      </div>
-                      <div className="absolute -inset-1 rounded-2xl border border-violet-500/20 animate-ping" />
-                    </div>
-                    <p className="text-sm text-zinc-300 font-medium">{status}</p>
-                    <p className="text-xs text-zinc-600">A IA está montando a estrutura do projeto</p>
+                <div className="space-y-4">
+                  <button
+                    onClick={() => setStep(1)}
+                    className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 transition"
+                  >
+                    <span style={{ color: getTypeCfg(type).color }}>●</span>
+                    {getTypeCfg(type).label}
+                    <span className="text-zinc-700">· Alterar tipo</span>
+                  </button>
+
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">Nome do projeto *</label>
+                    <input
+                      autoFocus
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && name.trim()) handleCreate() }}
+                      placeholder="Ex: Lançamento Produto X"
+                      className="w-full px-3.5 py-2.5 bg-zinc-900/60 border border-zinc-700/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 transition"
+                    />
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Selected type badge */}
+
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">Objetivo</label>
+                    <textarea
+                      value={desc}
+                      onChange={e => setDesc(e.target.value)}
+                      placeholder="Qual é o objetivo principal deste projeto?"
+                      rows={2}
+                      className="w-full px-3.5 py-2.5 bg-zinc-900/60 border border-zinc-700/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 resize-none transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">Meta de receita (R$)</label>
+                    <input
+                      type="number"
+                      value={goal}
+                      onChange={e => setGoal(e.target.value)}
+                      placeholder="0,00"
+                      className="w-full px-3.5 py-2.5 bg-zinc-900/60 border border-zinc-700/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 transition"
+                    />
+                  </div>
+
+                  {error && (
+                    <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{error}</p>
+                  )}
+
+                  <div className="bg-violet-500/5 border border-violet-500/15 rounded-xl p-3 flex items-start gap-2.5">
+                    <Sparkles size={13} className="text-violet-400 mt-0.5 shrink-0" />
+                    <p className="text-xs text-zinc-400">
+                      A IA vai criar automaticamente 10–14 tarefas operacionais baseadas no tipo e objetivo do projeto.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3 pt-1">
                     <button
                       onClick={() => setStep(1)}
-                      className="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-300 transition"
+                      className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 text-sm font-medium rounded-xl transition"
                     >
-                      <span style={{ color: getTypeCfg(type).color }}>●</span>
-                      {getTypeCfg(type).label}
-                      <span className="text-zinc-700">· Alterar tipo</span>
+                      ← Voltar
                     </button>
-
-                    <div>
-                      <label className="block text-xs font-medium text-zinc-400 mb-1.5">Nome do projeto *</label>
-                      <input
-                        autoFocus
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        placeholder="Ex: Lançamento Produto X"
-                        className="w-full px-3.5 py-2.5 bg-zinc-900/60 border border-zinc-700/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 transition"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-zinc-400 mb-1.5">Objetivo</label>
-                      <textarea
-                        value={desc}
-                        onChange={e => setDesc(e.target.value)}
-                        placeholder="Qual é o objetivo principal deste projeto?"
-                        rows={2}
-                        className="w-full px-3.5 py-2.5 bg-zinc-900/60 border border-zinc-700/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 resize-none transition"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-zinc-400 mb-1.5">Meta de receita (R$)</label>
-                      <input
-                        type="number"
-                        value={goal}
-                        onChange={e => setGoal(e.target.value)}
-                        placeholder="0,00"
-                        className="w-full px-3.5 py-2.5 bg-zinc-900/60 border border-zinc-700/50 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 transition"
-                      />
-                    </div>
-
-                    <div className="bg-violet-500/5 border border-violet-500/15 rounded-xl p-3 flex items-start gap-2.5">
-                      <Sparkles size={13} className="text-violet-400 mt-0.5 shrink-0" />
-                      <p className="text-xs text-zinc-400">
-                        A IA vai criar automaticamente a estrutura inicial de tarefas baseada no tipo e objetivo do projeto.
-                      </p>
-                    </div>
-
-                    <div className="flex gap-3 pt-1">
-                      <button
-                        onClick={() => setStep(1)}
-                        className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 text-sm font-medium rounded-xl transition"
-                      >
-                        ← Voltar
-                      </button>
-                      <button
-                        onClick={handleCreate}
-                        disabled={!name.trim()}
-                        className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition flex items-center justify-center gap-2"
-                      >
-                        <Sparkles size={14} />
-                        Criar com IA
-                      </button>
-                    </div>
+                    <button
+                      onClick={handleCreate}
+                      disabled={!name.trim()}
+                      className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition flex items-center justify-center gap-2"
+                    >
+                      <Sparkles size={14} />
+                      Criar com IA
+                    </button>
                   </div>
-                )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* ── Saving: animated progress steps ── */}
+            {saving && (
+              <motion.div
+                key="saving"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="py-8"
+              >
+                {/* Pulsing icon */}
+                <div className="flex justify-center mb-8">
+                  <div className="relative">
+                    <div className="w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+                      <Sparkles size={26} className="text-violet-400" />
+                    </div>
+                    <motion.div
+                      className="absolute inset-0 rounded-2xl border border-violet-500/30"
+                      animate={{ scale: [1, 1.15, 1], opacity: [0.6, 0, 0.6] }}
+                      transition={{ duration: 1.8, repeat: Infinity }}
+                    />
+                  </div>
+                </div>
+
+                {/* Step list */}
+                <div className="space-y-3 max-w-xs mx-auto">
+                  {steps.map((s, i) => (
+                    <motion.div
+                      key={s.id}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.06 }}
+                      className="flex items-center gap-3"
+                    >
+                      {/* Status icon */}
+                      <div className="w-5 h-5 shrink-0 flex items-center justify-center">
+                        {s.state === 'done' && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                          >
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                              <circle cx="9" cy="9" r="9" fill="#10b981" fillOpacity="0.2" />
+                              <path d="M5.5 9l2.5 2.5 4.5-5" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </motion.div>
+                        )}
+                        {s.state === 'active' && (
+                          <Loader2 size={15} className="text-violet-400 animate-spin" />
+                        )}
+                        {s.state === 'pending' && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
+                        )}
+                      </div>
+
+                      {/* Label */}
+                      <span className={cn(
+                        'text-sm transition-colors duration-300',
+                        s.state === 'done'   ? 'text-zinc-400 line-through' :
+                        s.state === 'active' ? 'text-white font-medium' :
+                        'text-zinc-700',
+                      )}>
+                        {s.label}
+                      </span>
+                    </motion.div>
+                  ))}
+                </div>
+
+                <p className="text-xs text-zinc-700 text-center mt-8">Aguarde — a IA está montando sua operação</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -309,6 +415,8 @@ function NewProjectWizard({ onClose, onCreated }: {
     </motion.div>
   )
 }
+
+function delay(ms: number) { return new Promise(r => setTimeout(r, ms)) }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -634,7 +742,7 @@ export default function ProjectsPage() {
             onClose={() => setShowNew(false)}
             onCreated={id => {
               setShowNew(false)
-              router.push(`/dashboard/projects/${id}`)
+              router.push(`/dashboard/projects/${id}?welcome=1`)
             }}
           />
         )}
