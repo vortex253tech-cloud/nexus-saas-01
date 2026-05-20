@@ -38,7 +38,7 @@ export async function GET() {
     }
   })
 
-  return NextResponse.json({ projects })
+  return NextResponse.json({ data: projects })
 }
 
 export async function POST(req: NextRequest) {
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   if (!ctx) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
   const body = await req.json() as {
-    name?: string; type?: string; description?: string; goal?: string
+    name?: string; type?: string; description?: string; goal?: number | null
   }
 
   if (!body.name?.trim()) {
@@ -59,13 +59,13 @@ export async function POST(req: NextRequest) {
     .insert({
       company_id:  ctx.company.id,
       name:        body.name.trim(),
-      type:        body.type        ?? 'product',
+      type:        body.type        ?? 'produto',
       description: body.description ?? '',
-      goal:        body.goal        ?? '',
+      goal:        body.goal        ?? null,
     })
-    .select('id')
+    .select('id, name, type, description, goal, created_at')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ id: data.id }, { status: 201 })
+  return NextResponse.json({ data }, { status: 201 })
 }

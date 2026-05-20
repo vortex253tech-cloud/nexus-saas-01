@@ -27,7 +27,7 @@ export async function GET(_: NextRequest, { params }: Params) {
     .single()
 
   if (error || !data) return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
-  return NextResponse.json({ project: data })
+  return NextResponse.json({ data })
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
