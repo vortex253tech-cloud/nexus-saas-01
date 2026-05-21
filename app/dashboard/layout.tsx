@@ -14,7 +14,7 @@ import {
   ExternalLink, Activity, Moon, Brain, BarChart3,
   Package, Bot, Wallet, Sparkles, MessageCircle,
   Users, Database, Wand2, ChevronDown, Mic, FolderKanban,
-  CheckSquare, GitBranch, Workflow,
+  CheckSquare, GitBranch, Workflow, Terminal,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -94,11 +94,12 @@ const NAV: NavGroup[] = [
     label: 'IA NEXUS',
     icon:  Bot,
     children: [
-      { href: '/dashboard/nexus',       label: 'Painel IA',  icon: Bot },
-      { href: '/dashboard/advisor',     label: 'Consultor',  icon: Brain },
-      { href: '/dashboard/creative-ai', label: 'Criativos',  icon: Sparkles },
-      { href: '/dashboard/actions',     label: 'Ações',      icon: Zap },
-      { href: '/dashboard/alerts',      label: 'Alertas',    icon: Bell },
+      { href: '/dashboard/nexus',        label: 'Painel IA',  icon: Bot },
+      { href: '/dashboard/nexus/engine', label: 'Engine',     icon: Terminal },
+      { href: '/dashboard/advisor',      label: 'Consultor',  icon: Brain },
+      { href: '/dashboard/creative-ai',  label: 'Criativos',  icon: Sparkles },
+      { href: '/dashboard/actions',      label: 'Ações',      icon: Zap },
+      { href: '/dashboard/alerts',       label: 'Alertas',    icon: Bell },
     ],
   },
   {
