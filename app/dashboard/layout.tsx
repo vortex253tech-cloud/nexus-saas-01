@@ -14,6 +14,7 @@ import {
   ExternalLink, Activity, Moon, Brain, BarChart3,
   Package, Bot, Wallet, Sparkles, MessageCircle,
   Users, Database, Wand2, ChevronDown, Mic, FolderKanban,
+  CheckSquare, GitBranch, Workflow,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -72,6 +73,10 @@ const NAV: NavGroup[] = [
     href:  '/dashboard/projects',
     label: 'Projetos',
     icon:  FolderKanban,
+    children: [
+      { href: '/dashboard/projects',           label: 'Operações',   icon: FolderKanban },
+      { href: '/dashboard/projects?view=tasks', label: 'Tarefas',    icon: CheckSquare  },
+    ],
   },
   {
     href:  '/dashboard/financeiro',
@@ -94,6 +99,16 @@ const NAV: NavGroup[] = [
       { href: '/dashboard/creative-ai', label: 'Criativos',  icon: Sparkles },
       { href: '/dashboard/actions',     label: 'Ações',      icon: Zap },
       { href: '/dashboard/alerts',      label: 'Alertas',    icon: Bell },
+    ],
+  },
+  {
+    href:  '/dashboard/automations',
+    label: 'Fluxos IA',
+    icon:  Workflow,
+    children: [
+      { href: '/dashboard/automations', label: 'Automações',   icon: Workflow },
+      { href: '/dashboard/actions',     label: 'Ações IA',     icon: Zap      },
+      { href: '/dashboard/alerts',      label: 'Alertas',      icon: Bell     },
     ],
   },
   {
