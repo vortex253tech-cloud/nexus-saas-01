@@ -13,7 +13,9 @@ import {
 import { resolveCompanyId } from '@/lib/get-company-id'
 import { cn } from '@/lib/cn'
 import { useNexusRealtime } from '@/lib/hooks/use-nexus-realtime'
-import type { NexusEvent } from '@/lib/core/types'
+
+import { AgentDock } from '@/components/agent-dock/AgentDock'
+import { LiveFeed } from '@/components/live-feed/LiveFeed'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,24 +86,6 @@ function MetricCard({ label, value, sub, accent }: { label: string; value: strin
   )
 }
 
-// ── Event label helpers ───────────────────────────────────────────────────────
-
-function eventLabel(ev: NexusEvent): { text: string; sub: string } {
-  const p = ev.payload as Record<string, unknown>
-  switch (ev.type) {
-    case 'message.received': return { text: `Nova mensagem de ${(p.name as string) ?? (p.phone as string) ?? 'contato'}`, sub: 'WhatsApp' }
-    case 'message.sent':     return { text: 'Resposta enviada pela IA', sub: 'WhatsApp' }
-    case 'lead.created':     return { text: `Novo lead: ${(p.name as string) ?? '—'}`, sub: 'CRM' }
-    case 'lead.updated':     return { text: `Lead atualizado: ${(p.name as string) ?? '—'}`, sub: 'CRM' }
-    case 'automation.executed': return { text: `Automação executada: ${(p.automation_name as string) ?? '—'}`, sub: 'Automações' }
-    case 'automation.triggered': return { text: `Automação disparada: ${(p.automation_name as string) ?? '—'}`, sub: 'Automações' }
-    case 'ai.action.completed': return { text: `Ação IA: ${(p.action_type as string) ?? '—'}`, sub: 'Core Engine' }
-    case 'assistant.command': return { text: `Comando: ${((p.command as string) ?? '').slice(0, 60)}`, sub: 'Assistente' }
-    case 'payment.received':  return { text: `Pagamento recebido`, sub: 'Financeiro' }
-    default: return { text: ev.type.replace('.', ' '), sub: ev.source }
-  }
-}
-
 // ── Engine Status Badge ───────────────────────────────────────────────────────
 
 function EngineBadge({ connected }: { connected: boolean }) {
@@ -135,22 +119,10 @@ function PainelTab({
   onToggle: () => void
   toggling: boolean
 }) {
-  const { events: liveEvents, connected } = useNexusRealtime({
+  const { connected } = useNexusRealtime({
     company_id:   companyId,
     auto_metrics: false,
   })
-
-  // Merge live events with static events from overview, deduplicated
-  const liveItems = liveEvents.slice(0, 8).map(ev => {
-    const { text, sub } = eventLabel(ev)
-    return { text, sub, ts: ev.created_at, key: ev.id }
-  })
-
-  const staticItems = data.events.slice(0, Math.max(0, 8 - liveItems.length)).map((ev, i) => ({
-    text: ev.conteudo, sub: ev.canal, ts: ev.created_at, key: `static-${i}`,
-  }))
-
-  const allItems = [...liveItems, ...staticItems]
 
   return (
     <div className="space-y-6">
@@ -194,6 +166,9 @@ function PainelTab({
         </div>
       </div>
 
+      {/* Agent Dock */}
+      <AgentDock compact className="flex-wrap" />
+
       {/* Metrics */}
       <div className="grid grid-cols-3 gap-3">
         <MetricCard label="Leads hoje"    value={data.today.leads_novos} sub="novos" accent="text-violet-400" />
@@ -201,33 +176,21 @@ function PainelTab({
         <MetricCard label="Leads quentes" value={data.pipeline.hot}      sub={`de ${data.pipeline.total} total`} accent="text-orange-400" />
       </div>
 
-      {/* Live Activity Feed */}
+      {/* Live Feed — agents + platform events */}
       <div className="bg-zinc-900 border border-zinc-800/60 rounded-2xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-zinc-800/60 flex items-center justify-between">
-          <p className="text-sm font-medium text-zinc-300">Atividade em tempo real</p>
-          {liveItems.length > 0 && (
-            <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 font-medium">
-              {liveItems.length} ao vivo
-            </span>
-          )}
-        </div>
-        {!allItems.length ? (
-          <div className="py-12 text-center text-zinc-600 text-sm">Aguardando eventos…</div>
-        ) : (
-          <div className="divide-y divide-zinc-800/40">
-            {allItems.map((item) => (
-              <div key={item.key} className="flex items-start gap-3 px-5 py-3.5">
-                <div className="mt-0.5 w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
-                  <Zap className="w-3.5 h-3.5 text-violet-400" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-zinc-300 leading-snug truncate">{item.text}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5">{item.sub} · {timeAgo(item.ts)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <LiveFeed
+          companyId={companyId}
+          initialData={data.events.map((ev, i) => ({
+            id: `static-${i}`,
+            tipo: ev.tipo,
+            canal: ev.canal,
+            conteudo: ev.conteudo,
+            created_at: ev.created_at,
+          }))}
+          maxItems={25}
+          showFilter
+          className="h-[380px]"
+        />
       </div>
     </div>
   )
@@ -738,7 +701,17 @@ function NexusContent() {
         <ComingSoon icon={<Brain className="w-6 h-6" />} title="Criativos" desc="Geração automática de copies, campanhas e mensagens personalizadas por segmento." />
       )}
       {tab === 'agentes' && (
-        <ComingSoon icon={<Users className="w-6 h-6" />} title="Agentes IA" desc="Configure agentes especializados: SDR, Closer, Suporte, Retenção — cada um com sua personalidade." />
+        <div className="space-y-5">
+          <AgentDock className="w-full" />
+          <a
+            href="/dashboard/agents"
+            className="flex items-center justify-center gap-2 py-3 rounded-xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-400 text-sm font-medium transition-colors"
+          >
+            <Users className="w-4 h-4" />
+            Abrir painel completo de Agentes
+            <ArrowRight className="w-4 h-4" />
+          </a>
+        </div>
       )}
     </div>
   )

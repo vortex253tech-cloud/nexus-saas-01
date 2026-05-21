@@ -95,6 +95,7 @@ const NAV: NavGroup[] = [
     icon:  Bot,
     children: [
       { href: '/dashboard/nexus',        label: 'Painel IA',  icon: Bot },
+      { href: '/dashboard/executive',    label: 'Executive',  icon: Moon },
       { href: '/dashboard/nexus/engine', label: 'Engine',     icon: Terminal },
       { href: '/dashboard/agents',       label: 'Agentes',    icon: Users },
       { href: '/dashboard/advisor',      label: 'Consultor',  icon: Brain },
