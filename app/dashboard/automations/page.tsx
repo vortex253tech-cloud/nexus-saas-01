@@ -235,14 +235,253 @@ function FlowTimeline({ count, accent, inView }: { count: number; accent: string
   )
 }
 
+// ─── Template Preview Modal ───────────────────────────────────────────────────
+
+function TemplatePreviewModal({
+  template,
+  onClose,
+  onGenerate,
+}: {
+  template: Template
+  onClose: () => void
+  onGenerate: () => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const inView = useInView(containerRef, { once: true, amount: 0.05 })
+
+  function delayLabel(days: number) {
+    if (days === 0) return 'Imediatamente'
+    return `+${days} dia${days !== 1 ? 's' : ''}`
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22 }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(24px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <motion.div
+        ref={containerRef}
+        initial={{ y: '100%', opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: '80%', opacity: 0 }}
+        transition={{ duration: 0.44, ease: [0.23, 1, 0.32, 1] }}
+        className="relative w-full max-w-lg flex flex-col rounded-t-3xl sm:rounded-3xl overflow-hidden"
+        style={{
+          maxHeight: '92vh',
+          background: '#0d0d14',
+          border: `1px solid ${template.accent}28`,
+          boxShadow: `0 0 80px ${template.glowColor}, 0 32px 64px rgba(0,0,0,0.8)`,
+        }}
+      >
+        {/* Gradient fill */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: template.gradient, opacity: 0.6 }}
+        />
+        {/* Top accent line */}
+        <div
+          className="h-px w-full shrink-0 relative"
+          style={{ background: `linear-gradient(90deg, transparent 5%, ${template.accent}80 50%, transparent 95%)` }}
+        />
+
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-0.5 shrink-0 relative">
+          <div className="h-1 w-10 rounded-full bg-white/10" />
+        </div>
+
+        {/* Scrollable body */}
+        <div className="relative overflow-y-auto flex-1 pb-32">
+
+          {/* ── Header ── */}
+          <div className="px-5 pt-3 pb-4">
+            <div className="flex items-start justify-between mb-3">
+              <span
+                className="text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full"
+                style={{ color: template.badgeColor, background: `${template.badgeColor}14`, border: `1px solid ${template.badgeColor}25` }}
+              >
+                {template.badge}
+              </span>
+              <button
+                onClick={onClose}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.05] transition-all -mt-0.5 -mr-0.5"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <h2 className="text-[20px] font-bold leading-tight text-white/95 mb-2">{template.name}</h2>
+            <p className="text-[13px] text-white/38 leading-relaxed mb-3">{template.description}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <TriggerBadge type={template.trigger_type} />
+              <span className="text-[10px] text-white/20">·</span>
+              <span className="text-[10px] text-white/25 flex items-center gap-1">
+                <Mail size={9} /> {template.stepsData.length} emails
+              </span>
+              <span className="text-[10px] text-white/20">·</span>
+              <span className="text-[10px] text-white/25 flex items-center gap-1">
+                <Clock size={9} /> Ativa em 60 seg
+              </span>
+            </div>
+          </div>
+
+          {/* ── Metrics ── */}
+          <div className="px-5 mb-5">
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: 'Abertura',  value: `${template.metrics.abertura}%`,  icon: Eye       },
+                { label: 'Conversão', value: `${template.metrics.conversao}%`, icon: Target    },
+                { label: 'ROI',       value: `+${template.metrics.roi}%`,      icon: TrendingUp },
+                { label: 'Receita',   value: template.metrics.receita,         icon: BarChart3  },
+              ].map((m, mi) => {
+                const Icon = m.icon
+                return (
+                  <motion.div
+                    key={m.label}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={inView ? { opacity: 1, y: 0 } : {}}
+                    transition={{ delay: 0.06 + mi * 0.06, duration: 0.32 }}
+                    className="rounded-xl border border-white/[0.055] bg-white/[0.025] p-2.5 text-center"
+                  >
+                    <Icon size={10} className="mx-auto mb-1.5" style={{ color: template.accent }} />
+                    <p className="text-[12px] font-bold tabular-nums leading-none" style={{ color: template.accent }}>{m.value}</p>
+                    <p className="text-[9px] text-white/20 mt-1">{m.label}</p>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* ── Flow diagram ── */}
+          <div className="px-5 mb-5">
+            <p className="text-[9px] font-semibold uppercase tracking-widest text-white/20 mb-3">Sequência de disparo</p>
+            <FlowTimeline count={template.stepsData.length} accent={template.accent} inView={inView} />
+          </div>
+
+          {/* Divider */}
+          <div className="mx-5 h-px bg-white/[0.05] mb-5" />
+
+          {/* ── Email previews ── */}
+          <div className="px-5">
+            <p className="text-[9px] font-semibold uppercase tracking-widest text-white/20 mb-3">Prévia das mensagens</p>
+            <div className="space-y-3">
+              {template.stepsData.map((step, si) => {
+                const bodyLines = step.body_html.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+                const previewLines = bodyLines.slice(0, 5)
+                const hasMore = bodyLines.length > 5
+
+                return (
+                  <motion.div
+                    key={si}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={inView ? { opacity: 1, y: 0 } : {}}
+                    transition={{ delay: 0.18 + si * 0.09, duration: 0.35 }}
+                    className="rounded-2xl overflow-hidden"
+                    style={{
+                      background: 'rgba(255,255,255,0.016)',
+                      border: '1px solid rgba(255,255,255,0.058)',
+                    }}
+                  >
+                    {/* Email client header */}
+                    <div
+                      className="px-4 py-3 border-b border-white/[0.04]"
+                      style={{ background: 'rgba(255,255,255,0.01)' }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="h-6 w-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-white"
+                            style={{ background: template.accent }}
+                          >
+                            {si + 1}
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold text-white/60">Email {si + 1}</p>
+                          </div>
+                        </div>
+                        <span
+                          className="text-[9px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{
+                            color: template.accent,
+                            background: `${template.accent}14`,
+                            border: `1px solid ${template.accent}25`,
+                          }}
+                        >
+                          {delayLabel(step.delay_days)}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5 pl-8.5">
+                        <p className="text-[10px] text-white/25">
+                          <span className="text-white/15">De:</span> {'{empresa}'} {'<no-reply@empresa.com>'}
+                        </p>
+                        <p className="text-[10px] text-white/25">
+                          <span className="text-white/15">Para:</span> {'{nome}'}
+                        </p>
+                      </div>
+                    </div>
+                    {/* Email body */}
+                    <div className="px-4 py-3">
+                      <p className="text-[12px] font-semibold text-white/75 mb-2.5 leading-snug">{step.subject}</p>
+                      <div className="space-y-1">
+                        {previewLines.map((line, li) => (
+                          <p key={li} className="text-[11px] text-white/30 leading-relaxed">{line}</p>
+                        ))}
+                        {hasMore && (
+                          <p className="text-[10px] text-white/14 italic mt-1">... continua</p>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Fixed CTA ── */}
+        <div
+          className="absolute bottom-0 left-0 right-0 px-5 pt-6 pb-5 shrink-0"
+          style={{
+            background: 'linear-gradient(to top, #0d0d14 65%, rgba(13,13,20,0.92) 85%, transparent)',
+          }}
+        >
+          <button
+            onClick={onGenerate}
+            className="w-full flex items-center justify-center gap-2.5 rounded-2xl py-4 text-[13px] font-bold text-white transition-all duration-200 active:scale-[0.98]"
+            style={{
+              background: `linear-gradient(135deg, ${template.accent}, ${template.accent}cc)`,
+              boxShadow: `0 8px 32px ${template.glowColor}, 0 2px 12px rgba(0,0,0,0.5)`,
+            }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+            >
+              <Sparkles size={15} />
+            </motion.div>
+            Criar esta automação com IA
+            <ArrowRight size={14} />
+          </button>
+          <p className="text-center text-[10px] text-white/18 mt-2">
+            Pronto em segundos · Sem código necessário
+          </p>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 // ─── Template Card ────────────────────────────────────────────────────────────
 
-function TemplateCard({ template, onActivate }: { template: Template; onActivate: (t: Template) => void }) {
+function TemplateCard({ template, onPreview }: { template: Template; onPreview: (t: Template) => void }) {
   const [hovered, setHovered] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const inView  = useInView(cardRef, { once: true, amount: 0.25 })
 
-  const TriggerIcon = TRIGGER_META[template.trigger_type]?.icon ?? Zap
+  const TriggerIcon = TRIGGER_META[template.trigger_type]?.icon  ?? Zap
   const firstStep   = template.stepsData[0]
   // Get first real body line for preview
   const bodyPreview = firstStep.body_html
@@ -428,7 +667,7 @@ function TemplateCard({ template, onActivate }: { template: Template; onActivate
 
         {/* ── Row 7: CTA ── */}
         <button
-          onClick={() => onActivate(template)}
+          onClick={() => onPreview(template)}
           className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all duration-250"
           style={{
             background: hovered
@@ -791,12 +1030,13 @@ function MyAutomationCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AutomationsPage() {
-  const [tab, setTab]                 = useState<'marketplace' | 'mine'>('marketplace')
-  const [automations, setAutomations] = useState<Automation[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [search, setSearch]           = useState('')
-  const [activeTemplate, setActive]   = useState<Template | null>(null)
-  const [filterType, setFilterType]   = useState<string>('all')
+  const [tab, setTab]                   = useState<'marketplace' | 'mine'>('marketplace')
+  const [automations, setAutomations]   = useState<Automation[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [search, setSearch]             = useState('')
+  const [previewTemplate, setPreview]   = useState<Template | null>(null)
+  const [activeTemplate, setActive]     = useState<Template | null>(null)
+  const [filterType, setFilterType]     = useState<string>('all')
 
   const loadAutomations = useCallback(async () => {
     try {
@@ -972,7 +1212,7 @@ export default function AutomationsPage() {
             {/* Template cards */}
             <div className="grid grid-cols-1 gap-5">
               {filteredTemplates.map(template => (
-                <TemplateCard key={template.id} template={template} onActivate={setActive} />
+                <TemplateCard key={template.id} template={template} onPreview={setPreview} />
               ))}
             </div>
 
@@ -1038,7 +1278,19 @@ export default function AutomationsPage() {
         )}
       </AnimatePresence>
 
-      {/* ── AI Modal ── */}
+      {/* ── Template Preview Modal ── */}
+      <AnimatePresence>
+        {previewTemplate && !activeTemplate && (
+          <TemplatePreviewModal
+            key={previewTemplate.id}
+            template={previewTemplate}
+            onClose={() => setPreview(null)}
+            onGenerate={() => { setActive(previewTemplate); setPreview(null) }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── AI Generation Modal ── */}
       <AnimatePresence>
         {activeTemplate && (
           <AIGenerationModal
