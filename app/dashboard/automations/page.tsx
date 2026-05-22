@@ -7,7 +7,8 @@ import {
   Zap, Users, AlertCircle, Plus, Play, Pause, Trash2,
   BarChart3, TrendingUp, CheckCircle2, Loader2, Sparkles,
   ArrowRight, Mail, Clock, Search, ChevronRight,
-  Settings, Eye, Target, Activity, X,
+  Settings, Eye, Target, Activity, X, Lock, Crown,
+  Brain, Bot, Workflow, Shield,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -1029,6 +1030,139 @@ function MyAutomationCard({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// ─── PRO Gate Overlay ─────────────────────────────────────────────────────────
+
+function ProGateOverlay() {
+  const features = [
+    { icon: Brain,    label: 'IA Autônoma',         desc: 'A IA cria, ajusta e executa sozinha' },
+    { icon: Workflow, label: 'Fluxos Ilimitados',    desc: 'Sequências multi-etapa sem restrição' },
+    { icon: Bot,      label: 'Agentes Automáticos',  desc: 'IA que age em nome da sua empresa' },
+    { icon: Shield,   label: 'Execução em Tempo Real', desc: 'Disparos automáticos por gatilho' },
+  ]
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 z-40 flex items-center justify-center p-6"
+      style={{ backdropFilter: 'blur(18px)', background: 'rgba(7,7,9,0.82)' }}
+    >
+      {/* Animated background glow */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none"
+        animate={{ opacity: [0.4, 0.7, 0.4] }}
+        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(124,58,237,0.18) 0%, transparent 70%)' }}
+      />
+
+      <motion.div
+        initial={{ y: 32, opacity: 0, scale: 0.96 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        transition={{ duration: 0.45, ease: [0.23, 1, 0.32, 1] }}
+        className="relative w-full max-w-md rounded-3xl overflow-hidden"
+        style={{
+          background: '#0d0d14',
+          border: '1px solid rgba(124,58,237,0.35)',
+          boxShadow: '0 0 80px rgba(124,58,237,0.25), 0 32px 64px rgba(0,0,0,0.8)',
+        }}
+      >
+        {/* Top gradient line */}
+        <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, #7c3aed, rgba(139,92,246,0.5), transparent)' }} />
+
+        {/* Background gradient */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.1) 0%, transparent 60%)' }} />
+
+        <div className="relative p-7">
+          {/* Badge */}
+          <div className="flex justify-center mb-5">
+            <motion.div
+              animate={{ boxShadow: ['0 0 0 0px rgba(124,58,237,0.4)', '0 0 0 10px rgba(124,58,237,0)', '0 0 0 0px rgba(124,58,237,0.4)'] }}
+              transition={{ duration: 2.5, repeat: Infinity }}
+              className="flex h-16 w-16 items-center justify-center rounded-2xl"
+              style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.4)' }}
+            >
+              <Crown size={28} className="text-violet-300" />
+            </motion.div>
+          </div>
+
+          {/* PRO badge */}
+          <div className="flex justify-center mb-3">
+            <span
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full"
+              style={{ background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.4)', color: '#a78bfa' }}
+            >
+              ✦ Recurso PRO
+            </span>
+          </div>
+
+          <h2 className="text-[22px] font-bold text-white text-center mb-1.5 leading-tight">
+            Central Operacional de IA
+          </h2>
+          <p className="text-[13px] text-white/38 text-center leading-relaxed mb-6">
+            Automações autônomas que operam sua empresa enquanto você dorme.
+            Disponível no plano PRO.
+          </p>
+
+          {/* Features */}
+          <div className="space-y-2.5 mb-6">
+            {features.map((f, fi) => {
+              const Icon = f.icon
+              return (
+                <motion.div
+                  key={f.label}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.15 + fi * 0.08 }}
+                  className="flex items-center gap-3 rounded-xl px-3.5 py-2.5"
+                  style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.12)' }}
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-600/18 border border-violet-500/22">
+                    <Icon size={13} className="text-violet-300" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold text-white/80">{f.label}</p>
+                    <p className="text-[10px] text-white/28">{f.desc}</p>
+                  </div>
+                  <CheckCircle2 size={13} className="text-violet-400/60 shrink-0" />
+                </motion.div>
+              )
+            })}
+          </div>
+
+          {/* Pricing hint */}
+          <div className="text-center mb-4">
+            <p className="text-[11px] text-white/22">A partir de</p>
+            <p className="text-[28px] font-black text-white leading-none">R$397<span className="text-[14px] font-medium text-white/38">/mês</span></p>
+            <p className="text-[10px] text-white/20 mt-0.5">Cancele quando quiser</p>
+          </div>
+
+          {/* CTA */}
+          <Link
+            href="/dashboard/billing"
+            className="w-full flex items-center justify-center gap-2.5 rounded-2xl py-3.5 text-[13px] font-bold text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+            style={{
+              background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+              boxShadow: '0 8px 32px rgba(124,58,237,0.45)',
+            }}
+          >
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}>
+              <Sparkles size={15} />
+            </motion.div>
+            Fazer upgrade para PRO
+            <ArrowRight size={14} />
+          </Link>
+
+          <p className="text-center text-[10px] text-white/15 mt-3">
+            Teste 7 dias grátis · Sem compromisso
+          </p>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function AutomationsPage() {
   const [tab, setTab]                   = useState<'marketplace' | 'mine'>('marketplace')
   const [automations, setAutomations]   = useState<Automation[]>([])
@@ -1037,6 +1171,24 @@ export default function AutomationsPage() {
   const [previewTemplate, setPreview]   = useState<Template | null>(null)
   const [activeTemplate, setActive]     = useState<Template | null>(null)
   const [filterType, setFilterType]     = useState<string>('all')
+  const [plan, setPlan]                 = useState<string>('free')
+  const [planLoading, setPlanLoading]   = useState(true)
+
+  // Fetch plan
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: unknown) => {
+        if (d && typeof d === 'object') {
+          const data = d as { user?: { effectivePlan?: string } }
+          setPlan(data.user?.effectivePlan ?? 'free')
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPlanLoading(false))
+  }, [])
+
+  const isPro = ['pro', 'scale', 'enterprise'].includes(plan)
 
   const loadAutomations = useCallback(async () => {
     try {
@@ -1084,6 +1236,27 @@ export default function AutomationsPage() {
     .filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()))
 
   const activeCount = automations.filter(a => a.status === 'active').length
+
+  // Show PRO gate after plan is loaded and user is not pro
+  if (!planLoading && !isPro) {
+    return (
+      <div className="min-h-screen bg-[#070709] relative overflow-hidden">
+        {/* Blurred content hint */}
+        <div className="blur-sm opacity-30 pointer-events-none select-none">
+          <div className="px-6 pt-8 pb-6">
+            <h1 className="text-[26px] font-bold text-white mb-2">Automações</h1>
+            <p className="text-sm text-white/40">Fluxos inteligentes que trabalham enquanto você dorme</p>
+            <div className="mt-6 grid grid-cols-1 gap-4">
+              {[1, 2].map(i => (
+                <div key={i} className="h-64 rounded-2xl bg-white/[0.02] border border-white/[0.06]" />
+              ))}
+            </div>
+          </div>
+        </div>
+        <ProGateOverlay />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#070709] pb-16">
