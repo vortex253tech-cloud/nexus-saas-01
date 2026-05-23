@@ -958,61 +958,75 @@ const ConvItem = memo(function ConvItem({
 // ─── Message Bubble ───────────────────────────────────────────────
 
 const Bubble = memo(function Bubble({ msg }: { msg: Message }) {
-  const isOut   = msg.direction === 'outgoing'
+  const isOut    = msg.direction === 'outgoing'
+  const isAI     = msg.ai_generated
+  const isOpt    = msg.id.startsWith('opt-')
   const mediaUrl = msg.raw_payload?.media_url
   const msgType  = msg.raw_payload?.message_type ?? 'text'
   const isImage  = msgType === 'image' && !!mediaUrl
 
   return (
-    <div
-      className={cn('flex gap-2.5 max-w-[78%] animate-in fade-in slide-in-from-bottom-1 duration-200', isOut ? 'flex-row-reverse ml-auto' : 'mr-auto')}
-    >
-      {isOut && (
-        <div className={cn(
-          'w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-auto',
-          msg.ai_generated ? 'bg-violet-600/20' : 'bg-zinc-700',
-        )}>
-          {msg.ai_generated
-            ? <Bot className="w-3.5 h-3.5 text-violet-400" />
-            : <Phone className="w-3.5 h-3.5 text-zinc-400" />}
+    <div className={cn(
+      'flex gap-2 max-w-[80%] animate-in fade-in slide-in-from-bottom-1 duration-200',
+      isOut ? 'flex-row-reverse ml-auto' : 'mr-auto',
+      isOpt && 'opacity-60',
+    )}>
+      {/* Avatar for incoming messages */}
+      {!isOut && (
+        <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center shrink-0 mt-auto text-[10px] font-bold text-zinc-400">
+          <Phone className="w-3 h-3" />
         </div>
       )}
       <div className={cn('flex flex-col gap-1', isOut ? 'items-end' : 'items-start')}>
-        {isOut && msg.ai_generated && (
-          <div className="flex items-center gap-1 text-[10px] text-violet-400/70">
-            <Sparkles className="w-2.5 h-2.5" />
-            NEXUS AI · Resposta automática
+        {/* AI label above bubble */}
+        {isOut && isAI && (
+          <div className="flex items-center gap-1 text-[9px] text-violet-400/60 mb-0.5">
+            <Sparkles className="w-2 h-2" />
+            NEXUS AI
           </div>
         )}
+        {/* Bubble */}
         <div className={cn(
-          'rounded-2xl text-sm leading-relaxed overflow-hidden',
-          isImage ? 'p-0' : 'px-4 py-2.5',
+          'text-sm leading-relaxed overflow-hidden',
+          isImage ? 'rounded-2xl' : cn(
+            'px-3.5 py-2.5',
+            isOut ? 'rounded-2xl rounded-tr-sm' : 'rounded-2xl rounded-tl-sm',
+          ),
           isOut
-            ? 'bg-violet-600 text-white rounded-tr-md shadow-lg shadow-violet-600/20'
-            : 'bg-zinc-800 text-zinc-100 border border-zinc-700/60 rounded-tl-md',
+            ? isAI
+              ? 'bg-gradient-to-br from-violet-600 to-violet-700 text-white shadow-lg shadow-violet-600/25'
+              : 'bg-violet-600 text-white shadow-md shadow-violet-600/20'
+            : 'bg-zinc-800 text-zinc-100 border border-zinc-700/50 shadow-sm',
         )}>
           {isImage ? (
-            <div className="flex flex-col">
+            <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={mediaUrl!}
                 alt="imagem"
-                className="max-w-[260px] max-h-[320px] object-cover rounded-2xl"
+                className="max-w-[260px] max-h-[320px] object-cover"
                 loading="lazy"
               />
               {msg.raw_payload?.caption && (
-                <span className="px-3 py-1.5 text-xs text-white/80">{msg.raw_payload.caption}</span>
+                <p className="px-3 py-1.5 text-xs text-white/80">{msg.raw_payload.caption}</p>
               )}
-            </div>
+            </>
           ) : (
             msg.content
           )}
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-zinc-600">
-          <span>{formatTime(msg.created_at)}</span>
+        {/* Timestamp + delivery */}
+        <div className={cn(
+          'flex items-center gap-1 text-[9px]',
+          isOut ? 'flex-row-reverse' : 'flex-row',
+          'text-zinc-600',
+        )}>
           {isOut && (
-            <CheckCircle2 className={cn('w-3 h-3', msg.status === 'read' ? 'text-violet-400' : 'text-zinc-600')} />
+            msg.status === 'read'
+              ? <CheckCircle2 className="w-3 h-3 text-violet-400" />
+              : <Check className="w-3 h-3" />
           )}
+          <span>{formatTime(msg.created_at)}</span>
         </div>
       </div>
     </div>
@@ -1258,27 +1272,51 @@ function AISidebar({
         <AIModeToggle mode={aiMode} onChange={onAIModeChange} />
       </div>
 
-      {/* Contact card */}
+      {/* Contact card + ScoreRing */}
       <div className="p-4 border-b border-zinc-800/60">
         <div className="flex items-start gap-3">
-          <div className="w-11 h-11 rounded-full bg-violet-600/20 text-violet-400 font-bold text-sm flex items-center justify-center shrink-0">
-            {initials(conv)}
+          <div className="flex flex-col items-center gap-0.5 shrink-0">
+            <ScoreRing score={score} />
+            <p className={cn('text-[8px] font-semibold', score >= 70 ? 'text-emerald-400' : score >= 40 ? 'text-amber-400' : 'text-zinc-500')}>
+              {score >= 70 ? 'Quente' : score >= 40 ? 'Morno' : 'Frio'}
+            </p>
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white truncate">
               {leadData?.name ?? displayName(conv)}
             </p>
             <p className="text-[10px] text-zinc-500">+{conv.phone}</p>
+            {leadData?.empresa && (
+              <p className="text-[10px] text-zinc-500 truncate">{leadData.empresa}</p>
+            )}
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-              <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full border', tempCfg.color, tempCfg.bg)}>
-                {tempCfg.label}
-              </span>
               {conv.label && LABEL_CONFIG[conv.label] && (
                 <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full border', LABEL_CONFIG[conv.label].color, LABEL_CONFIG[conv.label].bg)}>
                   {LABEL_CONFIG[conv.label].label}
                 </span>
               )}
+              <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', tempCfg.color, tempCfg.bg)}>
+                {tempCfg.label}
+              </span>
             </div>
+          </div>
+        </div>
+        {/* Opportunity metrics row */}
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="bg-zinc-900/60 border border-zinc-800/50 rounded-xl px-3 py-2">
+            <p className="text-[9px] text-zinc-600 mb-0.5">Prob. fechar</p>
+            <p className="text-xs font-bold text-white">{convPct}%</p>
+          </div>
+          <div className={cn(
+            'border rounded-xl px-3 py-2',
+            leadData?.estimated_revenue
+              ? 'bg-emerald-500/8 border-emerald-500/15'
+              : 'bg-zinc-900/60 border-zinc-800/50',
+          )}>
+            <p className="text-[9px] text-zinc-600 mb-0.5">Valor estimado</p>
+            <p className={cn('text-xs font-bold', leadData?.estimated_revenue ? 'text-emerald-400' : 'text-zinc-600')}>
+              {leadData?.estimated_revenue ?? '—'}
+            </p>
           </div>
         </div>
       </div>
@@ -1307,9 +1345,7 @@ function AISidebar({
         ) : (
           <div className="space-y-2.5">
             <ScoreBar label="Lead Score" value={score} color={score >= 70 ? 'bg-emerald-500' : score >= 40 ? 'bg-amber-500' : 'bg-zinc-600'} />
-            <ScoreBar label="Chance de fechar" value={convPct} color={convPct >= 70 ? 'bg-emerald-500' : 'bg-violet-500'} />
-
-            <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center justify-between pt-0.5">
               <p className="text-[10px] text-zinc-500">Intenção de compra</p>
               <p className={cn('text-[10px] font-semibold', intentColor)}>{intentLabel}</p>
             </div>
@@ -1317,14 +1353,28 @@ function AISidebar({
               <p className="text-[10px] text-zinc-500">Momento ideal</p>
               <p className="text-[10px] font-medium text-zinc-300">{momentoLabel}</p>
             </div>
-            {leadData?.estimated_revenue && (
+            {leadData?.stage && (
               <div className="flex items-center justify-between">
-                <p className="text-[10px] text-zinc-500">Valor estimado</p>
-                <p className="text-[10px] font-bold text-emerald-400">{leadData.estimated_revenue}</p>
+                <p className="text-[10px] text-zinc-500">Etapa</p>
+                <p className="text-[10px] font-semibold text-violet-400">{STAGE_LABEL[leadData.stage] ?? leadData.stage}</p>
               </div>
             )}
           </div>
         )}
+        {/* Next best action */}
+        <div className="mt-3 bg-violet-500/8 border border-violet-500/20 rounded-xl p-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Sparkles className="w-3 h-3 text-violet-400" />
+            <p className="text-[9px] font-semibold text-violet-400 uppercase tracking-wider">Próxima ação sugerida</p>
+          </div>
+          <p className="text-[11px] text-zinc-300 leading-relaxed">
+            {score >= 70
+              ? 'Enviar proposta agora — lead demonstrou alto interesse e está pronto para fechar.'
+              : score >= 40
+              ? 'Follow-up com mais detalhes sobre benefícios e cases de sucesso.'
+              : 'Qualificar com perguntas sobre orçamento, prazo e tomador de decisão.'}
+          </p>
+        </div>
       </div>
 
       {/* Tags / Context */}
