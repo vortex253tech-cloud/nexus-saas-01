@@ -1114,6 +1114,8 @@ function AISidebar({
   leadData,
   leadLoading,
   aiMode,
+  autoClose,
+  conversations,
   onAIModeChange,
   onSendImage,
   onTransfer,
@@ -1122,6 +1124,8 @@ function AISidebar({
   conv:            Conversation | null
   activityEvents:  ActivityEvent[]
   leadData:        LeadIntel | null
+  conversations:   Conversation[]
+  autoClose:       boolean
   leadLoading:     boolean
   aiMode:          AIMode
   onAIModeChange:  (m: AIMode) => void
@@ -1135,6 +1139,14 @@ function AISidebar({
     { id: 'd3', icon: '📊', label: 'Oportunidade detectada no pipeline', time: new Date(Date.now() - 300000).toISOString(),  color: 'text-violet-400'  },
     { id: 'd4', icon: '⚡', label: 'Follow-up automático enviado',      time: new Date(Date.now() - 600000).toISOString(),   color: 'text-blue-400'    },
   ]
+
+  // AutoClose performance metrics (derived from real conversation data)
+  const closedCount   = conversations.filter(c => c.status === 'closed').length
+  const activeCount   = conversations.filter(c => c.status === 'active').length
+  const aiEnabledCount = conversations.filter(c => c.ai_enabled).length
+  const convRate      = conversations.length > 0
+    ? Math.round((closedCount / conversations.length) * 100)
+    : 0
 
   const AI_CAPABILITIES = [
     'Responde mensagens automaticamente',
@@ -1164,6 +1176,29 @@ function AISidebar({
           <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Modo de operação</p>
           <AIModeToggle mode={aiMode} onChange={onAIModeChange} />
         </div>
+
+        {/* AutoClose metrics card — shown when autoClose is ON */}
+        {autoClose && (
+          <div className="mx-3 mt-3 bg-emerald-500/8 border border-emerald-500/20 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-3">
+              <Zap className="w-3 h-3 text-emerald-400" />
+              <p className="text-[9px] font-semibold text-emerald-400 uppercase tracking-wider">AutoClose · Performance</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: 'Conversas ativas',   value: activeCount,    color: 'text-white'         },
+                { label: 'IA respondendo',      value: aiEnabledCount, color: 'text-violet-400'    },
+                { label: 'Taxa conversão',      value: `${convRate}%`, color: 'text-emerald-400'   },
+                { label: 'Fechadas',            value: closedCount,    color: 'text-zinc-400'      },
+              ].map(m => (
+                <div key={m.label} className="bg-zinc-950/60 rounded-lg p-2">
+                  <p className={cn('text-xs font-bold', m.color)}>{m.value}</p>
+                  <p className="text-[9px] text-zinc-600 mt-0.5">{m.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Monitoring */}
         <div className="p-4 border-b border-zinc-800/60">
@@ -2568,6 +2603,8 @@ export default function WhatsAppPage() {
             leadData={leadData}
             leadLoading={leadLoading}
             aiMode={aiMode}
+            autoClose={autoClose}
+            conversations={conversations}
             onAIModeChange={setAiMode}
             onSendImage={() => fileInputRef.current?.click()}
             onTransfer={handleTransfer}
