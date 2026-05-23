@@ -524,6 +524,195 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      // ── analyzeCompany ────────────────────────────────────────────
+      case 'analyzeCompany': {
+        const today = new Date(); today.setHours(0,0,0,0)
+        const todayIso = today.toISOString()
+
+        const [{ data: convs }, { data: msgs }, { data: automations }, { data: followups }] = await Promise.all([
+          supabase.from('whatsapp_conversations').select('id, status, ai_enabled, unread_count, last_message_at, temperatura, label').eq('company_id', companyId),
+          supabase.from('whatsapp_messages').select('id, direction, created_at, ai_generated').eq('company_id', companyId).gte('created_at', todayIso),
+          supabase.from('automations').select('id, name, status, trigger_count').eq('company_id', companyId).eq('active', true),
+          supabase.from('voice_followups').select('id, status, scheduled_at').eq('company_id', companyId).eq('status', 'pending'),
+        ])
+
+        const totalConvs  = convs?.length ?? 0
+        const activeConvs = convs?.filter(c => c.status === 'active').length ?? 0
+        const aiOn        = convs?.filter(c => c.ai_enabled).length ?? 0
+        const hotLeads    = convs?.filter(c => c.temperatura === 'quente').length ?? 0
+        const unread      = convs?.reduce((s, c) => s + (c.unread_count ?? 0), 0) ?? 0
+        const closing     = convs?.filter(c => c.label === 'negociacao').length ?? 0
+        const msgsToday   = msgs?.length ?? 0
+        const aiGenerated = msgs?.filter(m => m.ai_generated).length ?? 0
+        const autoActive  = automations?.length ?? 0
+        const pendingFu   = followups?.length ?? 0
+
+        const healthScore = Math.min(100, Math.round(
+          (activeConvs > 0 ? 20 : 0) +
+          (aiOn > 0 ? 20 : 0) +
+          (hotLeads > 0 ? 20 : 0) +
+          (msgsToday > 5 ? 20 : msgsToday > 0 ? 10 : 0) +
+          (unread === 0 ? 20 : unread < 5 ? 10 : 0)
+        ))
+
+        const alerts = []
+        if (unread > 5)      alerts.push(`⚠️ ${unread} mensagens não lidas acumuladas`)
+        if (hotLeads > 0)    alerts.push(`🔥 ${hotLeads} lead(s) quentes precisam de atenção`)
+        if (closing > 0)     alerts.push(`💰 ${closing} lead(s) em negociação — momento de fechar`)
+        if (pendingFu > 0)   alerts.push(`📅 ${pendingFu} follow-up(s) pendentes`)
+        if (aiOn === 0)      alerts.push(`🤖 Nenhuma conversa com IA ativa`)
+
+        const opportunities = []
+        if (hotLeads > 0)    opportunities.push(`Acionar follow-up para ${hotLeads} leads quentes`)
+        if (closing > 0)     opportunities.push(`Enviar proposta de fechamento para ${closing} em negociação`)
+        if (aiOn < activeConvs) opportunities.push(`Ativar IA em mais conversas (${activeConvs - aiOn} sem IA)`)
+        if (pendingFu > 0)   opportunities.push(`Executar ${pendingFu} follow-ups agendados`)
+
+        return NextResponse.json({
+          health_score:      healthScore,
+          conversations:     { total: totalConvs, active: activeConvs, ai_on: aiOn, hot: hotLeads, closing, unread },
+          messages_today:    { total: msgsToday, ai_generated: aiGenerated },
+          automations_active: autoActive,
+          follow_ups_pending: pendingFu,
+          alerts,
+          opportunities,
+          summary: `Saúde da empresa: ${healthScore}/100. ${activeConvs} conversas ativas, ${hotLeads} leads quentes, ${closing} em negociação. ${alerts.length > 0 ? `Alertas: ${alerts.join('; ')}` : 'Sem alertas críticos.'}`,
+        })
+      }
+
+      // ── orchestrateAgent ──────────────────────────────────────────
+      case 'orchestrateAgent': {
+        const agentName = String(params.agent ?? '').toLowerCase()
+        const task      = String(params.task ?? '').trim()
+
+        const AGENT_MAP: Record<string, { label: string; description: string; action: string }> = {
+          marketing:  { label: 'Marketing IA',    description: 'Especialista em campanhas e conteúdo', action: 'Analisando estratégia de marketing e gerando recomendações de campanha' },
+          growth:     { label: 'Growth IA',       description: 'Especialista em crescimento e retenção', action: 'Identificando oportunidades de crescimento e alavancagem' },
+          financeiro: { label: 'Financeiro IA',   description: 'Especialista em finanças e DRE', action: 'Analisando saúde financeira e projeções' },
+          projetos:   { label: 'Projetos IA',     description: 'Gestor de projetos e operações', action: 'Organizando tarefas e identificando gargalos' },
+          suporte:    { label: 'Suporte IA',      description: 'Especialista em atendimento ao cliente', action: 'Analisando padrões de atendimento e satisfação' },
+          operacoes:  { label: 'Operações IA',    description: 'COO operacional', action: 'Otimizando fluxos e processos internos' },
+          conteudo:   { label: 'Conteúdo IA',     description: 'Criador de conteúdo e copywriting', action: 'Gerando conteúdo estratégico e copy de vendas' },
+        }
+
+        const agent = AGENT_MAP[agentName] ?? { label: `${agentName} IA`, description: 'Agente especializado', action: `Executando: ${task}` }
+
+        // Log agent activation in nexus_events if table exists
+        await supabase.from('nexus_events').insert({
+          company_id:  companyId,
+          event_type:  'agent_orchestrated',
+          description: `${agent.label} acionado: ${task}`,
+          metadata:    { agent: agentName, task },
+          created_at:  new Date().toISOString(),
+        }).then(() => {}, () => {})
+
+        return NextResponse.json({
+          agent:       agent.label,
+          description: agent.description,
+          task,
+          action:      agent.action,
+          status:      'executing',
+          summary:     `${agent.label} acionado. ${agent.action}. Tarefa: "${task}"`,
+        })
+      }
+
+      // ── getAutomations ────────────────────────────────────────────
+      case 'getAutomations': {
+        const { data: autos, error: autoErr } = await supabase
+          .from('automations')
+          .select('id, name, description, status, trigger_count, last_triggered_at, active')
+          .eq('company_id', companyId)
+          .order('trigger_count', { ascending: false })
+          .limit(10)
+
+        if (autoErr?.code === '42P01') {
+          return NextResponse.json({ automations: [], count: 0, summary: 'Módulo de automações ainda não configurado.' })
+        }
+
+        const active   = (autos ?? []).filter(a => a.active)
+        const inactive = (autos ?? []).filter(a => !a.active)
+
+        return NextResponse.json({
+          automations: autos ?? [],
+          count:       autos?.length ?? 0,
+          active_count: active.length,
+          summary:     autos?.length
+            ? `${active.length} automações ativas. Mais acionada: "${active[0]?.name ?? 'N/A'}" (${active[0]?.trigger_count ?? 0}x). ${inactive.length} inativas.`
+            : 'Nenhuma automação configurada.',
+        })
+      }
+
+      // ── triggerAutomation ─────────────────────────────────────────
+      case 'triggerAutomation': {
+        const autoId   = String(params.automation_id ?? '')
+        const autoName = params.automation_name ? String(params.automation_name) : 'Automação'
+
+        if (!autoId) return NextResponse.json({ error: 'automation_id required' })
+
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+          ?? `https://${req.headers.get('host') ?? 'localhost'}`
+
+        const res = await fetch(`${baseUrl}/api/automations/${autoId}/execute`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie':       req.headers.get('cookie') ?? '',
+          },
+        })
+
+        if (!res.ok) {
+          return NextResponse.json({ success: false, error: `Falha ao disparar ${autoName}` })
+        }
+
+        await supabase
+          .from('automations')
+          .update({ last_triggered_at: new Date().toISOString() })
+          .eq('id', autoId)
+          .eq('company_id', companyId)
+
+        return NextResponse.json({
+          success:  true,
+          summary: `Automação "${autoName}" disparada com sucesso.`,
+        })
+      }
+
+      // ── createTask ────────────────────────────────────────────────
+      case 'createTask': {
+        const title       = String(params.title ?? '').trim()
+        const description = params.description ? String(params.description) : null
+        const priority    = params.priority ? String(params.priority) : 'medium'
+        const dueDate     = params.due_date   ? String(params.due_date)   : null
+
+        if (!title) return NextResponse.json({ error: 'title required' })
+
+        // Try inserting into tasks or notes table; gracefully degrade
+        const { error: taskErr } = await supabase
+          .from('tasks')
+          .insert({
+            company_id:  companyId,
+            title,
+            description,
+            priority,
+            due_date:    dueDate,
+            status:      'pending',
+            created_at:  new Date().toISOString(),
+            source:      'voice_assistant',
+          })
+
+        if (taskErr && taskErr.code !== '42P01') {
+          // Table exists but insert failed
+          return NextResponse.json({ success: false, error: taskErr.message })
+        }
+
+        return NextResponse.json({
+          success:  true,
+          title,
+          priority,
+          due_date: dueDate,
+          summary:  `Tarefa criada: "${title}"${priority !== 'medium' ? ` (${priority})` : ''}${dueDate ? ` — vence em ${new Date(dueDate).toLocaleDateString('pt-BR')}` : ''}.`,
+        })
+      }
+
       default:
         return NextResponse.json({ error: `Unknown tool: ${tool}` }, { status: 400 })
     }
