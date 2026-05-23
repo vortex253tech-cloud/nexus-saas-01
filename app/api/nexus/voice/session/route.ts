@@ -9,7 +9,7 @@ import { getSupabaseRouteClient }    from '@/lib/supabase-server'
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 15
 
-const REALTIME_MODEL = 'gpt-4o-realtime-preview'
+const REALTIME_MODEL = 'gpt-4o-realtime-preview-2024-12-17'
 
 const SYSTEM_PROMPT = `Você é o NEXUS — Sistema Operacional de IA da empresa. COO executivo de alto nível.
 Você é o cérebro operacional central. Fala português, age como um COO + CEO de IA de elite.
@@ -49,6 +49,9 @@ Operações avançadas:
   getAutomations         → lista automações ativas
   triggerAutomation      → dispara uma automação
   createTask             → cria tarefa ou projeto
+  createAutomation       → cria nova automação no sistema
+  scheduleMeeting        → agenda reunião ou compromisso
+  generateProposal       → gera proposta comercial para cliente/lead
 
 Navegação:
   navigate               → abre módulo do dashboard
@@ -191,6 +194,36 @@ const TOOLS = [
       priority:    { type: 'string', description: 'low, medium, high, critical' },
       due_date:    { type: 'string', description: 'Data limite ISO 8601 (opcional)' },
     }, required: ['title'] },
+  },
+  { type: 'function', name: 'createAutomation',
+    description: 'Cria uma nova automação no sistema',
+    parameters: { type: 'object', properties: {
+      name:        { type: 'string', description: 'Nome da automação' },
+      trigger:     { type: 'string', description: 'Evento disparador: nova_mensagem, novo_lead, agendamento, webhook' },
+      actions:     { type: 'string', description: 'Descrição das ações em texto natural' },
+      description: { type: 'string', description: 'Descrição opcional da automação' },
+    }, required: ['name', 'trigger', 'actions'] },
+  },
+  { type: 'function', name: 'scheduleMeeting',
+    description: 'Agenda uma reunião ou compromisso',
+    parameters: { type: 'object', properties: {
+      title:        { type: 'string', description: 'Título/assunto da reunião' },
+      contact_name: { type: 'string', description: 'Nome do participante ou cliente' },
+      phone:        { type: 'string', description: 'Telefone do contato (opcional)' },
+      scheduled_at: { type: 'string', description: 'Data e hora ISO 8601' },
+      duration_min: { type: 'number', description: 'Duração em minutos (padrão 60)' },
+      notes:        { type: 'string', description: 'Notas adicionais (opcional)' },
+    }, required: ['title', 'scheduled_at'] },
+  },
+  { type: 'function', name: 'generateProposal',
+    description: 'Gera uma proposta comercial para um lead ou cliente',
+    parameters: { type: 'object', properties: {
+      contact_name:    { type: 'string', description: 'Nome do cliente/lead' },
+      conversation_id: { type: 'string', description: 'ID da conversa (opcional)' },
+      offer:           { type: 'string', description: 'Produto ou serviço sendo ofertado' },
+      value:           { type: 'number', description: 'Valor da proposta em reais (opcional)' },
+      notes:           { type: 'string', description: 'Pontos especiais a incluir (opcional)' },
+    }, required: ['contact_name', 'offer'] },
   },
 ]
 

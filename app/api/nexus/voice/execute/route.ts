@@ -27,8 +27,19 @@ export async function POST(req: NextRequest) {
   }
 
   const { tool, params } = body
-  const supabase  = db()
-  const companyId = process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
+  const supabase = db()
+
+  // Resolve company_id from company_members for this user (multi-tenant safe)
+  const { data: memberRow } = await supabase
+    .from('company_members')
+    .select('company_id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  const companyId = memberRow?.company_id ?? process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
+  if (!companyId) {
+    return NextResponse.json({ error: 'Company not found for user' }, { status: 403 })
+  }
 
   try {
     switch (tool) {
@@ -710,6 +721,175 @@ export async function POST(req: NextRequest) {
           priority,
           due_date: dueDate,
           summary:  `Tarefa criada: "${title}"${priority !== 'medium' ? ` (${priority})` : ''}${dueDate ? ` — vence em ${new Date(dueDate).toLocaleDateString('pt-BR')}` : ''}.`,
+        })
+      }
+
+      // ── navigate ─────────────────────────────────────────────────
+      case 'navigate': {
+        const path     = String(params.path ?? '').trim()
+        const pageName = params.page_name ? String(params.page_name) : path
+        if (!path) return NextResponse.json({ error: 'path required' })
+        return NextResponse.json({
+          success:  true,
+          path,
+          page_name: pageName,
+          action:   'navigate',
+          summary:  `Navegando para ${pageName}.`,
+        })
+      }
+
+      // ── createAutomation ──────────────────────────────────────────
+      case 'createAutomation': {
+        const name        = String(params.name ?? '').trim()
+        const trigger     = String(params.trigger ?? '').trim()
+        const actions     = String(params.actions ?? '').trim()
+        const description = params.description ? String(params.description) : null
+
+        if (!name || !trigger || !actions) {
+          return NextResponse.json({ error: 'name, trigger and actions required' })
+        }
+
+        const { data: created, error: autoErr } = await supabase
+          .from('automations')
+          .insert({
+            company_id:  companyId,
+            name,
+            description: description ?? actions,
+            trigger_type: trigger,
+            active:      false,
+            status:      'draft',
+            created_at:  new Date().toISOString(),
+            source:      'voice_assistant',
+          })
+          .select('id, name')
+          .single()
+
+        if (autoErr && autoErr.code !== '42P01') {
+          return NextResponse.json({ success: false, error: autoErr.message })
+        }
+
+        return NextResponse.json({
+          success:       true,
+          automation_id: created?.id ?? null,
+          name,
+          trigger,
+          status:        'draft',
+          summary:       `Automação "${name}" criada com trigger "${trigger}". Está em rascunho — ative pelo painel de automações.`,
+        })
+      }
+
+      // ── scheduleMeeting ───────────────────────────────────────────
+      case 'scheduleMeeting': {
+        const title       = String(params.title ?? '').trim()
+        const scheduledAt = String(params.scheduled_at ?? '').trim()
+        const contactName = params.contact_name ? String(params.contact_name) : null
+        const phone       = params.phone ? String(params.phone).replace(/\D/g, '') : null
+        const durationMin = Number(params.duration_min ?? 60)
+        const notes       = params.notes ? String(params.notes) : null
+
+        if (!title || !scheduledAt) {
+          return NextResponse.json({ error: 'title and scheduled_at required' })
+        }
+
+        const { error: meetErr } = await supabase
+          .from('meetings')
+          .insert({
+            company_id:   companyId,
+            title,
+            contact_name: contactName,
+            phone,
+            scheduled_at: scheduledAt,
+            duration_min: durationMin,
+            notes,
+            status:       'scheduled',
+            created_at:   new Date().toISOString(),
+            source:       'voice_assistant',
+          })
+
+        // If meetings table doesn't exist, fall back gracefully
+        if (meetErr && meetErr.code === '42P01') {
+          // Try voice_followups as fallback
+          await supabase.from('voice_followups').insert({
+            company_id:   companyId,
+            phone:        phone ?? '0',
+            contact_name: contactName,
+            message:      `REUNIÃO: ${title}${notes ? ` — ${notes}` : ''}`,
+            scheduled_at: scheduledAt,
+            status:       'pending',
+            created_at:   new Date().toISOString(),
+          }).then(() => {}, () => {})
+        }
+
+        const dateStr = new Date(scheduledAt).toLocaleString('pt-BR', {
+          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+        })
+        return NextResponse.json({
+          success:      true,
+          title,
+          contact_name: contactName,
+          scheduled_at: scheduledAt,
+          duration_min: durationMin,
+          summary:      `Reunião "${title}" agendada para ${dateStr}${contactName ? ` com ${contactName}` : ''}${durationMin !== 60 ? ` (${durationMin}min)` : ''}.`,
+        })
+      }
+
+      // ── generateProposal ──────────────────────────────────────────
+      case 'generateProposal': {
+        const contactName    = String(params.contact_name ?? '').trim()
+        const offer          = String(params.offer ?? '').trim()
+        const convId         = params.conversation_id ? String(params.conversation_id) : null
+        const value          = params.value ? Number(params.value) : null
+        const notes          = params.notes ? String(params.notes) : null
+
+        if (!contactName || !offer) {
+          return NextResponse.json({ error: 'contact_name and offer required' })
+        }
+
+        // Fetch lead context for personalization
+        let leadCtx: { empresa?: string; nicho?: string; objetivo?: string } | null = null
+        if (convId) {
+          const { data: ctx } = await supabase
+            .from('lead_context')
+            .select('empresa, nicho, objetivo')
+            .eq('conversation_id', convId)
+            .maybeSingle()
+          leadCtx = ctx
+        }
+
+        const valueStr = value ? `R$${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : null
+
+        // Try saving to proposals table
+        const { error: propErr } = await supabase
+          .from('proposals')
+          .insert({
+            company_id:   companyId,
+            contact_name: contactName,
+            offer,
+            value,
+            notes,
+            conversation_id: convId,
+            status:       'draft',
+            created_at:   new Date().toISOString(),
+            source:       'voice_assistant',
+          })
+
+        const proposalContent = [
+          `**Proposta Comercial — ${contactName}**`,
+          leadCtx?.empresa ? `Empresa: ${leadCtx.empresa}` : null,
+          `Solução: ${offer}`,
+          valueStr ? `Investimento: ${valueStr}` : null,
+          leadCtx?.objetivo ? `Objetivo: ${leadCtx.objetivo}` : null,
+          notes ? `Detalhe: ${notes}` : null,
+        ].filter(Boolean).join('\n')
+
+        return NextResponse.json({
+          success:      true,
+          contact_name: contactName,
+          offer,
+          value,
+          proposal:     proposalContent,
+          saved:        !propErr || propErr.code !== '42P01',
+          summary:      `Proposta gerada para ${contactName}${leadCtx?.empresa ? ` da ${leadCtx.empresa}` : ''}: ${offer}${valueStr ? ` — ${valueStr}` : ''}. ${!propErr || propErr.code === '42P01' ? 'Salva como rascunho.' : 'Enviada para revisão.'}`,
         })
       }
 

@@ -66,30 +66,33 @@ const ORB: Record<VoiceState, { gradient: string; glow: string; label: string; p
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  navigate:             'Navegando para módulo',
-  getWhatsAppStats:     'Lendo stats WhatsApp',
-  getHotLeads:          'Buscando leads quentes',
-  sendWhatsAppMessage:  'Enviando mensagem',
-  searchConversations:  'Pesquisando conversa',
-  toggleAI:             'Ajustando IA',
-  transferToHuman:      'Transferindo para humano',
-  getDashboardSummary:  'Resumo executivo',
-  createFollowUp:       'Criando follow-up',
-  getUnreadMessages:    'Verificando não lidas',
-  getFinancialSummary:  'Analisando financeiro',
-  getPipelineLeads:     'Lendo pipeline',
-  updateLeadStage:      'Movendo lead',
-  markConversationRead: 'Marcando como lida',
+  navigate:               'Navegando para módulo',
+  getWhatsAppStats:       'Lendo stats WhatsApp',
+  getHotLeads:            'Buscando leads quentes',
+  sendWhatsAppMessage:    'Enviando mensagem',
+  searchConversations:    'Pesquisando conversa',
+  toggleAI:               'Ajustando IA',
+  transferToHuman:        'Transferindo para humano',
+  getDashboardSummary:    'Resumo executivo',
+  createFollowUp:         'Criando follow-up',
+  getUnreadMessages:      'Verificando não lidas',
+  getFinancialSummary:    'Analisando financeiro',
+  getPipelineLeads:       'Lendo pipeline',
+  updateLeadStage:        'Movendo lead',
+  markConversationRead:   'Marcando como lida',
   getConversationHistory: 'Carregando histórico',
-  getSystemStatus:      'Verificando sistema',
-  analyzeCompany:       'Analisando empresa',
-  orchestrateAgent:     'Acionando agente IA',
-  getAutomations:       'Lendo automações',
-  triggerAutomation:    'Disparando automação',
-  createTask:           'Criando tarefa',
+  getSystemStatus:        'Verificando sistema',
+  analyzeCompany:         'Analisando empresa',
+  orchestrateAgent:       'Acionando agente IA',
+  getAutomations:         'Lendo automações',
+  triggerAutomation:      'Disparando automação',
+  createTask:             'Criando tarefa',
+  createAutomation:       'Criando automação',
+  scheduleMeeting:        'Agendando reunião',
+  generateProposal:       'Gerando proposta',
 }
 
-const REALTIME_MODEL = 'gpt-4o-realtime-preview'
+const REALTIME_MODEL = 'gpt-4o-realtime-preview-2024-12-17'
 
 // Session update via DataChannel (tools already set in session, this confirms)
 const SESSION_UPDATE = {
@@ -128,7 +131,7 @@ const QUICK: { icon: React.ElementType; label: string; prompt: string; color: st
   { icon: Target,       label: 'Fechar leads',     prompt: 'NEXUS, quais leads estão em negociação prontos para fechar?', color: 'emerald' },
   { icon: Bot,          label: 'Agente Marketing', prompt: 'NEXUS, aciona o Marketing IA para analisar oportunidades de campanha', color: 'blue' },
   { icon: Plus,         label: 'Criar tarefa',     prompt: 'NEXUS, cria uma tarefa urgente para hoje',           color: 'purple'  },
-  { icon: AreaChart,    label: 'Relatório',        prompt: 'NEXUS, gera um relatório executivo completo',        color: 'teal'    },
+  { icon: Settings,     label: 'Automação',        prompt: 'NEXUS, cria uma automação para quando chegar novo lead', color: 'teal' },
   { icon: Crown,        label: 'CEO Mode',         prompt: 'NEXUS, ativa modo CEO e monitora a empresa',         color: 'indigo'  },
 ]
 
@@ -149,26 +152,35 @@ const COLOR_MAP: Record<string, string> = {
 
 // ── Components ─────────────────────────────────────────────────────────────
 
-const WaveformBars = memo(function WaveformBars({ active, color }: { active: boolean; color: string }) {
+const WaveformBars = memo(function WaveformBars({
+  active, color, levels,
+}: { active: boolean; color: string; levels: number[] }) {
   return (
     <div className="flex items-center justify-center gap-[2.5px] h-10">
-      {Array.from({ length: 32 }).map((_, i) => (
-        <motion.div
-          key={i}
-          className={`w-[2.5px] rounded-full ${color}`}
-          animate={active ? {
-            scaleY: [0.12, 1, 0.12],
-            opacity: [0.3, 1, 0.3],
-          } : { scaleY: 0.12, opacity: 0.15 }}
-          transition={active ? {
-            duration: 0.7 + (i % 6) * 0.1,
-            repeat: Infinity,
-            delay: (i * 0.035) % 0.55,
-            ease: 'easeInOut',
-          } : { duration: 0.25 }}
-          style={{ height: 32 }}
-        />
-      ))}
+      {Array.from({ length: 32 }).map((_, i) => {
+        const hasRealLevel = active && levels[i] > 0.02
+        const scaleVal     = hasRealLevel ? Math.max(0.12, levels[i]) : 0.12
+        return (
+          <motion.div
+            key={i}
+            className={`w-[2.5px] rounded-full ${color}`}
+            animate={active && !hasRealLevel ? {
+              scaleY: [0.12, 0.4 + (i % 4) * 0.1, 0.12],
+              opacity: [0.2, 0.55, 0.2],
+            } : {
+              scaleY: hasRealLevel ? scaleVal : 0.12,
+              opacity: hasRealLevel ? 0.85 : 0.15,
+            }}
+            transition={active && !hasRealLevel ? {
+              duration: 0.8 + (i % 5) * 0.12,
+              repeat: Infinity,
+              delay: (i * 0.04) % 0.5,
+              ease: 'easeInOut',
+            } : { duration: 0.06, ease: 'linear' }}
+            style={{ height: 32 }}
+          />
+        )
+      })}
     </div>
   )
 })
@@ -475,13 +487,20 @@ export default function AssistantPage() {
   })
   const [recentCommands, setRecentCommands] = useState<string[]>([])
 
-  const pcRef            = useRef<RTCPeerConnection | null>(null)
-  const dcRef            = useRef<RTCDataChannel | null>(null)
-  const audioElRef       = useRef<HTMLAudioElement | null>(null)
-  const timerRef         = useRef<ReturnType<typeof setInterval> | null>(null)
-  const transcriptRef    = useRef<HTMLDivElement>(null)
-  const reconnectCountRef = useRef(0)
-  const stoppedRef       = useRef(false)
+  const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(0))
+
+  const pcRef              = useRef<RTCPeerConnection | null>(null)
+  const dcRef              = useRef<RTCDataChannel | null>(null)
+  const audioElRef         = useRef<HTMLAudioElement | null>(null)
+  const timerRef           = useRef<ReturnType<typeof setInterval> | null>(null)
+  const transcriptRef      = useRef<HTMLDivElement>(null)
+  const reconnectCountRef  = useRef(0)
+  const stoppedRef         = useRef(false)
+  const audioCtxRef        = useRef<AudioContext | null>(null)
+  const outputAnalyserRef  = useRef<AnalyserNode | null>(null)
+  const inputAnalyserRef   = useRef<AnalyserNode | null>(null)
+  const micStreamRef       = useRef<MediaStream | null>(null)
+  const animFrameRef       = useRef<number | null>(null)
 
   // ── localStorage memory ───────────────────────────────────────────────────
   useEffect(() => {
@@ -492,6 +511,45 @@ export default function AssistantPage() {
       if (ceo === 'true') setCeoMode(true)
     } catch {}
   }, [])
+
+  // ── Real audio waveform loop ──────────────────────────────────────────────
+  useEffect(() => {
+    const isAudioActive = voiceState === 'listening' || voiceState === 'speaking'
+
+    if (!isAudioActive) {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current)
+        animFrameRef.current = null
+      }
+      setAudioLevels(Array(32).fill(0))
+      return
+    }
+
+    const analyser = voiceState === 'listening' ? inputAnalyserRef.current : outputAnalyserRef.current
+    if (!analyser) return
+
+    const data = new Uint8Array(analyser.frequencyBinCount)
+
+    const tick = () => {
+      analyser.getByteFrequencyData(data)
+      const step  = Math.floor(data.length / 32)
+      const levels = Array.from({ length: 32 }, (_, i) => {
+        const bucket = data[i * step] ?? 0
+        return bucket / 255
+      })
+      setAudioLevels(levels)
+      animFrameRef.current = requestAnimationFrame(tick)
+    }
+
+    animFrameRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current)
+        animFrameRef.current = null
+      }
+    }
+  }, [voiceState])
 
   // ── Load live metrics ─────────────────────────────────────────────────────
   const loadMetrics = useCallback(async () => {
@@ -614,7 +672,7 @@ export default function AssistantPage() {
       ))
 
       // Refresh metrics after mutating tools
-      const mutating = ['sendWhatsAppMessage', 'toggleAI', 'updateLeadStage', 'markConversationRead', 'createTask', 'triggerAutomation']
+      const mutating = ['sendWhatsAppMessage', 'toggleAI', 'updateLeadStage', 'markConversationRead', 'createTask', 'triggerAutomation', 'createAutomation', 'scheduleMeeting', 'generateProposal']
       if (mutating.includes(toolName)) {
         setTimeout(loadMetrics, 1800)
       }
@@ -685,11 +743,19 @@ export default function AssistantPage() {
   // ── Session control ───────────────────────────────────────────────────────
   const stopSession = useCallback(() => {
     stoppedRef.current = true
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
     dcRef.current?.close()
     dcRef.current = null
     pcRef.current?.close()
     pcRef.current = null
     if (audioElRef.current) { audioElRef.current.srcObject = null; audioElRef.current = null }
+    micStreamRef.current?.getTracks().forEach(t => t.stop())
+    micStreamRef.current = null
+    audioCtxRef.current?.close().catch(() => {})
+    audioCtxRef.current = null
+    outputAnalyserRef.current = null
+    inputAnalyserRef.current  = null
+    setAudioLevels(Array(32).fill(0))
     setVoiceState('off')
     reconnectCountRef.current = 0
   }, [])
@@ -715,6 +781,25 @@ export default function AssistantPage() {
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      micStreamRef.current = stream
+
+      // ── Web Audio API setup ───────────────────────────────────────────────
+      const ctx = new AudioContext()
+      audioCtxRef.current = ctx
+
+      // Input analyser (microphone — listening state)
+      const inputAnalyser = ctx.createAnalyser()
+      inputAnalyser.fftSize          = 128
+      inputAnalyser.smoothingTimeConstant = 0.7
+      inputAnalyserRef.current       = inputAnalyser
+      const micSource = ctx.createMediaStreamSource(stream)
+      micSource.connect(inputAnalyser)
+
+      // Output analyser (AI speech — speaking state)
+      const outputAnalyser = ctx.createAnalyser()
+      outputAnalyser.fftSize          = 128
+      outputAnalyser.smoothingTimeConstant = 0.7
+      outputAnalyserRef.current      = outputAnalyser
 
       const pc = new RTCPeerConnection()
       pcRef.current = pc
@@ -722,7 +807,15 @@ export default function AssistantPage() {
       const audioEl = new Audio()
       audioEl.autoplay = true
       audioElRef.current = audioEl
-      pc.ontrack = (e) => { audioEl.srcObject = e.streams[0] }
+
+      pc.ontrack = (e) => {
+        audioEl.srcObject = e.streams[0]
+        // Connect output stream to analyser for real waveform
+        try {
+          const outputSource = ctx.createMediaStreamSource(e.streams[0])
+          outputSource.connect(outputAnalyser)
+        } catch { /* ignore — analyser only, doesn't affect playback */ }
+      }
 
       stream.getTracks().forEach(t => pc.addTrack(t, stream))
 
@@ -809,7 +902,7 @@ export default function AssistantPage() {
               <h1 className="text-[13px] font-bold tracking-widest text-white/90 uppercase">NEXUS</h1>
               <span className="text-[9px] text-white/25 font-mono">OS v2.0</span>
             </div>
-            <p className="text-[10px] text-white/35">Sistema Operacional de IA · 21 ferramentas · Execução em tempo real</p>
+            <p className="text-[10px] text-white/35">Sistema Operacional de IA · 25 ferramentas · Execução em tempo real</p>
           </div>
         </div>
 
@@ -875,10 +968,11 @@ export default function AssistantPage() {
               else stopSession()
             }} />
 
-            {/* Waveform */}
+            {/* Waveform — real audio levels when active */}
             <WaveformBars
               active={voiceState === 'listening' || voiceState === 'speaking'}
               color={waveColor}
+              levels={audioLevels}
             />
 
             {/* Error message */}
