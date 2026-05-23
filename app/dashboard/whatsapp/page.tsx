@@ -1449,6 +1449,7 @@ export default function WhatsAppPage() {
     if (typeof window === 'undefined') return {}
     try { return JSON.parse(localStorage.getItem('wa-automations') ?? '{}') } catch { return {} }
   })
+  const [autoClose, setAutoClose] = useState(false)
 
   const messagesEnd    = useRef<HTMLDivElement>(null)
   const messagesBox    = useRef<HTMLDivElement>(null)
@@ -1456,6 +1457,26 @@ export default function WhatsAppPage() {
   const fileInputRef   = useRef<HTMLInputElement>(null)
   const typingTimer    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevMsgCount   = useRef<number>(0)
+
+  // Init autoClose from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setAutoClose(localStorage.getItem('wa_autoclose') === 'true')
+    }
+  }, [])
+
+  const toggleAutoClose = useCallback(() => {
+    const next = !autoClose
+    setAutoClose(next)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('wa_autoclose', String(next))
+    }
+    fetch('/api/user/preferences', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ autoCloseEnabled: next }),
+    }).catch(() => {})
+  }, [autoClose])
 
   // ── Fetchers ──────────────────────────────────────────────────
 
@@ -1848,6 +1869,14 @@ export default function WhatsAppPage() {
 
   const connected = waStatus?.connected ?? false
 
+  const aiActiveConvs     = conversations.filter(c => c.ai_enabled).length
+  const activeAgentsCount = Math.max(1,
+    1 +                                     // base NEXUS AI
+    (aiMode !== 'manual' ? 1 : 0) +        // AI mode agent
+    (autoClose ? 1 : 0) +                  // AutoClose agent
+    (aiActiveConvs > 0 ? 1 : 0),           // conversation AI agent
+  )
+
   const FILTERS = [
     { key: 'all',     label: 'Todas',         count: conversations.length },
     { key: 'unread',  label: 'Não lidas',     count: conversations.filter(c => (c.unread ?? 0) > 0).length },
@@ -1872,10 +1901,11 @@ export default function WhatsAppPage() {
   })
 
   const kpis = [
-    { label: 'Conversas ativas',    value: conversations.filter(c => c.status === 'active').length,       sub: 'ao vivo',       icon: MessageCircle, color: 'text-violet-400' },
-    { label: 'Mensagens',           value: conversations.reduce((a, c) => a + c.message_count, 0),         sub: 'total trocadas', icon: Zap,           color: 'text-blue-400'   },
-    { label: 'Leads identificados', value: conversations.filter(c => c.temperatura === 'quente').length,   sub: 'em andamento',   icon: Users,         color: 'text-orange-400' },
-    { label: 'Oportunidades',       value: conversations.filter(c => c.label === 'negociacao').length,     sub: 'negociando',     icon: TrendingUp,    color: 'text-emerald-400' },
+    { label: 'Conversas ativas',    value: conversations.filter(c => c.status === 'active').length,       sub: 'ao vivo',        icon: MessageCircle, color: 'text-violet-400',  glow: 'shadow-violet-500/10'  },
+    { label: 'Mensagens',           value: conversations.reduce((a, c) => a + c.message_count, 0),         sub: 'total trocadas', icon: Zap,           color: 'text-blue-400',    glow: 'shadow-blue-500/10'    },
+    { label: 'Leads quentes',       value: conversations.filter(c => c.temperatura === 'quente').length,   sub: 'em andamento',   icon: Users,         color: 'text-orange-400',  glow: 'shadow-orange-500/10'  },
+    { label: 'Oportunidades',       value: conversations.filter(c => c.label === 'negociacao').length,     sub: 'negociando',     icon: TrendingUp,    color: 'text-emerald-400', glow: 'shadow-emerald-500/10' },
+    { label: 'IA respondendo',      value: aiActiveConvs,                                                   sub: 'em tempo real',  icon: Bot,           color: 'text-violet-400',  glow: 'shadow-violet-500/10'  },
   ]
 
   function handleSelectConv(conv: Conversation) {
@@ -1961,6 +1991,24 @@ export default function WhatsAppPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* IA Operacional badge */}
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full px-3 py-1 mr-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+            IA Operacional · {activeAgentsCount} agente{activeAgentsCount !== 1 ? 's' : ''} ativo{activeAgentsCount !== 1 ? 's' : ''}
+          </div>
+          {/* AutoClose toggle */}
+          <button
+            onClick={toggleAutoClose}
+            className={cn(
+              'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition font-medium',
+              autoClose
+                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/15 shadow-sm shadow-emerald-500/10'
+                : 'text-zinc-400 bg-zinc-900 border-zinc-800 hover:border-zinc-700 hover:text-zinc-200',
+            )}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            {autoClose ? 'AutoClose ON' : 'AutoClose'}
+          </button>
           <button
             onClick={() => setShowConfig(true)}
             className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition"
@@ -1977,15 +2025,20 @@ export default function WhatsAppPage() {
       </div>
 
       {/* ── KPI row ── */}
-      <div className="shrink-0 grid grid-cols-4 gap-3 px-6 py-3 border-b border-zinc-800/60">
+      <div className="shrink-0 grid grid-cols-5 gap-2 px-6 py-2.5 border-b border-zinc-800/60">
         {kpis.map(kpi => {
           const Icon = kpi.icon
           return (
-            <div key={kpi.label} className="flex items-center gap-3 bg-zinc-900/60 rounded-xl px-4 py-2.5">
-              <Icon className={cn('w-4 h-4 shrink-0', kpi.color)} />
-              <div>
-                <p className="text-lg font-bold text-white leading-none">{kpi.value}</p>
-                <p className="text-[10px] text-zinc-500 leading-tight">{kpi.label}</p>
+            <div key={kpi.label} className={cn(
+              'flex items-center gap-3 bg-zinc-900/70 rounded-xl px-3.5 py-2.5 border border-zinc-800/50 shadow-sm',
+              kpi.glow,
+            )}>
+              <div className={cn('w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0')}>
+                <Icon className={cn('w-3.5 h-3.5', kpi.color)} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-base font-bold text-white leading-none tabular-nums">{kpi.value}</p>
+                <p className="text-[10px] text-zinc-500 leading-tight truncate">{kpi.label}</p>
               </div>
             </div>
           )
@@ -2473,28 +2526,60 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      {/* ── Bottom live bar ── */}
-      <div className="shrink-0 flex items-center gap-3 px-6 py-2 border-t border-zinc-800/60 bg-zinc-950/90">
-        <div className="flex items-center gap-2 flex-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-          <p className="text-[11px] text-zinc-500">
-            NEXUS AI ativa ·
-            {aiMode === 'auto'   ? ' Respondendo automaticamente' :
-             aiMode === 'hybrid' ? ' Modo híbrido ativo' :
-                                   ' Modo manual ativo'}
-            {' · '}Pipeline sincronizado
-          </p>
+      {/* ── LiveOperationalFeed ── */}
+      <div className="shrink-0 border-t border-zinc-800/60 bg-zinc-950/95">
+        {/* Status row */}
+        <div className="flex items-center justify-between px-6 py-1.5 border-b border-zinc-800/30">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+            <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Feed Operacional ao Vivo</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {autoClose && (
+              <div className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/8 border border-emerald-500/20 rounded-full px-2 py-0.5">
+                <Zap className="w-2.5 h-2.5" /> AutoClose ativo
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Wifi className="w-3 h-3 text-emerald-400" />
+              <span className="text-[10px] text-emerald-400">Conectado</span>
+            </div>
+            <button
+              onClick={() => { fetchStatus(); fetchConversations(); fetchActivity() }}
+              className="text-zinc-700 hover:text-zinc-500 transition"
+            >
+              <RefreshCw className="w-3 h-3" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="text-[11px] text-emerald-400">Conectado</span>
+        {/* Horizontal events ticker */}
+        <div className="flex items-center overflow-x-auto scrollbar-none px-4 py-2 gap-0">
+          {activityEvents.length === 0 ? (
+            <>
+              {[
+                { icon: '🤖', label: `NEXUS AI monitorando ${conversations.length} conversa${conversations.length !== 1 ? 's' : ''}` },
+                { icon: '⚡', label: `${aiActiveConvs} conversa${aiActiveConvs !== 1 ? 's' : ''} com IA ativa` },
+                { icon: '🎯', label: aiMode === 'auto' ? 'Modo automático — respondendo sem intervenção' : aiMode === 'hybrid' ? 'Modo híbrido — IA sugere, você aprova' : 'Modo manual — controle total' },
+                { icon: '🔒', label: autoClose ? 'AutoClose ativo — fechando leads qualificados' : 'Pipeline sincronizado em tempo real' },
+                { icon: '📡', label: `${activeAgentsCount} agente${activeAgentsCount !== 1 ? 's' : ''} IA operacional` },
+              ].map((e, i, arr) => (
+                <div key={i} className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-xs">{e.icon}</span>
+                  <span className="text-[10px] text-zinc-500">{e.label}</span>
+                  {i < arr.length - 1 && <span className="text-zinc-800 mx-4">·</span>}
+                </div>
+              ))}
+            </>
+          ) : (
+            activityEvents.concat(activityEvents).map((e, i, arr) => (
+              <div key={i} className="flex items-center gap-1.5 shrink-0">
+                <span className="text-xs">{(e as ActivityEvent & { icon?: string }).icon ?? '⚡'}</span>
+                <span className="text-[10px] text-zinc-500">{e.label}</span>
+                {i < arr.length - 1 && <span className="text-zinc-800 mx-4">·</span>}
+              </div>
+            ))
+          )}
         </div>
-        <button
-          onClick={() => { fetchStatus(); fetchConversations(); fetchActivity() }}
-          className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-zinc-400 transition"
-        >
-          <RefreshCw className="w-3 h-3" />
-        </button>
       </div>
 
       {showConnect && (
