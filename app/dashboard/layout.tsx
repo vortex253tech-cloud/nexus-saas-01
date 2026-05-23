@@ -14,7 +14,7 @@ import {
   ExternalLink, Activity, Moon, Brain, BarChart3,
   Package, Bot, Wallet, Sparkles, MessageCircle,
   Users, Database, Wand2, ChevronDown, Mic, FolderKanban,
-  CheckSquare, GitBranch, Workflow, Terminal,
+  CheckSquare, Workflow, Rocket,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth-provider'
@@ -53,9 +53,9 @@ const NAV: NavGroup[] = [
     label: 'Conversas',
     icon:  MessageCircle,
     children: [
-      { href: '/dashboard/messages',  label: 'Mensagens',    icon: MessageSquare },
-      { href: '/dashboard/whatsapp',  label: 'WhatsApp AI',  icon: MessageCircle },
-      { href: '/dashboard/assistant', label: 'Assistente',   icon: Bot },
+      { href: '/dashboard/messages',  label: 'Mensagens',   icon: MessageSquare },
+      { href: '/dashboard/whatsapp',  label: 'WhatsApp AI', icon: MessageCircle },
+      { href: '/dashboard/assistant', label: 'Assistente',  icon: Bot },
     ],
   },
   {
@@ -63,10 +63,9 @@ const NAV: NavGroup[] = [
     label: 'Pipeline',
     icon:  TrendingUp,
     children: [
-      { href: '/dashboard/leads',       label: 'Leads',        icon: Users },
-      { href: '/dashboard/clients',     label: 'Clientes',     icon: Building2 },
-      { href: '/dashboard/sales',       label: 'Vendas',       icon: BarChart3 },
-      { href: '/dashboard/growth-map',  label: 'Crescimento',  icon: TrendingUp },
+      { href: '/dashboard/leads',   label: 'Leads',   icon: Users },
+      { href: '/dashboard/clients', label: 'Clientes', icon: Building2 },
+      { href: '/dashboard/sales',   label: 'Vendas',   icon: BarChart3 },
     ],
   },
   {
@@ -74,8 +73,8 @@ const NAV: NavGroup[] = [
     label: 'Projetos',
     icon:  FolderKanban,
     children: [
-      { href: '/dashboard/projects',           label: 'Operações',   icon: FolderKanban },
-      { href: '/dashboard/projects?view=tasks', label: 'Tarefas',    icon: CheckSquare  },
+      { href: '/dashboard/projects',            label: 'Operações', icon: FolderKanban },
+      { href: '/dashboard/projects?view=tasks', label: 'Tarefas',   icon: CheckSquare },
     ],
   },
   {
@@ -90,28 +89,25 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    href:  '/dashboard/nexus',
-    label: 'IA NEXUS',
-    icon:  Bot,
+    href:  '/dashboard/growth-map',
+    label: 'Growth',
+    icon:  Rocket,
     children: [
-      { href: '/dashboard/nexus',        label: 'Painel IA',  icon: Bot },
-      { href: '/dashboard/executive',    label: 'Executive',  icon: Moon },
-      { href: '/dashboard/nexus/engine', label: 'Engine',     icon: Terminal },
-      { href: '/dashboard/agents',       label: 'Agentes',    icon: Users },
-      { href: '/dashboard/advisor',      label: 'Consultor',  icon: Brain },
-      { href: '/dashboard/creative-ai',  label: 'Criativos',  icon: Sparkles },
-      { href: '/dashboard/actions',      label: 'Ações',      icon: Zap },
-      { href: '/dashboard/alerts',       label: 'Alertas',    icon: Bell },
+      { href: '/dashboard/growth-map',  label: 'Mapa de Crescimento', icon: TrendingUp },
+      { href: '/dashboard/automations', label: 'Automações',          icon: Workflow },
     ],
   },
   {
-    href:  '/dashboard/automations',
-    label: 'Fluxos IA',
-    icon:  Workflow,
+    href:  '/dashboard/nexus',
+    label: 'Agentes IA',
+    icon:  Brain,
     children: [
-      { href: '/dashboard/automations', label: 'Automações',   icon: Workflow },
-      { href: '/dashboard/actions',     label: 'Ações IA',     icon: Zap      },
-      { href: '/dashboard/alerts',      label: 'Alertas',      icon: Bell     },
+      { href: '/dashboard/nexus',       label: 'Painel IA',  icon: Bot },
+      { href: '/dashboard/agents',      label: 'Agentes',    icon: Users },
+      { href: '/dashboard/advisor',     label: 'Consultor',  icon: Brain },
+      { href: '/dashboard/creative-ai', label: 'Criativos',  icon: Sparkles },
+      { href: '/dashboard/actions',     label: 'Ações',      icon: Zap },
+      { href: '/dashboard/alerts',      label: 'Alertas',    icon: Bell },
     ],
   },
   {
@@ -119,9 +115,9 @@ const NAV: NavGroup[] = [
     label: 'Configurações',
     icon:  Settings,
     children: [
-      { href: '/dashboard/settings',          label: 'Geral',       icon: Settings },
-      { href: '/dashboard/billing',           label: 'Plano',       icon: CreditCard },
-      { href: '/dashboard/settings/payments', label: 'Pagamentos',  icon: Wallet },
+      { href: '/dashboard/settings',          label: 'Geral',      icon: Settings },
+      { href: '/dashboard/billing',           label: 'Plano',      icon: CreditCard },
+      { href: '/dashboard/settings/payments', label: 'Pagamentos', icon: Wallet },
     ],
   },
 ]

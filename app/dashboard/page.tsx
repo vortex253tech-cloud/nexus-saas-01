@@ -8,6 +8,7 @@ import {
   Bell, Search, ChevronRight, ArrowUpRight, RefreshCw,
   MessageCircle, AlertTriangle, Target, Wand2, Sparkles,
   MessageSquare, BarChart3, Play, Wifi, Activity,
+  Brain, Power, Cpu, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { resolveCompanyId } from '@/lib/get-company-id'
@@ -100,6 +101,114 @@ function AnimatedNumber({ value, prefix = '', suffix = '' }: { value: number; pr
     return () => clearInterval(t)
   }, [value])
   return <span>{prefix}{displayed.toLocaleString('pt-BR')}{suffix}</span>
+}
+
+// ─── Agent Status Grid ──────────────────────────────────────────
+
+interface AgentStatusGridProps {
+  overview:  OverviewData | null
+  autopilot: boolean
+}
+
+const STATUS_STYLES: Record<string, { dot: string; text: string; ring: string }> = {
+  operando:    { dot: 'bg-violet-400',  text: 'text-violet-400',  ring: 'ring-violet-500/20' },
+  ativo:       { dot: 'bg-emerald-400', text: 'text-emerald-400', ring: 'ring-emerald-500/20' },
+  analisando:  { dot: 'bg-blue-400',    text: 'text-blue-400',    ring: 'ring-blue-500/20' },
+  monitorando: { dot: 'bg-cyan-400',    text: 'text-cyan-400',    ring: 'ring-cyan-500/20' },
+  aguardando:  { dot: 'bg-amber-400',   text: 'text-amber-400',   ring: 'ring-amber-500/20' },
+  standby:     { dot: 'bg-zinc-600',    text: 'text-zinc-500',    ring: 'ring-zinc-700/20' },
+}
+
+function AgentStatusGrid({ overview, autopilot }: AgentStatusGridProps) {
+  const hotLeads   = overview?.pipeline.hot   ?? 0
+  const totalLeads = overview?.pipeline.total ?? 0
+  const msgs       = overview?.today.mensagens ?? 0
+
+  const agents = [
+    {
+      id:     'ceo',
+      label:  'CEO IA',
+      icon:   Brain,
+      status: autopilot ? 'operando' : 'analisando',
+      href:   '/dashboard/nexus',
+    },
+    {
+      id:     'vendas',
+      label:  'Vendas IA',
+      icon:   TrendingUp,
+      status: hotLeads > 0 ? 'ativo' : 'aguardando',
+      href:   '/dashboard/leads',
+    },
+    {
+      id:     'marketing',
+      label:  'Marketing IA',
+      icon:   Wand2,
+      status: msgs > 0 ? 'ativo' : 'standby',
+      href:   '/dashboard/nexus',
+    },
+    {
+      id:     'financeiro',
+      label:  'Financeiro IA',
+      icon:   DollarSign,
+      status: 'monitorando',
+      href:   '/dashboard/financeiro',
+    },
+    {
+      id:     'growth',
+      label:  'Growth IA',
+      icon:   BarChart3,
+      status: totalLeads > 0 ? 'analisando' : 'standby',
+      href:   '/dashboard/growth-map',
+    },
+    {
+      id:     'suporte',
+      label:  'Suporte IA',
+      icon:   MessageCircle,
+      status: autopilot ? 'ativo' : 'aguardando',
+      href:   '/dashboard/assistant',
+    },
+  ]
+
+  return (
+    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+      {agents.map((agent, i) => {
+        const s = STATUS_STYLES[agent.status] ?? STATUS_STYLES.standby
+        const Icon = agent.icon
+        const isActive = agent.status !== 'standby'
+        return (
+          <motion.a
+            key={agent.id}
+            href={agent.href}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+            className={cn(
+              'relative rounded-2xl border px-3 py-3 text-center cursor-pointer group transition-all duration-200',
+              'bg-zinc-900/70 border-zinc-800/60 hover:border-zinc-700/80 hover:bg-zinc-800/50',
+              isActive && `ring-1 ${s.ring}`,
+            )}
+          >
+            <div className={cn(
+              'w-8 h-8 rounded-xl mx-auto mb-2 flex items-center justify-center transition-transform duration-200 group-hover:scale-110',
+              agent.status === 'operando'   && 'bg-violet-500/15',
+              agent.status === 'ativo'      && 'bg-emerald-500/15',
+              agent.status === 'analisando' && 'bg-blue-500/15',
+              agent.status === 'monitorando'&& 'bg-cyan-500/15',
+              agent.status === 'aguardando' && 'bg-amber-500/15',
+              agent.status === 'standby'    && 'bg-zinc-800',
+            )}>
+              <Icon className={cn('w-4 h-4', s.text)} />
+            </div>
+            <p className="text-[10px] font-semibold text-zinc-300 mb-1 leading-tight truncate">{agent.label}</p>
+            <div className="flex items-center justify-center gap-1">
+              <span className={cn('w-1.5 h-1.5 rounded-full', s.dot, isActive && 'animate-pulse')} />
+              <span className={cn('text-[9px] font-medium', s.text)}>{agent.status}</span>
+            </div>
+          </motion.a>
+        )
+      })}
+    </div>
+  )
 }
 
 // ─── KPI Card ───────────────────────────────────────────────────
@@ -348,12 +457,15 @@ interface MetricsData {
 }
 
 export default function DashboardPage() {
-  const [companyId,  setCompanyId]  = useState<string | null>(null)
-  const [session,    setSession]    = useState<SessionInfo>({ nomeEmpresa: 'Minha Empresa', nome: '', effectivePlan: 'free' })
-  const [overview,   setOverview]   = useState<OverviewData | null>(null)
-  const [metrics,    setMetrics]    = useState<MetricsData | null>(null)
-  const [loading,    setLoading]    = useState(true)
-  const [liveIndex,  setLiveIndex]  = useState(0)
+  const [companyId,       setCompanyId]       = useState<string | null>(null)
+  const [session,         setSession]         = useState<SessionInfo>({ nomeEmpresa: 'Minha Empresa', nome: '', effectivePlan: 'free' })
+  const [overview,        setOverview]        = useState<OverviewData | null>(null)
+  const [metrics,         setMetrics]         = useState<MetricsData | null>(null)
+  const [loading,         setLoading]         = useState(true)
+  const [liveIndex,       setLiveIndex]       = useState(0)
+  const [autopilot,       setAutopilot]       = useState(false)
+  const [automationsCount,setAutomationsCount]= useState(0)
+  const [lastRefreshed,   setLastRefreshed]   = useState(Date.now())
 
   const LIVE_STATES = [
     'Analisando oportunidades…',
@@ -368,6 +480,26 @@ export default function DashboardPage() {
     const t = setInterval(() => setLiveIndex(i => (i + 1) % LIVE_STATES.length), 3000)
     return () => clearInterval(t)
   }, [])
+
+  // Init autopilot from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setAutopilot(localStorage.getItem('nexus_autopilot') === 'true')
+    }
+  }, [])
+
+  function toggleAutopilot() {
+    const next = !autopilot
+    setAutopilot(next)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nexus_autopilot', String(next))
+    }
+    fetch('/api/user/preferences', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ autopilotEnabled: next }),
+    }).catch(() => {})
+  }
 
   useEffect(() => { resolveCompanyId().then(setCompanyId) }, [])
 
@@ -388,9 +520,31 @@ export default function DashboardPage() {
       })
     }
     setLoading(false)
+    setLastRefreshed(Date.now())
   }, [])
 
   useEffect(() => { if (companyId) load(companyId) }, [companyId, load])
+
+  // Fetch active automations count
+  useEffect(() => {
+    if (!companyId) return
+    fetch(`/api/automations?company_id=${companyId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: unknown) => {
+        if (d && typeof d === 'object' && 'data' in d) {
+          const arr = (d as { data?: unknown[] }).data ?? []
+          setAutomationsCount(arr.length)
+        }
+      })
+      .catch(() => {})
+  }, [companyId])
+
+  // Auto-refresh every 60 seconds
+  useEffect(() => {
+    if (!companyId) return
+    const t = setInterval(() => load(companyId), 60000)
+    return () => clearInterval(t)
+  }, [companyId, load])
 
   // Real 7-day time-series from metrics API (fallback to flat zeros)
   const sparkLeads  = metrics?.leads    ?? [0, 0, 0, 0, 0, 0, 0]
@@ -480,25 +634,58 @@ export default function DashboardPage() {
       <div className="relative z-10 max-w-[1400px] mx-auto px-5 sm:px-6 py-6 space-y-6">
 
         {/* ── Top bar ── */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-start justify-between gap-4">
           <div>
             {/* System status badge */}
-            <div className="flex items-center gap-2 mb-3">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-              </span>
-              <span className="text-xs text-zinc-400">Sistema operacional ativo</span>
+            <div className="flex items-center gap-3 mb-2.5 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                </span>
+                <span className="text-xs text-zinc-400">Central Operacional ativa</span>
+              </div>
+              {automationsCount > 0 && (
+                <div className="flex items-center gap-1.5 bg-violet-500/10 border border-violet-500/20 rounded-full px-2.5 py-0.5">
+                  <Cpu className="w-3 h-3 text-violet-400" />
+                  <span className="text-[10px] font-semibold text-violet-400">{automationsCount} automações ativas</span>
+                </div>
+              )}
+              {autopilot && (
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-0.5">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  <span className="text-[10px] font-semibold text-emerald-400">Operação Autônoma ativa</span>
+                </div>
+              )}
             </div>
             <h1 className="text-2xl font-bold text-white">
               {greeting()},{' '}
               <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">{firstName}!</span>
-              {' '}👋
             </h1>
-            <p className="text-sm text-zinc-500 mt-0.5">Aqui está o que está acontecendo com sua empresa hoje.</p>
+            <p className="text-sm text-zinc-500 mt-0.5">
+              {autopilot
+                ? 'Modo autônomo ativo — a IA está operando em seu nome.'
+                : 'Aqui está o que está acontecendo com sua empresa agora.'}
+            </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            {/* Autopilot toggle */}
+            <button
+              onClick={toggleAutopilot}
+              className={cn(
+                'flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all duration-200',
+                autopilot
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-zinc-800/80 border border-zinc-700/60 text-zinc-300 hover:border-violet-500/50 hover:text-violet-300',
+              )}
+              style={autopilot ? { boxShadow: '0 0 18px rgba(16,185,129,0.4)' } : {}}
+              title={autopilot ? 'Desativar Autopilot' : 'Ativar Operação Autônoma'}
+            >
+              <Power className={cn('w-3.5 h-3.5', autopilot && 'animate-pulse')} />
+              <span className="hidden sm:inline">{autopilot ? 'Autopilot ON' : 'Autopilot'}</span>
+            </button>
+
             <button className="w-8 h-8 rounded-xl bg-zinc-800/60 border border-zinc-700/40 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700/60 transition-all">
               <Search className="w-4 h-4" />
             </button>
@@ -520,7 +707,8 @@ export default function DashboardPage() {
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium px-4 py-2 rounded-xl transition-all"
               style={{ boxShadow: '0 0 20px rgba(124,58,237,0.4)' }}>
               <Sparkles className="w-3.5 h-3.5" />
-              Nova ação com IA
+              <span className="hidden sm:inline">Nova ação com IA</span>
+              <span className="sm:hidden">IA</span>
             </Link>
           </div>
         </div>
@@ -539,6 +727,27 @@ export default function DashboardPage() {
             ))}
           </div>
         )}
+
+        {/* ── Agent Status Grid ── */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-3.5 h-3.5 text-violet-400" />
+              <p className="text-xs font-semibold text-zinc-400">Agentes IA</p>
+              <span className="text-[10px] text-zinc-600">
+                · atualizado {Math.round((Date.now() - lastRefreshed) / 60000)} min atrás
+              </span>
+            </div>
+            <button
+              onClick={() => companyId && load(companyId)}
+              className="flex items-center gap-1 text-[11px] text-zinc-600 hover:text-violet-400 transition-colors"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Atualizar
+            </button>
+          </div>
+          <AgentStatusGrid overview={overview} autopilot={autopilot} />
+        </div>
 
         {/* ── Main grid: chart + activity + bot ── */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -711,28 +920,63 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          className="relative bg-zinc-900/80 border border-zinc-800/40 rounded-2xl px-5 py-3.5 overflow-hidden"
+          className={cn(
+            'relative border rounded-2xl px-5 py-3.5 overflow-hidden transition-all duration-500',
+            autopilot
+              ? 'bg-emerald-950/40 border-emerald-500/30'
+              : 'bg-zinc-900/80 border-zinc-800/40',
+          )}
+          style={autopilot ? { boxShadow: '0 0 40px rgba(16,185,129,0.08)' } : {}}
         >
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-violet-600/5 via-transparent to-blue-600/5" />
+          <div className={cn(
+            'pointer-events-none absolute inset-0',
+            autopilot
+              ? 'bg-gradient-to-r from-emerald-600/8 via-transparent to-violet-600/5'
+              : 'bg-gradient-to-r from-violet-600/5 via-transparent to-blue-600/5',
+          )} />
           <div className="relative flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-violet-600/20 border border-violet-500/20 flex items-center justify-center shrink-0">
-                <Bot className="w-4 h-4 text-violet-400" />
+              <div className={cn(
+                'w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-colors',
+                autopilot
+                  ? 'bg-emerald-500/20 border border-emerald-500/30'
+                  : 'bg-violet-600/20 border border-violet-500/20',
+              )}>
+                {autopilot
+                  ? <ShieldCheck className="w-4 h-4 text-emerald-400 animate-pulse" />
+                  : <Bot className="w-4 h-4 text-violet-400" />
+                }
               </div>
-              <p className="text-xs font-semibold text-zinc-300">A IA NEXUS está trabalhando para você 24/7</p>
+              <p className="text-xs font-semibold text-zinc-300">
+                {autopilot
+                  ? 'Operação Autônoma ativa — NEXUS operando em modo completo'
+                  : 'A IA NEXUS está trabalhando para você 24/7'}
+              </p>
             </div>
-            <div className="flex items-center gap-5 ml-auto flex-wrap">
-              {['Analisando dados', 'Gerando oportunidades', 'Executando automações', 'Aumentando resultados'].map(l => (
+            <div className="flex items-center gap-4 ml-auto flex-wrap">
+              {(autopilot
+                ? ['Autopilot ativo', 'Monitorando 24/7', 'Executando fluxos', 'Otimizando resultados']
+                : ['Analisando dados', 'Gerando oportunidades', 'Executando automações', 'Aumentando resultados']
+              ).map(l => (
                 <div key={l} className="flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-[11px] text-zinc-400">{l}</span>
+                  <CheckCircle className={cn('w-3.5 h-3.5', autopilot ? 'text-emerald-400' : 'text-emerald-400')} />
+                  <span className="text-[11px] text-zinc-400 hidden sm:inline">{l}</span>
                 </div>
               ))}
+              {!autopilot && (
+                <button
+                  onClick={toggleAutopilot}
+                  className="flex items-center gap-1.5 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-violet-300 transition-all"
+                >
+                  <Power className="w-3 h-3" />
+                  Ativar Autopilot
+                </button>
+              )}
             </div>
           </div>
           {/* Live scrolling indicator */}
           <div className="mt-2.5 flex items-center gap-2">
-            <Activity className="w-3 h-3 text-violet-400 animate-pulse shrink-0" />
+            <Activity className={cn('w-3 h-3 animate-pulse shrink-0', autopilot ? 'text-emerald-400' : 'text-violet-400')} />
             <AnimatePresence mode="wait">
               <motion.span
                 key={liveIndex}
@@ -740,7 +984,7 @@ export default function DashboardPage() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -8 }}
                 transition={{ duration: 0.25 }}
-                className="text-[11px] text-violet-400"
+                className={cn('text-[11px]', autopilot ? 'text-emerald-400' : 'text-violet-400')}
               >
                 {LIVE_STATES[liveIndex]}
               </motion.span>
