@@ -1,5 +1,5 @@
 // GET /api/nexus/voice/debug
-// Diagnostic: tests the GA Realtime API direct SDP endpoint (no ephemeral token).
+// Diagnostic: tests the ephemeral token endpoint and verifies API key access.
 import { NextResponse } from 'next/server'
 import { REALTIME_MODEL } from '@/lib/voice/realtime-config'
 
@@ -10,10 +10,10 @@ export async function GET() {
   const key = process.env.OPENAI_API_KEY
   if (!key) return NextResponse.json({ ok: false, error: 'OPENAI_API_KEY not set' })
 
-  const keyHint = `${key.slice(0, 7)}...${key.slice(-4)}`
+  const key_hint = `${key.slice(0, 7)}...${key.slice(-4)}`
 
-  // Test 1: Session creation (old approach, for reference)
-  let sessionResult: unknown
+  // Test: ephemeral token creation (same call the session route makes)
+  let session_test: unknown
   try {
     const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
       method:  'POST',
@@ -24,17 +24,17 @@ export async function GET() {
     const text = await res.text()
     let parsed: unknown
     try { parsed = JSON.parse(text) } catch { parsed = text }
-    sessionResult = { ok: res.ok, status: res.status, body: parsed }
+    session_test = { ok: res.ok, status: res.status, body: parsed }
   } catch (err) {
-    sessionResult = { ok: false, error: String(err) }
+    session_test = { ok: false, error: String(err) }
   }
 
   return NextResponse.json({
-    model:         REALTIME_MODEL,
-    key_hint:      keyHint,
-    approach:      'server-proxied SDP (no ephemeral token)',
-    connect_route: '/api/nexus/voice/connect',
-    session_test:  sessionResult,
-    note:          'The connect route uses the API key directly for the SDP exchange server-side.',
+    ok:           true,
+    model:        REALTIME_MODEL,
+    key_hint,
+    approach:     'WebSocket (ephemeral token via /v1/realtime/sessions)',
+    note:         'Browser connects via wss://api.openai.com/v1/realtime using ephemeral token as subprotocol.',
+    session_test,
   })
 }
