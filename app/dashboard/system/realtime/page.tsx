@@ -119,7 +119,7 @@ export default function RealtimeDiagPage() {
           {/* Quick status */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
             <StatusCard label="Ephemeral Token" ok={ok(result.session?.ok)} extra={result.session?.ok ? `${result.sessionMs}ms` : result.session?.error} />
-            <StatusCard label="API Key válida" ok={ok((result.debug as DebugResult | null)?.key_hint)} extra={(result.debug as DebugResult | null)?.key_hint ?? 'não detectado'} />
+            <StatusCard label="API Key válida" ok={!!(result.debug as DebugResult | null)?.key_hint} extra={(result.debug as DebugResult | null)?.key_hint ?? 'não detectado'} />
             <StatusCard label="Endpoint alcançável" ok={unk(result.wsReachable) ? null : result.wsReachable} extra={unk(result.wsReachable) ? 'CORS (esperado)' : result.wsReachable ? 'OK' : 'Inacessível'} />
           </div>
 
