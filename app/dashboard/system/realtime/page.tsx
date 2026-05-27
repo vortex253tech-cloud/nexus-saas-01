@@ -47,7 +47,7 @@ export default function RealtimeDiagPage() {
     try {
       const r = await fetch('/api/nexus/voice/session', { method: 'POST' })
       const body = await r.json().catch(() => ({})) as SessionResult
-      sessionResult = { ok: r.ok, status: r.status, ...body }
+      sessionResult = { ...body, ok: r.ok, status: r.status }
     } catch (e) {
       sessionResult = { ok: false, error: String(e) }
     }
