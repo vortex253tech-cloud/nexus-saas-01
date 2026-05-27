@@ -4,180 +4,256 @@ import { useEffect, useRef, useState, useCallback, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Mic, MicOff, Zap, MessageSquare, Activity, Navigation,
-  Users, Send, Search, ToggleLeft, UserCheck, BarChart2,
-  Calendar, Loader2, Volume2, AlertCircle, X, ChevronRight,
-  TrendingUp, DollarSign, Bell, CheckCircle, Wifi, WifiOff,
-  MessageCircle, GitBranch, Eye, Clock, Bot, Cpu, Shield,
-  Star, Target, Layers, RefreshCw, Play, Settings, Plus,
-  Sparkles, Crown, AreaChart, Rocket, BrainCircuit,
+  Mic, MicOff, Activity, AlertCircle, X, RefreshCw, Loader2,
+  Volume2, BrainCircuit, Crown, BarChart2, TrendingUp, MessageSquare,
+  DollarSign, CheckSquare, Zap, GitBranch, Bell, Monitor, Calendar,
+  FileText, Settings2, Clock, Search, Bot, Layers, Map, Send,
+  ArrowRight, ChevronRight, Cpu, Shield, Target, Wifi,
+  MessageCircle, CheckCircle, CircleAlert, Timer, Sparkles,
 } from 'lucide-react'
+import {
+  NexusRealtimeClient,
+  type NexusState,
+} from '@/lib/realtime/nexus-realtime-client'
+import {
+  routeAction,
+  getNavigationPath,
+  extractAgentInfo,
+  type RoutedResult,
+} from '@/lib/voice/assistant-action-router'
+import { QUICK_COMMANDS } from '@/lib/voice/assistant-action-engine'
+
+// ── utils ─────────────────────────────────────────────────────────────────────
 
 function cn(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(' ')
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────
+function fmt(s: number) {
+  const m = Math.floor(s / 60).toString().padStart(2, '0')
+  return `${m}:${(s % 60).toString().padStart(2, '0')}`
+}
 
-type VoiceState = 'off' | 'connecting' | 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
+function time12(ts: number) {
+  return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 interface TranscriptEntry {
-  id:   string
-  role: 'user' | 'assistant'
-  text: string
-  ts:   number
+  id: string; role: 'user' | 'assistant'; text: string; ts: number; final: boolean
 }
 
 interface ActionLog {
-  id:      string
-  tool:    string
-  label:   string
-  ts:      number
-  ok:      boolean
-  detail?: string
-  agent?:  string
+  id: string; tool: string; label: string; ts: number; ok: boolean; detail?: string
 }
 
 interface LiveMetrics {
-  conversations: number
-  unread:        number
-  ai_active:     number
-  hot_leads:     number
-  system_ok:     boolean
-  health_score:  number
-  loaded:        boolean
+  conversations: number; unread: number; ai_active: number; hot_leads: number
+  system_ok: boolean; health_score: number; loaded: boolean
 }
 
-interface CompanyAlert {
-  type:    'warning' | 'opportunity' | 'info'
-  message: string
+// ── Command definitions with lucide icons (no emojis) ─────────────────────────
+
+type LucideIcon = React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
+
+interface OpsCommand {
+  label:    string
+  sub:      string
+  icon:     LucideIcon
+  command:  string
+  category: string
+  accent:   string  // tailwind color token
 }
 
-// ── Orb config per state ───────────────────────────────────────────────────
-
-const ORB: Record<VoiceState, { gradient: string; glow: string; label: string; pulse: boolean; ringColor: string }> = {
-  off:        { gradient: 'from-slate-700 via-slate-800 to-slate-900', glow: 'rgba(100,100,120,0.25)', label: 'NEXUS OS',    pulse: false, ringColor: 'rgba(100,100,120,0.15)' },
-  connecting: { gradient: 'from-violet-500 via-violet-700 to-purple-900', glow: 'rgba(139,92,246,0.5)',  label: 'Iniciando…', pulse: true,  ringColor: 'rgba(139,92,246,0.2)'  },
-  idle:       { gradient: 'from-violet-500 via-purple-600 to-violet-800', glow: 'rgba(139,92,246,0.4)',  label: 'Aguardando', pulse: false, ringColor: 'rgba(139,92,246,0.12)' },
-  listening:  { gradient: 'from-cyan-400 via-blue-500 to-blue-700',       glow: 'rgba(34,211,238,0.55)', label: 'Ouvindo',    pulse: true,  ringColor: 'rgba(34,211,238,0.15)' },
-  thinking:   { gradient: 'from-amber-400 via-orange-500 to-orange-700',  glow: 'rgba(251,191,36,0.5)',  label: 'Analisando', pulse: true,  ringColor: 'rgba(251,191,36,0.15)' },
-  speaking:   { gradient: 'from-emerald-400 via-teal-500 to-teal-700',    glow: 'rgba(52,211,153,0.55)', label: 'Executando', pulse: true,  ringColor: 'rgba(52,211,153,0.15)' },
-  error:      { gradient: 'from-red-500 via-rose-600 to-red-800',         glow: 'rgba(239,68,68,0.4)',   label: 'Reconectando', pulse: false, ringColor: 'rgba(239,68,68,0.12)' },
-}
-
-const TOOL_LABELS: Record<string, string> = {
-  navigate:               'Navegando para módulo',
-  getWhatsAppStats:       'Lendo stats WhatsApp',
-  getHotLeads:            'Buscando leads quentes',
-  sendWhatsAppMessage:    'Enviando mensagem',
-  searchConversations:    'Pesquisando conversa',
-  toggleAI:               'Ajustando IA',
-  transferToHuman:        'Transferindo para humano',
-  getDashboardSummary:    'Resumo executivo',
-  createFollowUp:         'Criando follow-up',
-  getUnreadMessages:      'Verificando não lidas',
-  getFinancialSummary:    'Analisando financeiro',
-  getPipelineLeads:       'Lendo pipeline',
-  updateLeadStage:        'Movendo lead',
-  markConversationRead:   'Marcando como lida',
-  getConversationHistory: 'Carregando histórico',
-  getSystemStatus:        'Verificando sistema',
-  analyzeCompany:         'Analisando empresa',
-  orchestrateAgent:       'Acionando agente IA',
-  getAutomations:         'Lendo automações',
-  triggerAutomation:      'Disparando automação',
-  createTask:             'Criando tarefa',
-  createAutomation:       'Criando automação',
-  scheduleMeeting:        'Agendando reunião',
-  generateProposal:       'Gerando proposta',
-}
-
-const REALTIME_MODEL = 'gpt-4o-realtime-preview-2024-12-17'
-
-// Session update via DataChannel (tools already set in session, this confirms)
-const SESSION_UPDATE = {
-  type:    'session.update',
-  session: {
-    voice:       'alloy',
-    tool_choice: 'auto',
-    input_audio_transcription: { model: 'whisper-1' },
-    turn_detection: {
-      type:                'server_vad',
-      threshold:           0.5,
-      prefix_padding_ms:   300,
-      silence_duration_ms: 700,
-    },
-  },
-} as const
-
-// ── Quick commands (5×4 grid = 20) ────────────────────────────────────────
-
-const QUICK: { icon: React.ElementType; label: string; prompt: string; color: string }[] = [
-  { icon: BarChart2,    label: 'Resumo do dia',    prompt: 'NEXUS, qual é o resumo executivo do dia?',           color: 'violet'  },
-  { icon: Users,        label: 'Leads quentes',    prompt: 'NEXUS, mostra os leads mais quentes',                color: 'cyan'    },
-  { icon: Bell,         label: 'Não lidas',        prompt: 'NEXUS, tem mensagem não lida?',                      color: 'amber'   },
-  { icon: DollarSign,   label: 'Financeiro',       prompt: 'NEXUS, como está o faturamento do mês?',             color: 'emerald' },
-  { icon: Activity,     label: 'Stats WhatsApp',   prompt: 'NEXUS, como está o WhatsApp?',                       color: 'blue'    },
-  { icon: GitBranch,    label: 'Pipeline',         prompt: 'NEXUS, mostra a distribuição do pipeline',           color: 'purple'  },
-  { icon: Navigation,   label: 'Abrir WhatsApp',   prompt: 'NEXUS, abre o painel do WhatsApp',                   color: 'teal'    },
-  { icon: Search,       label: 'Buscar conversa',  prompt: 'NEXUS, busca uma conversa',                          color: 'indigo'  },
-  { icon: Send,         label: 'Enviar mensagem',  prompt: 'NEXUS, quero enviar uma mensagem WhatsApp',          color: 'sky'     },
-  { icon: TrendingUp,   label: 'Status sistema',   prompt: 'NEXUS, qual é o status do sistema?',                 color: 'green'   },
-  { icon: Calendar,     label: 'Follow-up',        prompt: 'NEXUS, cria um follow-up para hoje',                 color: 'orange'  },
-  { icon: CheckCircle,  label: 'Marcar lida',      prompt: 'NEXUS, marca conversas não lidas como lidas',        color: 'rose'    },
-  { icon: BrainCircuit, label: 'Analisar empresa', prompt: 'NEXUS, faz uma análise executiva completa da empresa', color: 'violet' },
-  { icon: Rocket,       label: 'Agente Growth',    prompt: 'NEXUS, aciona o Growth IA para identificar oportunidades de crescimento', color: 'cyan' },
-  { icon: Layers,       label: 'Automações',       prompt: 'NEXUS, lista as automações ativas',                  color: 'amber'   },
-  { icon: Target,       label: 'Fechar leads',     prompt: 'NEXUS, quais leads estão em negociação prontos para fechar?', color: 'emerald' },
-  { icon: Bot,          label: 'Agente Marketing', prompt: 'NEXUS, aciona o Marketing IA para analisar oportunidades de campanha', color: 'blue' },
-  { icon: Plus,         label: 'Criar tarefa',     prompt: 'NEXUS, cria uma tarefa urgente para hoje',           color: 'purple'  },
-  { icon: Settings,     label: 'Automação',        prompt: 'NEXUS, cria uma automação para quando chegar novo lead', color: 'teal' },
-  { icon: Crown,        label: 'CEO Mode',         prompt: 'NEXUS, ativa modo CEO e monitora a empresa',         color: 'indigo'  },
+const OPS_COMMANDS: OpsCommand[] = [
+  { label: 'Dashboard Executivo',  sub: 'Visão geral da empresa',      icon: BarChart2,    command: 'Mostra o dashboard executivo',          category: 'operações',   accent: 'violet' },
+  { label: 'Análise de Empresa',   sub: 'IA analisa todas as métricas',icon: BrainCircuit, command: 'Faz uma análise completa da empresa',   category: 'operações',   accent: 'violet' },
+  { label: 'Status do Sistema',    sub: 'Saúde operacional em tempo real',icon: Monitor,   command: 'Verifica a saúde do sistema',           category: 'operações',   accent: 'slate'  },
+  { label: 'Modo CEO',             sub: 'Monitoramento executivo ativo', icon: Crown,      command: 'Ativa o modo CEO com monitoramento',    category: 'operações',   accent: 'amber'  },
+  { label: 'Leads Quentes',        sub: 'Prospects com maior atividade',icon: TrendingUp,  command: 'Quais são os leads mais quentes?',      category: 'vendas',      accent: 'orange' },
+  { label: 'Pipeline de Vendas',   sub: 'Distribuição por estágio',     icon: GitBranch,   command: 'Mostra o pipeline de vendas',           category: 'vendas',      accent: 'blue'   },
+  { label: 'Gerar Proposta',       sub: 'Proposta comercial inteligente',icon: FileText,   command: 'Gera uma proposta comercial',           category: 'vendas',      accent: 'emerald'},
+  { label: 'Criar Follow-up',      sub: 'Agendar próximo contato',      icon: Clock,       command: 'Cria um follow-up para amanhã',         category: 'vendas',      accent: 'amber'  },
+  { label: 'Buscar Contato',       sub: 'Localizar lead ou cliente',    icon: Search,      command: 'Busca um lead específico',              category: 'vendas',      accent: 'sky'    },
+  { label: 'WhatsApp',             sub: 'Central de atendimento',       icon: MessageSquare, command: 'Abre o WhatsApp e mostra mensagens', category: 'comunicação', accent: 'green'  },
+  { label: 'Mensagens Pendentes',  sub: 'Conversas não respondidas',    icon: Bell,        command: 'Quais mensagens não foram lidas?',      category: 'comunicação', accent: 'red'    },
+  { label: 'Enviar Mensagem',      sub: 'Contato direto via WhatsApp',  icon: Send,        command: 'Envia mensagem para um cliente',        category: 'comunicação', accent: 'teal'   },
+  { label: 'Resumo Financeiro',    sub: 'Receita, despesas e resultado',icon: DollarSign,  command: 'Mostra o resumo financeiro do mês',    category: 'financeiro',  accent: 'yellow' },
+  { label: 'Automações Ativas',    sub: 'Fluxos em execução',           icon: Zap,         command: 'Lista as automações ativas',            category: 'automações',  accent: 'cyan'   },
+  { label: 'Nova Automação',       sub: 'Criar fluxo inteligente',      icon: Settings2,   command: 'Cria uma nova automação',              category: 'automações',  accent: 'indigo' },
+  { label: 'Agentes de IA',        sub: 'Especialistas em ação',        icon: Bot,         command: 'Aciona o agente de growth',            category: 'automações',  accent: 'fuchsia'},
+  { label: 'Criar Tarefa',         sub: 'Nova ação operacional',        icon: CheckSquare, command: 'Cria uma nova tarefa urgente',          category: 'projetos',    accent: 'blue'   },
+  { label: 'Projetos',             sub: 'Gestão de iniciativas',        icon: Layers,      command: 'Abre os projetos ativos',              category: 'projetos',    accent: 'lime'   },
+  { label: 'Agendar Reunião',      sub: 'Gestão de agenda executiva',   icon: Calendar,    command: 'Agenda uma reunião',                   category: 'projetos',    accent: 'indigo' },
+  { label: 'Growth Map',           sub: 'Mapa estratégico de crescimento',icon: Map,       command: 'Mostra o mapa de crescimento',         category: 'projetos',    accent: 'rose'   },
 ]
 
-const COLOR_MAP: Record<string, string> = {
-  violet:  'hover:border-violet-500/40 hover:text-violet-300  hover:bg-violet-500/8',
-  cyan:    'hover:border-cyan-500/40   hover:text-cyan-300    hover:bg-cyan-500/8',
-  amber:   'hover:border-amber-500/40  hover:text-amber-300   hover:bg-amber-500/8',
-  emerald: 'hover:border-emerald-500/40 hover:text-emerald-300 hover:bg-emerald-500/8',
-  blue:    'hover:border-blue-500/40   hover:text-blue-300    hover:bg-blue-500/8',
-  purple:  'hover:border-purple-500/40 hover:text-purple-300  hover:bg-purple-500/8',
-  teal:    'hover:border-teal-500/40   hover:text-teal-300    hover:bg-teal-500/8',
-  indigo:  'hover:border-indigo-500/40 hover:text-indigo-300  hover:bg-indigo-500/8',
-  sky:     'hover:border-sky-500/40    hover:text-sky-300     hover:bg-sky-500/8',
-  green:   'hover:border-green-500/40  hover:text-green-300   hover:bg-green-500/8',
-  orange:  'hover:border-orange-500/40 hover:text-orange-300  hover:bg-orange-500/8',
-  rose:    'hover:border-rose-500/40   hover:text-rose-300    hover:bg-rose-500/8',
+// Accent color map → Tailwind classes (safe for Tailwind JIT)
+const ACCENT: Record<string, { border: string; bg: string; text: string; icon: string; glow: string }> = {
+  violet:  { border: 'hover:border-violet-500/30', bg: 'hover:bg-violet-500/6',  text: 'group-hover:text-violet-300',  icon: 'group-hover:text-violet-400',  glow: 'shadow-violet-500/10'  },
+  orange:  { border: 'hover:border-orange-500/30', bg: 'hover:bg-orange-500/6',  text: 'group-hover:text-orange-300',  icon: 'group-hover:text-orange-400',  glow: 'shadow-orange-500/10'  },
+  green:   { border: 'hover:border-green-500/30',  bg: 'hover:bg-green-500/6',   text: 'group-hover:text-green-300',   icon: 'group-hover:text-green-400',   glow: 'shadow-green-500/10'   },
+  yellow:  { border: 'hover:border-yellow-500/30', bg: 'hover:bg-yellow-500/6',  text: 'group-hover:text-yellow-300',  icon: 'group-hover:text-yellow-400',  glow: 'shadow-yellow-500/10'  },
+  blue:    { border: 'hover:border-blue-500/30',   bg: 'hover:bg-blue-500/6',    text: 'group-hover:text-blue-300',    icon: 'group-hover:text-blue-400',    glow: 'shadow-blue-500/10'    },
+  emerald: { border: 'hover:border-emerald-500/30',bg: 'hover:bg-emerald-500/6', text: 'group-hover:text-emerald-300', icon: 'group-hover:text-emerald-400', glow: 'shadow-emerald-500/10' },
+  cyan:    { border: 'hover:border-cyan-500/30',   bg: 'hover:bg-cyan-500/6',    text: 'group-hover:text-cyan-300',    icon: 'group-hover:text-cyan-400',    glow: 'shadow-cyan-500/10'    },
+  teal:    { border: 'hover:border-teal-500/30',   bg: 'hover:bg-teal-500/6',    text: 'group-hover:text-teal-300',    icon: 'group-hover:text-teal-400',    glow: 'shadow-teal-500/10'    },
+  red:     { border: 'hover:border-red-500/30',    bg: 'hover:bg-red-500/6',     text: 'group-hover:text-red-300',     icon: 'group-hover:text-red-400',     glow: 'shadow-red-500/10'     },
+  slate:   { border: 'hover:border-slate-400/25',  bg: 'hover:bg-slate-500/6',   text: 'group-hover:text-slate-300',   icon: 'group-hover:text-slate-400',   glow: 'shadow-slate-500/10'   },
+  indigo:  { border: 'hover:border-indigo-500/30', bg: 'hover:bg-indigo-500/6',  text: 'group-hover:text-indigo-300',  icon: 'group-hover:text-indigo-400',  glow: 'shadow-indigo-500/10'  },
+  amber:   { border: 'hover:border-amber-500/30',  bg: 'hover:bg-amber-500/6',   text: 'group-hover:text-amber-300',   icon: 'group-hover:text-amber-400',   glow: 'shadow-amber-500/10'   },
+  sky:     { border: 'hover:border-sky-500/30',    bg: 'hover:bg-sky-500/6',     text: 'group-hover:text-sky-300',     icon: 'group-hover:text-sky-400',     glow: 'shadow-sky-500/10'     },
+  fuchsia: { border: 'hover:border-fuchsia-500/30',bg: 'hover:bg-fuchsia-500/6', text: 'group-hover:text-fuchsia-300', icon: 'group-hover:text-fuchsia-400', glow: 'shadow-fuchsia-500/10' },
+  lime:    { border: 'hover:border-lime-500/30',   bg: 'hover:bg-lime-500/6',    text: 'group-hover:text-lime-300',    icon: 'group-hover:text-lime-400',    glow: 'shadow-lime-500/10'    },
+  rose:    { border: 'hover:border-rose-500/30',   bg: 'hover:bg-rose-500/6',    text: 'group-hover:text-rose-300',    icon: 'group-hover:text-rose-400',    glow: 'shadow-rose-500/10'    },
 }
 
-// ── Components ─────────────────────────────────────────────────────────────
+// ── Orb state config ───────────────────────────────────────────────────────────
 
-const WaveformBars = memo(function WaveformBars({
-  active, color, levels,
-}: { active: boolean; color: string; levels: number[] }) {
+const ORB_CFG: Record<NexusState | 'off', {
+  gradient: string; glowColor: string; label: string; sublabel: string
+  pulse: boolean; ring: string
+}> = {
+  off:          { gradient: 'from-slate-800 via-slate-900 to-black',          glowColor: '#334155',   label: 'NEXUS OS',     sublabel: 'Aguardando ativação',   pulse: false, ring: '#1e293b'   },
+  disconnected: { gradient: 'from-slate-800 via-slate-900 to-black',          glowColor: '#334155',   label: 'NEXUS OS',     sublabel: 'Aguardando ativação',   pulse: false, ring: '#1e293b'   },
+  connecting:   { gradient: 'from-violet-700 via-purple-800 to-indigo-900',   glowColor: '#7c3aed',   label: 'CONECTANDO',   sublabel: 'Estabelecendo link',    pulse: true,  ring: '#6d28d9'   },
+  idle:         { gradient: 'from-emerald-600 via-teal-700 to-cyan-900',      glowColor: '#059669',   label: 'ONLINE',       sublabel: 'IA pronta para operar', pulse: false, ring: '#10b981'   },
+  listening:    { gradient: 'from-cyan-500 via-sky-600 to-blue-800',          glowColor: '#06b6d4',   label: 'OUVINDO',      sublabel: 'Processando áudio',     pulse: true,  ring: '#22d3ee'   },
+  processing:   { gradient: 'from-violet-600 via-purple-700 to-indigo-900',   glowColor: '#7c3aed',   label: 'PROCESSANDO',  sublabel: 'IA em processamento',   pulse: true,  ring: '#8b5cf6'   },
+  executing:    { gradient: 'from-amber-500 via-orange-600 to-red-800',       glowColor: '#d97706',   label: 'EXECUTANDO',   sublabel: 'Ação em andamento',     pulse: true,  ring: '#f59e0b'   },
+  speaking:     { gradient: 'from-emerald-500 via-teal-600 to-cyan-800',      glowColor: '#10b981',   label: 'RESPONDENDO',  sublabel: 'NEXUS transmitindo',    pulse: true,  ring: '#34d399'   },
+  error:        { gradient: 'from-red-600 via-rose-700 to-red-900',           glowColor: '#dc2626',   label: 'ERRO',         sublabel: 'Falha na conexão',      pulse: false, ring: '#ef4444'   },
+}
+
+// ── Orb component ─────────────────────────────────────────────────────────────
+
+function NexusOrb({ state, onClick }: { state: NexusState | 'off'; onClick: () => void }) {
+  const cfg = ORB_CFG[state]
+  const isActive = state !== 'off' && state !== 'disconnected'
+
   return (
-    <div className="flex items-center justify-center gap-[2.5px] h-10">
-      {Array.from({ length: 32 }).map((_, i) => {
-        const hasRealLevel = active && levels[i] > 0.02
-        const scaleVal     = hasRealLevel ? Math.max(0.12, levels[i]) : 0.12
+    <div className="relative flex items-center justify-center select-none" style={{ width: 200, height: 200 }}>
+
+      {/* Outermost ambient glow */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{ width: 180, height: 180, background: `radial-gradient(circle, ${cfg.glowColor}22 0%, transparent 70%)` }}
+        animate={{ opacity: isActive ? 1 : 0.3, scale: cfg.pulse ? [1, 1.12, 1] : 1 }}
+        transition={{ duration: 2.5, repeat: cfg.pulse ? Infinity : 0, ease: 'easeInOut' }}
+      />
+
+      {/* Pulsing rings when active */}
+      {cfg.pulse && (
+        <>
+          {[1, 2, 3].map(i => (
+            <motion.div key={i}
+              className="absolute rounded-full border"
+              style={{
+                width: 100 + i * 28, height: 100 + i * 28,
+                borderColor: cfg.glowColor + '55',
+              }}
+              animate={{ scale: [0.85, 1.25], opacity: [0.6, 0] }}
+              transition={{ duration: 2.2 + i * 0.35, repeat: Infinity, delay: i * 0.55, ease: 'easeOut' }}
+            />
+          ))}
+        </>
+      )}
+
+      {/* Outer rotating ring */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{
+          width: 148, height: 148,
+          border: `1px solid ${cfg.ring}40`,
+        }}
+        animate={{ rotate: 360 }}
+        transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
+      >
+        <div
+          className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{ width: 5, height: 5, background: cfg.ring, boxShadow: `0 0 6px ${cfg.ring}` }}
+        />
+        <div
+          className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full opacity-40"
+          style={{ width: 3, height: 3, background: cfg.ring }}
+        />
+      </motion.div>
+
+      {/* Counter-rotating inner ring */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{ width: 128, height: 128, border: `1px solid ${cfg.ring}25` }}
+        animate={{ rotate: -360 }}
+        transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
+      />
+
+      {/* Main orb surface */}
+      <motion.button
+        onClick={onClick}
+        whileHover={{ scale: 1.04 }}
+        whileTap={{ scale: 0.96 }}
+        className={cn(
+          'relative z-10 rounded-full overflow-hidden cursor-pointer',
+          `bg-gradient-to-br ${cfg.gradient}`,
+        )}
+        style={{
+          width: 108, height: 108,
+          boxShadow: `0 0 40px 12px ${cfg.glowColor}35, inset 0 1px 0 rgba(255,255,255,0.1)`,
+        }}
+        animate={{ boxShadow: isActive
+          ? [`0 0 40px 12px ${cfg.glowColor}35`, `0 0 55px 18px ${cfg.glowColor}50`, `0 0 40px 12px ${cfg.glowColor}35`]
+          : `0 0 20px 6px ${cfg.glowColor}20`
+        }}
+        transition={{ duration: 2, repeat: isActive ? Infinity : 0, ease: 'easeInOut' }}
+      >
+        {/* Inner glass overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-white/10" />
+        {/* Inner glow */}
+        <div className="absolute inset-0 rounded-full" style={{ background: `radial-gradient(circle at 35% 30%, ${cfg.glowColor}30, transparent 65%)` }} />
+
+        <div className="relative z-10 flex flex-col items-center justify-center h-full gap-1">
+          {state === 'connecting'  && <Loader2     className="w-9 h-9 text-white animate-spin" strokeWidth={1.5} />}
+          {(state === 'off' || state === 'disconnected') && <Mic className="w-9 h-9 text-white/70" strokeWidth={1.5} />}
+          {state === 'idle'        && <Volume2      className="w-9 h-9 text-white"    strokeWidth={1.5} />}
+          {state === 'listening'   && <Mic          className="w-9 h-9 text-white"    strokeWidth={1.5} />}
+          {state === 'processing'  && <BrainCircuit className="w-9 h-9 text-white"    strokeWidth={1.5} />}
+          {state === 'executing'   && <Zap          className="w-9 h-9 text-white"    strokeWidth={1.5} />}
+          {state === 'speaking'    && <Volume2      className="w-9 h-9 text-white"    strokeWidth={1.5} />}
+          {state === 'error'       && <AlertCircle  className="w-9 h-9 text-white"    strokeWidth={1.5} />}
+        </div>
+      </motion.button>
+    </div>
+  )
+}
+
+// ── Waveform ───────────────────────────────────────────────────────────────────
+
+const Waveform = memo(function Waveform({ state, levels }: { state: NexusState | 'off'; levels: number[] }) {
+  const active = state === 'listening' || state === 'speaking' || state === 'processing'
+  const color  =
+    state === 'listening'  ? '#22d3ee' :
+    state === 'speaking'   ? '#34d399' :
+    state === 'processing' ? '#a78bfa' :
+    state === 'executing'  ? '#f59e0b' : '#64748b'
+
+  return (
+    <div className="flex items-center justify-center gap-[3px]" style={{ height: 36 }}>
+      {Array.from({ length: 20 }).map((_, i) => {
+        const real = active && levels[i] > 0.02
         return (
           <motion.div
             key={i}
-            className={`w-[2.5px] rounded-full ${color}`}
-            animate={active && !hasRealLevel ? {
-              scaleY: [0.12, 0.4 + (i % 4) * 0.1, 0.12],
-              opacity: [0.2, 0.55, 0.2],
-            } : {
-              scaleY: hasRealLevel ? scaleVal : 0.12,
-              opacity: hasRealLevel ? 0.85 : 0.15,
-            }}
-            transition={active && !hasRealLevel ? {
-              duration: 0.8 + (i % 5) * 0.12,
-              repeat: Infinity,
-              delay: (i * 0.04) % 0.5,
-              ease: 'easeInOut',
-            } : { duration: 0.06, ease: 'linear' }}
-            style={{ height: 32 }}
+            className="rounded-full"
+            style={{ width: 2.5, height: 32, background: color, transformOrigin: 'center' }}
+            animate={active && !real
+              ? { scaleY: [0.08, 0.5 + (i % 5) * 0.1, 0.08], opacity: [0.15, 0.7, 0.15] }
+              : { scaleY: real ? Math.max(0.08, levels[i]) : 0.08, opacity: real ? 0.9 : 0.12 }
+            }
+            transition={active && !real
+              ? { duration: 0.9 + (i % 4) * 0.15, repeat: Infinity, delay: (i * 0.05) % 0.6, ease: 'easeInOut' }
+              : { duration: 0.06, ease: 'linear' }
+            }
           />
         )
       })}
@@ -185,961 +261,712 @@ const WaveformBars = memo(function WaveformBars({
   )
 })
 
-// Floating pulse rings around the orb
-const FloatingRings = memo(function FloatingRings({
-  active, glow,
-}: { active: boolean; glow: string }) {
-  if (!active) return null
+// ── State label badge ─────────────────────────────────────────────────────────
+
+function StateLabel({ state }: { state: NexusState | 'off' }) {
+  const cfg = ORB_CFG[state]
+  const dotColor =
+    state === 'idle'        ? '#10b981' :
+    state === 'listening'   ? '#22d3ee' :
+    state === 'processing'  ? '#8b5cf6' :
+    state === 'executing'   ? '#f59e0b' :
+    state === 'speaking'    ? '#34d399' :
+    state === 'error'       ? '#ef4444' :
+    state === 'connecting'  ? '#7c3aed' : '#475569'
+
+  const isActive = state !== 'off' && state !== 'disconnected'
+
   return (
-    <>
-      {[1, 2, 3].map(i => (
-        <motion.div
-          key={i}
-          className="absolute rounded-full border"
+    <div className="flex flex-col items-center gap-0.5">
+      <div className="flex items-center gap-2">
+        <div
+          className="w-1.5 h-1.5 rounded-full"
           style={{
-            width: 160 + i * 60,
-            height: 160 + i * 60,
-            borderColor: glow,
-            opacity: 0,
-          }}
-          animate={{ scale: [0.85, 1.2], opacity: [0.5, 0] }}
-          transition={{
-            duration: 2 + i * 0.4,
-            repeat: Infinity,
-            delay: i * 0.6,
-            ease: 'easeOut',
+            background: dotColor,
+            boxShadow: isActive ? `0 0 6px ${dotColor}` : 'none',
           }}
         />
-      ))}
-    </>
-  )
-})
-
-function VoiceOrb({ state, onClick }: { state: VoiceState; onClick: () => void }) {
-  const cfg   = ORB[state]
-  const isOff = state === 'off'
-
-  return (
-    <div className="relative flex items-center justify-center select-none" style={{ width: 260, height: 260 }}>
-      {/* Ambient glow blur */}
-      <motion.div
-        className="absolute rounded-full blur-3xl"
-        style={{ width: 180, height: 180, background: cfg.glow }}
-        animate={{ opacity: isOff ? 0.15 : 0.6, scale: cfg.pulse ? [1, 1.12, 1] : 1 }}
-        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-      />
-
-      {/* Floating rings */}
-      <FloatingRings active={cfg.pulse} glow={cfg.glow} />
-
-      {/* Outer decorative ring */}
-      <motion.div
-        className="absolute rounded-full border border-white/5"
-        style={{ width: 220, height: 220 }}
-        animate={{ rotate: 360 }}
-        transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-      >
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/20" />
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-1 h-1 rounded-full bg-white/10" />
-      </motion.div>
-
-      {/* Main orb button */}
-      <motion.button
-        onClick={onClick}
-        whileHover={{ scale: 1.04 }}
-        whileTap={{ scale: 0.96 }}
-        className={cn(
-          'relative z-10 flex flex-col items-center justify-center gap-2.5 rounded-full',
-          `bg-gradient-to-br ${cfg.gradient}`,
-          'shadow-2xl cursor-pointer border border-white/10 overflow-hidden',
-        )}
-        style={{ width: 160, height: 160 }}
-        animate={{ boxShadow: `0 0 50px 15px ${cfg.glow}` }}
-        transition={{ duration: 0.5 }}
-      >
-        {/* Inner shimmer */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-white/10 rounded-full" />
-
-        <div className="relative z-10 flex flex-col items-center gap-1.5">
-          {isOff ? (
-            <Mic className="w-11 h-11 text-white/80" />
-          ) : state === 'connecting' ? (
-            <Loader2 className="w-11 h-11 text-white animate-spin" />
-          ) : state === 'error' ? (
-            <RefreshCw className="w-11 h-11 text-white" />
-          ) : state === 'thinking' ? (
-            <BrainCircuit className="w-11 h-11 text-white" />
-          ) : state === 'speaking' ? (
-            <Cpu className="w-11 h-11 text-white" />
-          ) : (
-            <Volume2 className="w-11 h-11 text-white" />
-          )}
-          <span className="text-[10px] font-bold text-white/70 tracking-[0.2em] uppercase">
-            {cfg.label}
-          </span>
-        </div>
-      </motion.button>
+        <span className="text-[11px] font-bold tracking-[0.2em] uppercase" style={{ color: dotColor }}>
+          {cfg.label}
+        </span>
+      </div>
+      <span className="text-[10px] text-white/25 tracking-wide">{cfg.sublabel}</span>
     </div>
   )
 }
+
+// ── Ops command card ───────────────────────────────────────────────────────────
+
+const OpsCard = memo(function OpsCard({
+  cmd, onClick, isActive,
+}: { cmd: OpsCommand; onClick: () => void; isActive: boolean }) {
+  const ac = ACCENT[cmd.accent] ?? ACCENT.slate
+  const Icon = cmd.icon
+
+  return (
+    <motion.button
+      onClick={onClick}
+      whileHover={{ scale: 1.015, y: -1 }}
+      whileTap={{ scale: 0.985 }}
+      className={cn(
+        'group relative flex flex-col gap-3 p-4 rounded-2xl text-left cursor-pointer',
+        'border border-white/[0.06] bg-white/[0.025]',
+        'backdrop-blur-sm transition-all duration-200',
+        'hover:shadow-lg',
+        ac.border, ac.bg, ac.glow,
+      )}
+    >
+      {/* Top row: icon + arrow */}
+      <div className="flex items-start justify-between">
+        <div className={cn(
+          'w-9 h-9 rounded-xl flex items-center justify-center',
+          'bg-white/[0.05] border border-white/[0.06] transition-all duration-200',
+          'group-hover:border-current/20 group-hover:bg-white/[0.08]',
+        )}>
+          <Icon className={cn('w-4 h-4 text-white/40 transition-colors duration-200', ac.icon)} />
+        </div>
+        <ChevronRight className="w-3.5 h-3.5 text-white/15 group-hover:text-white/35 transition-all duration-200 group-hover:translate-x-0.5" />
+      </div>
+
+      {/* Label */}
+      <div>
+        <p className={cn('text-[12.5px] font-semibold text-white/70 leading-snug transition-colors duration-200', ac.text)}>
+          {cmd.label}
+        </p>
+        <p className="text-[10.5px] text-white/25 leading-snug mt-0.5">{cmd.sub}</p>
+      </div>
+
+      {/* Bottom: category tag */}
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] uppercase tracking-[0.12em] text-white/15 font-medium">
+          {cmd.category}
+        </span>
+        {isActive && (
+          <div className="flex items-center gap-1">
+            <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[9px] text-emerald-400/60">pronto</span>
+          </div>
+        )}
+      </div>
+    </motion.button>
+  )
+})
+
+// ── Transcript bubble ──────────────────────────────────────────────────────────
 
 const TranscriptBubble = memo(function TranscriptBubble({ entry }: { entry: TranscriptEntry }) {
   const isUser = entry.role === 'user'
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.2 }}
-      className={cn('flex', isUser ? 'justify-end' : 'justify-start')}
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      className={cn('flex items-end gap-2', isUser ? 'flex-row-reverse' : 'flex-row')}
     >
-      {!isUser && (
-        <div className="w-5 h-5 rounded-full bg-violet-600/30 border border-violet-500/30 flex items-center justify-center mr-1.5 mt-0.5 shrink-0">
-          <Cpu className="w-2.5 h-2.5 text-violet-400" />
-        </div>
-      )}
       <div className={cn(
-        'max-w-[82%] px-3.5 py-2 rounded-2xl text-[13px] leading-relaxed',
+        'w-5 h-5 rounded-full border flex items-center justify-center shrink-0',
+        isUser ? 'bg-violet-500/15 border-violet-500/20' : 'bg-emerald-500/10 border-emerald-500/15',
+      )}>
+        {isUser
+          ? <Mic className="w-2.5 h-2.5 text-violet-400" strokeWidth={2} />
+          : <Cpu className="w-2.5 h-2.5 text-emerald-400" strokeWidth={2} />
+        }
+      </div>
+      <div className={cn(
+        'max-w-[82%] px-3.5 py-2 rounded-2xl text-[12px] leading-relaxed',
         isUser
-          ? 'bg-violet-600/60 text-white rounded-br-sm border border-violet-500/20'
-          : 'bg-white/6 text-white/85 border border-white/8 rounded-bl-sm',
+          ? 'bg-violet-500/12 border border-violet-500/18 text-white/85 rounded-tr-sm'
+          : 'bg-white/[0.04] border border-white/[0.07] text-white/65 rounded-tl-sm',
       )}>
         {entry.text}
+        {!entry.final && (
+          <span className="inline-flex gap-0.5 ml-1.5 opacity-50">
+            {[0, 0.2, 0.4].map(d => (
+              <motion.span key={d} className="w-0.5 h-0.5 rounded-full bg-current"
+                animate={{ opacity: [0.3, 1, 0.3] }}
+                transition={{ duration: 1.1, delay: d, repeat: Infinity }} />
+            ))}
+          </span>
+        )}
       </div>
     </motion.div>
   )
 })
 
-function LiveMetricsBar({ metrics }: { metrics: LiveMetrics }) {
-  if (!metrics.loaded) {
-    return (
-      <div className="flex items-center gap-4 px-6 py-2 border-b border-white/4 bg-black/20">
-        {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-3 w-20 rounded bg-white/6 animate-pulse" />
-        ))}
-      </div>
-    )
-  }
+// ── Action log item ────────────────────────────────────────────────────────────
 
-  const items = [
-    { icon: MessageCircle, label: 'Conversas',  value: metrics.conversations, color: 'text-violet-400' },
-    { icon: Bell,          label: 'Não lidas',  value: metrics.unread,        color: metrics.unread > 0 ? 'text-amber-400' : 'text-white/30' },
-    { icon: Zap,           label: 'IA ativa',   value: metrics.ai_active,     color: 'text-emerald-400' },
-    { icon: Target,        label: 'Leads hot',  value: metrics.hot_leads,     color: metrics.hot_leads > 0 ? 'text-orange-400' : 'text-white/30' },
-    { icon: metrics.system_ok ? Shield : AlertCircle, label: 'Sistema', value: metrics.system_ok ? 'Online' : 'Alerta', color: metrics.system_ok ? 'text-emerald-400' : 'text-red-400' },
-  ]
-
-  return (
-    <div className="flex items-center gap-5 px-6 py-2 border-b border-white/4 bg-black/20">
-      {items.map(item => {
-        const Icon = item.icon
-        return (
-          <div key={item.label} className="flex items-center gap-1.5">
-            <Icon className={cn('w-3 h-3', item.color)} />
-            <span className="text-[10px] text-white/30">{item.label}</span>
-            <span className={cn('text-[10px] font-bold tabular-nums', item.color)}>{item.value}</span>
-          </div>
-        )
-      })}
-      {/* Health score */}
-      <div className="flex items-center gap-1.5 ml-auto">
-        <Star className="w-3 h-3 text-amber-400" />
-        <span className="text-[10px] text-white/30">Saúde</span>
-        <span className={cn(
-          'text-[10px] font-bold',
-          metrics.health_score >= 70 ? 'text-emerald-400' :
-          metrics.health_score >= 40 ? 'text-amber-400' : 'text-red-400',
-        )}>
-          {metrics.health_score}/100
-        </span>
-      </div>
-    </div>
-  )
-}
-
-const ActionCard = memo(function ActionCard({ a }: { a: ActionLog }) {
+const LogItem = memo(function LogItem({ log }: { log: ActionLog }) {
   return (
     <motion.div
-      initial={{ opacity: 0, x: 16 }}
+      initial={{ opacity: 0, x: 8 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.2 }}
-      className={cn(
-        'flex items-start gap-2 px-3 py-2.5 rounded-xl border transition-all',
-        a.ok
-          ? 'bg-white/3 border-white/6 hover:bg-white/5'
-          : 'bg-red-500/5 border-red-500/15',
-      )}
+      className="flex items-start gap-2.5 py-2.5 border-b border-white/[0.04] last:border-0"
     >
-      <div className={cn('w-1.5 h-1.5 rounded-full mt-1.5 shrink-0', a.ok ? 'bg-emerald-400' : 'bg-red-400')} />
+      {/* Status dot */}
+      <div className="mt-0.5 shrink-0">
+        {log.ok
+          ? <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" style={{ boxShadow: '0 0 4px #10b981' }} />
+          : <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
+        }
+      </div>
       <div className="flex-1 min-w-0">
-        {a.agent && (
-          <p className="text-[9px] font-semibold text-violet-400/70 uppercase tracking-wider mb-0.5">
-            {a.agent}
-          </p>
+        <div className="flex items-center justify-between gap-1">
+          <p className="text-[11px] font-medium text-white/65 truncate">{log.label}</p>
+          <span className="text-[9px] text-white/20 font-mono shrink-0">{time12(log.ts)}</span>
+        </div>
+        {log.detail && (
+          <p className="text-[10px] text-white/25 mt-0.5 leading-snug truncate">{log.detail}</p>
         )}
-        <p className="text-[11px] text-white/70 leading-tight">{a.label}</p>
-        {a.detail && (
-          <p className="text-[10px] text-white/35 leading-tight mt-0.5 truncate">{a.detail}</p>
-        )}
-        <p className="text-[9px] text-white/25 flex items-center gap-1 mt-0.5">
-          <Clock className="w-2 h-2" />
-          {new Date(a.ts).toLocaleTimeString('pt-BR', {
-            hour: '2-digit', minute: '2-digit', second: '2-digit',
-          })}
-        </p>
       </div>
     </motion.div>
   )
 })
 
-// CEO Mode panel — shows company alerts + opportunities
-function CeoPanel({
-  metrics, alerts, onCommand,
-}: {
-  metrics:   LiveMetrics
-  alerts:    CompanyAlert[]
-  onCommand: (cmd: string) => void
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
-      className="overflow-hidden border-b border-amber-500/20 bg-gradient-to-r from-amber-500/5 via-orange-500/4 to-transparent"
-    >
-      <div className="flex items-start gap-4 px-6 py-3">
-        <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
-          <Crown className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">CEO Mode</span>
-        </div>
-        <div className="flex-1 flex flex-wrap gap-2">
-          {alerts.length === 0 ? (
-            <span className="text-[11px] text-white/40">Empresa saudável — nenhum alerta crítico.</span>
-          ) : (
-            alerts.map((a, i) => (
-              <button
-                key={i}
-                onClick={() => onCommand(`NEXUS, ${a.message.replace(/^[^\s]+\s/, '')}`)}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] border transition-all hover:scale-[1.02]',
-                  a.type === 'warning'
-                    ? 'bg-red-500/8 border-red-500/20 text-red-300 hover:bg-red-500/12'
-                    : a.type === 'opportunity'
-                    ? 'bg-emerald-500/8 border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/12'
-                    : 'bg-white/4 border-white/10 text-white/50 hover:bg-white/6',
-                )}
-              >
-                {a.message}
-              </button>
-            ))
-          )}
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className={cn(
-            'text-[10px] font-bold px-2 py-0.5 rounded-full border',
-            metrics.health_score >= 70 ? 'text-emerald-400 bg-emerald-500/8 border-emerald-500/20'
-            : metrics.health_score >= 40 ? 'text-amber-400 bg-amber-500/8 border-amber-500/20'
-            : 'text-red-400 bg-red-500/8 border-red-500/20',
-          )}>
-            {metrics.health_score}/100
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-// Agent route display
-function AgentBadge({ agent, task }: { agent: string; task: string }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="mx-3 mt-2 p-2.5 rounded-xl bg-violet-500/8 border border-violet-500/20 flex items-center gap-2"
-    >
-      <BrainCircuit className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] font-bold text-violet-400">{agent}</p>
-        <p className="text-[10px] text-white/40 truncate">{task}</p>
-      </div>
-      <Loader2 className="w-3 h-3 text-violet-400/50 animate-spin shrink-0" />
-    </motion.div>
-  )
-}
-
-// ── Main page ──────────────────────────────────────────────────────────────
+// ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function AssistantPage() {
   const router = useRouter()
 
-  const [voiceState, setVoiceState]    = useState<VoiceState>('off')
-  const [transcript, setTranscript]    = useState<TranscriptEntry[]>([])
-  const [actionLog, setActionLog]      = useState<ActionLog[]>([])
-  const [errorMsg, setErrorMsg]        = useState<string | null>(null)
-  const [sessionDuration, setDuration] = useState(0)
-  const [ceoMode, setCeoMode]          = useState(false)
-  const [alerts, setAlerts]            = useState<CompanyAlert[]>([])
-  const [activeAgent, setActiveAgent]  = useState<{ agent: string; task: string } | null>(null)
-  const [metrics, setMetrics]          = useState<LiveMetrics>({
+  const [nexusState,   setNexusState]   = useState<NexusState | 'off'>('off')
+  const [transcript,   setTranscript]   = useState<TranscriptEntry[]>([])
+  const [actionLog,    setActionLog]    = useState<ActionLog[]>([])
+  const [errorMsg,     setErrorMsg]     = useState<string | null>(null)
+  const [sessionDur,   setDuration]     = useState(0)
+  const [audioLevels,  setAudioLevels]  = useState<number[]>(Array(32).fill(0))
+  const [activeAgent,  setActiveAgent]  = useState<{ agent: string; task: string } | null>(null)
+  const [metrics,      setMetrics]      = useState<LiveMetrics>({
     conversations: 0, unread: 0, ai_active: 0, hot_leads: 0,
     system_ok: true, health_score: 0, loaded: false,
   })
-  const [recentCommands, setRecentCommands] = useState<string[]>([])
+  const [showTranscript, setShowTranscript] = useState(false)
 
-  const [audioLevels, setAudioLevels] = useState<number[]>(Array(32).fill(0))
+  const clientRef       = useRef<NexusRealtimeClient | null>(null)
+  const timerRef        = useRef<ReturnType<typeof setInterval> | null>(null)
+  const transcriptRef   = useRef<HTMLDivElement>(null)
+  const sessionStartRef = useRef<number>(0)
 
-  const pcRef              = useRef<RTCPeerConnection | null>(null)
-  const dcRef              = useRef<RTCDataChannel | null>(null)
-  const audioElRef         = useRef<HTMLAudioElement | null>(null)
-  const timerRef           = useRef<ReturnType<typeof setInterval> | null>(null)
-  const transcriptRef      = useRef<HTMLDivElement>(null)
-  const reconnectCountRef  = useRef(0)
-  const stoppedRef         = useRef(false)
-  const audioCtxRef        = useRef<AudioContext | null>(null)
-  const outputAnalyserRef  = useRef<AnalyserNode | null>(null)
-  const inputAnalyserRef   = useRef<AnalyserNode | null>(null)
-  const micStreamRef       = useRef<MediaStream | null>(null)
-  const animFrameRef       = useRef<number | null>(null)
+  // ── Tool handler ───────────────────────────────────────────────────────────
+  const handleToolCall = useCallback(async (
+    tool: string, params: Record<string, unknown>, _callId: string,
+  ): Promise<unknown> => {
+    const agentInfo = extractAgentInfo(tool, params)
+    if (agentInfo) setActiveAgent(agentInfo)
 
-  // ── localStorage memory ───────────────────────────────────────────────────
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('nexus_recent_commands')
-      if (saved) setRecentCommands(JSON.parse(saved) as string[])
-      const ceo = localStorage.getItem('nexus_ceo_mode')
-      if (ceo === 'true') setCeoMode(true)
-    } catch {}
+    const result: RoutedResult = await routeAction(tool, params)
+
+    setActionLog(prev => [{
+      id:     `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      tool, label: result.label, ts: Date.now(),
+      ok:     result.success,
+      detail: result.summary,
+    }, ...prev].slice(0, 50))
+
+    const navPath = getNavigationPath(result)
+    if (navPath) router.push(navPath)
+    if (agentInfo) setTimeout(() => setActiveAgent(null), 6000)
+
+    return result
+  }, [router])
+
+  // ── Transcript handler ─────────────────────────────────────────────────────
+  const handleTranscript = useCallback((role: 'user' | 'assistant', text: string, final: boolean) => {
+    setShowTranscript(true)
+    setTranscript(prev => {
+      if (!final && role === 'assistant') {
+        const last = prev[prev.length - 1]
+        if (last?.role === 'assistant' && !last.final)
+          return [...prev.slice(0, -1), { ...last, text: last.text + text }]
+        return [...prev, { id: `ai-${Date.now()}`, role, text, ts: Date.now(), final }]
+      }
+      if (final && role === 'assistant') {
+        const last = prev[prev.length - 1]
+        if (last?.role === 'assistant' && !last.final)
+          return [...prev.slice(0, -1), { ...last, final: true }]
+      }
+      return [...prev, { id: `${role}-${Date.now()}`, role, text, ts: Date.now(), final }]
+    })
   }, [])
 
-  // ── Real audio waveform loop ──────────────────────────────────────────────
-  useEffect(() => {
-    const isAudioActive = voiceState === 'listening' || voiceState === 'speaking'
+  // ── Client ─────────────────────────────────────────────────────────────────
+  const getOrCreateClient = useCallback(() => {
+    if (clientRef.current) return clientRef.current
+    const c = new NexusRealtimeClient({
+      onState:       (s) => setNexusState(s),
+      onTranscript:  handleTranscript,
+      onToolCall:    handleToolCall,
+      onAudioLevels: setAudioLevels,
+      onError:       (msg) => setErrorMsg(msg),
+    })
+    clientRef.current = c
+    return c
+  }, [handleTranscript, handleToolCall])
 
-    if (!isAudioActive) {
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current)
-        animFrameRef.current = null
-      }
-      setAudioLevels(Array(32).fill(0))
+  const startSession = useCallback(async () => {
+    if (nexusState !== 'off' && nexusState !== 'disconnected' && nexusState !== 'error') return
+    setErrorMsg(null)
+    sessionStartRef.current = Date.now()
+    setDuration(0)
+    timerRef.current = setInterval(() =>
+      setDuration(Math.floor((Date.now() - sessionStartRef.current) / 1000)), 1000)
+    await getOrCreateClient().connect()
+  }, [nexusState, getOrCreateClient])
+
+  const stopSession = useCallback(() => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    clientRef.current?.disconnect()
+    clientRef.current = null
+    setNexusState('off')
+    setAudioLevels(Array(32).fill(0))
+    setActiveAgent(null)
+  }, [])
+
+  const sendCmd = useCallback((text: string) => {
+    const c = clientRef.current
+    if (!c || nexusState === 'off' || nexusState === 'disconnected' || nexusState === 'error') {
+      startSession().then(() => setTimeout(() => clientRef.current?.sendText(text), 1500))
       return
     }
+    c.sendText(text)
+  }, [nexusState, startSession])
 
-    const analyser = voiceState === 'listening' ? inputAnalyserRef.current : outputAnalyserRef.current
-    if (!analyser) return
+  const handleOrbClick = useCallback(() => {
+    if (nexusState === 'off' || nexusState === 'disconnected' || nexusState === 'error') startSession()
+    else stopSession()
+  }, [nexusState, startSession, stopSession])
 
-    const data = new Uint8Array(analyser.frequencyBinCount)
-
-    const tick = () => {
-      analyser.getByteFrequencyData(data)
-      const step  = Math.floor(data.length / 32)
-      const levels = Array.from({ length: 32 }, (_, i) => {
-        const bucket = data[i * step] ?? 0
-        return bucket / 255
-      })
-      setAudioLevels(levels)
-      animFrameRef.current = requestAnimationFrame(tick)
-    }
-
-    animFrameRef.current = requestAnimationFrame(tick)
-
-    return () => {
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current)
-        animFrameRef.current = null
-      }
-    }
-  }, [voiceState])
-
-  // ── Load live metrics ─────────────────────────────────────────────────────
+  // ── Load metrics ───────────────────────────────────────────────────────────
   const loadMetrics = useCallback(async () => {
     try {
-      const [summaryRes, analysisRes] = await Promise.all([
-        fetch('/api/nexus/voice/execute', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tool: 'getDashboardSummary', params: {} }),
-        }),
-        fetch('/api/nexus/voice/execute', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tool: 'analyzeCompany', params: {} }),
-        }),
-      ])
-      const summary  = await summaryRes.json()  as Record<string, unknown>
-      const analysis = await analysisRes.json() as Record<string, unknown>
-
-      const convs  = summary.conversations    as Record<string, number> | undefined
-      const aData  = analysis as {
-        health_score?: number
-        conversations?: { hot?: number }
-        alerts?: string[]
-        opportunities?: string[]
-        system_ok?: boolean
-      }
-
-      const alertsList: CompanyAlert[] = [
-        ...(aData.alerts ?? []).map(a => ({ type: 'warning' as const, message: a })),
-        ...(aData.opportunities ?? []).map(a => ({ type: 'opportunity' as const, message: a })),
-      ]
-      setAlerts(alertsList)
-
-      setMetrics({
-        conversations: convs?.total    ?? 0,
-        unread:        convs?.unread   ?? 0,
-        ai_active:     convs?.ai_on    ?? convs?.ai_active ?? 0,
-        hot_leads:     aData.conversations?.hot ?? 0,
-        system_ok:     aData.system_ok !== false,
-        health_score:  aData.health_score ?? 0,
+      const res = await fetch('/api/nexus/voice/execute', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool: 'getDashboardSummary', params: {} }),
+      })
+      if (!res.ok) return
+      const data = await res.json() as Record<string, unknown>
+      const stats = data.stats as Record<string, unknown> | undefined
+      if (stats) setMetrics({
+        conversations: Number(stats.total_conversations ?? 0),
+        unread:        Number(stats.unread_count ?? 0),
+        ai_active:     Number(stats.ai_active ?? 0),
+        hot_leads:     Number(stats.hot_leads ?? 0),
+        system_ok:     Boolean(stats.system_ok !== false),
+        health_score:  Number(stats.health_score ?? 72),
         loaded:        true,
       })
-    } catch {
-      setMetrics(m => ({ ...m, loaded: true }))
-    }
+      else setMetrics(m => ({ ...m, loaded: true }))
+    } catch { setMetrics(m => ({ ...m, loaded: true })) }
   }, [])
 
   useEffect(() => { loadMetrics() }, [loadMetrics])
 
-  // Auto-refresh metrics every 60s
   useEffect(() => {
-    const t = setInterval(loadMetrics, 60000)
-    return () => clearInterval(t)
-  }, [loadMetrics])
-
-  // ── Auto-scroll transcript ────────────────────────────────────────────────
-  useEffect(() => {
-    if (transcriptRef.current) {
+    if (transcriptRef.current)
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
-    }
   }, [transcript])
 
-  // ── Session timer ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (voiceState !== 'off' && voiceState !== 'error') {
-      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current)
-      if (voiceState === 'off') setDuration(0)
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [voiceState])
+  useEffect(() => () => { stopSession() }, [stopSession])
 
-  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  const isActive = nexusState !== 'off' && nexusState !== 'disconnected'
 
-  // ── CEO mode toggle ───────────────────────────────────────────────────────
-  const toggleCeoMode = useCallback(() => {
-    setCeoMode(prev => {
-      const next = !prev
-      try { localStorage.setItem('nexus_ceo_mode', String(next)) } catch {}
-      return next
-    })
-  }, [])
-
-  // ── Tool execution ────────────────────────────────────────────────────────
-  const executeTool = useCallback(async (toolName: string, params: Record<string, unknown>) => {
-    const logId = `act-${Date.now()}`
-    setActionLog(prev => [{
-      id:    logId,
-      tool:  toolName,
-      label: TOOL_LABELS[toolName] ?? toolName,
-      ts:    Date.now(),
-      ok:    true,
-    }, ...prev.slice(0, 49)])
-
-    if (toolName === 'navigate') {
-      const path = params.path as string
-      if (path) router.push(path)
-      return { success: true, summary: `Navegando para ${params.page_name ?? path}` }
-    }
-
-    if (toolName === 'orchestrateAgent') {
-      const agentLabel = String(params.agent ?? 'IA')
-      const task       = String(params.task ?? '')
-      setActiveAgent({ agent: `${agentLabel} IA`, task })
-      setTimeout(() => setActiveAgent(null), 6000)
-    }
-
-    try {
-      const res  = await fetch('/api/nexus/voice/execute', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tool: toolName, params }),
-      })
-      const data = await res.json() as Record<string, unknown>
-
-      // Update action log with detail
-      const detail = (data.summary as string | undefined) ?? (data.error as string | undefined)
-      setActionLog(prev => prev.map(a => a.id === logId
-        ? { ...a, detail: detail?.slice(0, 80), ok: !data.error }
-        : a,
-      ))
-
-      // Refresh metrics after mutating tools
-      const mutating = ['sendWhatsAppMessage', 'toggleAI', 'updateLeadStage', 'markConversationRead', 'createTask', 'triggerAutomation', 'createAutomation', 'scheduleMeeting', 'generateProposal']
-      if (mutating.includes(toolName)) {
-        setTimeout(loadMetrics, 1800)
-      }
-
-      return data
-    } catch {
-      setActionLog(prev => prev.map(a => a.id === logId ? { ...a, ok: false } : a))
-      return { error: 'Falha na execução' }
-    }
-  }, [router, loadMetrics])
-
-  // ── DataChannel handler ───────────────────────────────────────────────────
-  const handleDCMessage = useCallback((ev: MessageEvent) => {
-    let msg: Record<string, unknown>
-    try { msg = JSON.parse(ev.data as string) } catch { return }
-    const type = msg.type as string
-
-    if (type === 'input_audio_buffer.speech_started') setVoiceState('listening')
-    if (type === 'input_audio_buffer.speech_stopped')  setVoiceState('thinking')
-
-    if (type === 'conversation.item.input_audio_transcription.completed') {
-      const text = (msg.transcript as string | undefined)?.trim()
-      if (text) setTranscript(prev => [...prev, { id: `u-${Date.now()}`, role: 'user', text, ts: Date.now() }])
-    }
-
-    if (type === 'response.audio_transcript.delta') {
-      const delta = msg.delta as string | undefined
-      if (delta) {
-        setVoiceState('speaking')
-        setTranscript(prev => {
-          const last = prev[prev.length - 1]
-          if (last?.role === 'assistant' && last.id.startsWith('ai-stream')) {
-            return [...prev.slice(0, -1), { ...last, text: last.text + delta }]
-          }
-          return [...prev, { id: `ai-stream-${Date.now()}`, role: 'assistant', text: delta, ts: Date.now() }]
-        })
-      }
-    }
-
-    if (type === 'response.done') setVoiceState('idle')
-
-    if (type === 'response.output_item.done') {
-      const item = msg.item as Record<string, unknown> | undefined
-      if (item?.type === 'function_call') {
-        const toolName = item.name as string
-        let params: Record<string, unknown> = {}
-        try { params = JSON.parse(item.arguments as string) } catch {}
-        executeTool(toolName, params).then(result => {
-          const dc = dcRef.current
-          if (!dc || dc.readyState !== 'open') return
-          dc.send(JSON.stringify({
-            type: 'conversation.item.create',
-            item: { type: 'function_call_output', call_id: item.call_id, output: JSON.stringify(result) },
-          }))
-          dc.send(JSON.stringify({ type: 'response.create' }))
-        })
-      }
-    }
-
-    if (type === 'error') {
-      const err = msg.error as Record<string, unknown> | undefined
-      console.error('[NEXUS realtime] error:', err)
-      setVoiceState('error')
-      setErrorMsg((err?.message as string) ?? 'Erro desconhecido')
-    }
-  }, [executeTool])
-
-  // ── Session control ───────────────────────────────────────────────────────
-  const stopSession = useCallback(() => {
-    stoppedRef.current = true
-    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
-    dcRef.current?.close()
-    dcRef.current = null
-    pcRef.current?.close()
-    pcRef.current = null
-    if (audioElRef.current) { audioElRef.current.srcObject = null; audioElRef.current = null }
-    micStreamRef.current?.getTracks().forEach(t => t.stop())
-    micStreamRef.current = null
-    audioCtxRef.current?.close().catch(() => {})
-    audioCtxRef.current = null
-    outputAnalyserRef.current = null
-    inputAnalyserRef.current  = null
-    setAudioLevels(Array(32).fill(0))
-    setVoiceState('off')
-    reconnectCountRef.current = 0
-  }, [])
-
-  const startSession = useCallback(async () => {
-    if (voiceState !== 'off' && voiceState !== 'error') return
-    stoppedRef.current = false
-    setVoiceState('connecting')
-    setErrorMsg(null)
-
-    try {
-      const sessionRes = await fetch('/api/nexus/voice/session', { method: 'POST' })
-      if (!sessionRes.ok) {
-        const body = await sessionRes.json().catch(() => ({})) as Record<string, unknown>
-        throw new Error((body.error as string) ?? `HTTP ${sessionRes.status}`)
-      }
-      const sessionData = await sessionRes.json() as Record<string, unknown>
-
-      const ephemeralKey = sessionData?.ephemeral_key as string | undefined
-        ?? (sessionData?.client_secret as { value?: string } | undefined)?.value
-      if (!ephemeralKey) {
-        throw new Error(`Sem chave efêmera: ${JSON.stringify(sessionData).slice(0, 200)}`)
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      micStreamRef.current = stream
-
-      // ── Web Audio API setup ───────────────────────────────────────────────
-      const ctx = new AudioContext()
-      audioCtxRef.current = ctx
-
-      // Input analyser (microphone — listening state)
-      const inputAnalyser = ctx.createAnalyser()
-      inputAnalyser.fftSize          = 128
-      inputAnalyser.smoothingTimeConstant = 0.7
-      inputAnalyserRef.current       = inputAnalyser
-      const micSource = ctx.createMediaStreamSource(stream)
-      micSource.connect(inputAnalyser)
-
-      // Output analyser (AI speech — speaking state)
-      const outputAnalyser = ctx.createAnalyser()
-      outputAnalyser.fftSize          = 128
-      outputAnalyser.smoothingTimeConstant = 0.7
-      outputAnalyserRef.current      = outputAnalyser
-
-      const pc = new RTCPeerConnection()
-      pcRef.current = pc
-
-      const audioEl = new Audio()
-      audioEl.autoplay = true
-      audioElRef.current = audioEl
-
-      pc.ontrack = (e) => {
-        audioEl.srcObject = e.streams[0]
-        // Connect output stream to analyser for real waveform
-        try {
-          const outputSource = ctx.createMediaStreamSource(e.streams[0])
-          outputSource.connect(outputAnalyser)
-        } catch { /* ignore — analyser only, doesn't affect playback */ }
-      }
-
-      stream.getTracks().forEach(t => pc.addTrack(t, stream))
-
-      const dc = pc.createDataChannel('oai-events')
-      dcRef.current = dc
-
-      dc.onopen = () => {
-        dc.send(JSON.stringify(SESSION_UPDATE))
-        setVoiceState('idle')
-        reconnectCountRef.current = 0
-      }
-      dc.onclose = () => {
-        // Silent auto-reconnect (max 3 attempts)
-        if (!stoppedRef.current && reconnectCountRef.current < 3) {
-          reconnectCountRef.current++
-          setVoiceState('connecting')
-          setTimeout(() => startSession(), 1500 * reconnectCountRef.current)
-        } else if (!stoppedRef.current) {
-          setVoiceState('off')
-        }
-      }
-      dc.onmessage = handleDCMessage
-
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-
-      // Correct SDP endpoint: /v1/realtime?model=...
-      const model = (sessionData.model as string | undefined) ?? REALTIME_MODEL
-      const sdpRes = await fetch(`https://api.openai.com/v1/realtime?model=${model}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${ephemeralKey}`,
-          'Content-Type':  'application/sdp',
-        },
-        body: offer.sdp,
-      })
-      if (!sdpRes.ok) {
-        const errText = await sdpRes.text().catch(() => '')
-        throw new Error(`OpenAI SDP ${sdpRes.status}: ${errText.slice(0, 200)}`)
-      }
-
-      const answerSdp = await sdpRes.text()
-      await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp })
-
-    } catch (err) {
-      console.error('[NEXUS] startSession error:', err)
-      setVoiceState('error')
-      setErrorMsg(err instanceof Error ? err.message : 'Falha ao iniciar sessão')
-      stopSession()
-    }
-  }, [voiceState, handleDCMessage, stopSession])
-
-  const sendTextCommand = useCallback((prompt: string) => {
-    const dc = dcRef.current
-    if (!dc || dc.readyState !== 'open') return
-    dc.send(JSON.stringify({
-      type: 'conversation.item.create',
-      item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: prompt }] },
-    }))
-    dc.send(JSON.stringify({ type: 'response.create' }))
-    setTranscript(prev => [...prev, { id: `u-cmd-${Date.now()}`, role: 'user', text: prompt, ts: Date.now() }])
-    setRecentCommands(prev => {
-      const updated = [prompt, ...prev.filter(p => p !== prompt)].slice(0, 12)
-      try { localStorage.setItem('nexus_recent_commands', JSON.stringify(updated)) } catch {}
-      return updated
-    })
-  }, [])
-
-  const isActive = voiceState !== 'off' && voiceState !== 'error'
-  const waveColor = voiceState === 'listening' ? 'bg-cyan-400' : voiceState === 'speaking' ? 'bg-emerald-400' : 'bg-violet-400/30'
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#08080d] text-white flex flex-col overflow-hidden">
+    <div
+      className="min-h-screen text-white flex flex-col overflow-hidden"
+      style={{ background: 'radial-gradient(ellipse at 20% 0%, #0f0a1e 0%, #060608 50%, #040406 100%)' }}
+    >
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between px-6 py-3.5 border-b border-white/4 bg-black/30 backdrop-blur-sm shrink-0">
+      {/* ── Topbar ──────────────────────────────────────────────────────────── */}
+      <div
+        className="flex items-center justify-between px-6 py-3 shrink-0 border-b"
+        style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(20px)' }}
+      >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600/30 to-purple-900/30 border border-violet-500/25 flex items-center justify-center shadow-lg shadow-violet-500/10">
-            <Cpu className="w-4 h-4 text-violet-400" />
+          {/* Logo mark */}
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{
+              background: 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(6,182,212,0.1))',
+              border: '1px solid rgba(16,185,129,0.2)',
+              boxShadow: '0 0 12px rgba(16,185,129,0.1)',
+            }}
+          >
+            <Cpu className="w-4 h-4" style={{ color: '#10b981' }} strokeWidth={1.5} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-[13px] font-bold tracking-widest text-white/90 uppercase">NEXUS</h1>
-              <span className="text-[9px] text-white/25 font-mono">OS v2.0</span>
+              <span className="text-[13px] font-bold tracking-[0.22em] text-white/90 uppercase">NEXUS</span>
+              <span
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', color: '#10b981' }}
+              >
+                OS v3.0
+              </span>
+              <span
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', color: '#a78bfa' }}
+              >
+                GA
+              </span>
             </div>
-            <p className="text-[10px] text-white/35">Sistema Operacional de IA · 25 ferramentas · Execução em tempo real</p>
+            <p className="text-[9.5px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Sistema Operacional de IA · 20 módulos · 25 ferramentas
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* CEO Mode toggle */}
-          <button
-            onClick={toggleCeoMode}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all',
-              ceoMode
-                ? 'text-amber-400 bg-amber-500/10 border-amber-500/25 shadow-sm shadow-amber-500/10'
-                : 'text-white/35 bg-white/3 border-white/8 hover:border-white/15 hover:text-white/50',
-            )}
-          >
-            <Crown className={cn('w-3.5 h-3.5', ceoMode && 'animate-pulse')} />
-            CEO Mode
-          </button>
+        <div className="flex items-center gap-2.5">
+          {/* Metrics pills */}
+          {metrics.loaded && (
+            <div className="hidden lg:flex items-center gap-1.5">
+              {[
+                { val: metrics.conversations, label: 'conv',      color: '#60a5fa' },
+                { val: metrics.unread,        label: 'pendentes', color: '#fbbf24' },
+                { val: metrics.hot_leads,     label: 'hot leads', color: '#fb923c' },
+              ].map(({ val, label, color }) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <span className="text-[11px] font-bold" style={{ color }}>{val}</span>
+                  <span className="text-[9px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
-          {/* Refresh */}
-          <button onClick={loadMetrics} className="p-1.5 rounded-lg text-white/20 hover:text-white/40 hover:bg-white/5 transition-all">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Session info + stop */}
+          {/* Session timer */}
           {isActive && (
-            <>
-              <div className="flex items-center gap-1.5 text-[11px] text-white/40">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {fmt(sessionDuration)}
-              </div>
-              <button
-                onClick={stopSession}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-medium hover:bg-red-500/15 transition-all"
-              >
-                <MicOff className="w-3.5 h-3.5" />
-                Encerrar
-              </button>
-            </>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-mono" style={{ color: 'rgba(255,255,255,0.3)' }}>{fmt(sessionDur)}</span>
+            </div>
+          )}
+
+          <button onClick={loadMetrics}
+            className="p-1.5 rounded-lg transition-all"
+            style={{ color: 'rgba(255,255,255,0.2)' }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.2)')}
+          >
+            <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.5} />
+          </button>
+
+          {isActive && (
+            <button
+              onClick={stopSession}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium transition-all"
+              style={{
+                background: 'rgba(239,68,68,0.1)',
+                border: '1px solid rgba(239,68,68,0.2)',
+                color: '#f87171',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.18)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.1)' }}
+            >
+              <MicOff className="w-3 h-3" strokeWidth={1.5} />
+              Encerrar
+            </button>
           )}
         </div>
       </div>
 
-      {/* ── Live metrics ── */}
-      <LiveMetricsBar metrics={metrics} />
-
-      {/* ── CEO Mode panel ── */}
-      <AnimatePresence>
-        {ceoMode && (
-          <CeoPanel metrics={metrics} alerts={alerts} onCommand={sendTextCommand} />
-        )}
-      </AnimatePresence>
-
-      {/* ── Main content ── */}
+      {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* ── Left: Orb + Waveform + Transcript + Quick ── */}
-        <div className="flex flex-1 flex-col items-center overflow-hidden">
+        {/* ── Left panel: Orb + status ────────────────────────────────────── */}
+        <div
+          className="w-64 flex flex-col items-center gap-0 border-r shrink-0 overflow-y-auto hidden md:flex"
+          style={{ borderColor: 'rgba(255,255,255,0.04)', background: 'rgba(0,0,0,0.25)' }}
+        >
+          {/* Orb section */}
+          <div className="flex flex-col items-center gap-4 py-8 px-4 border-b w-full" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+            <NexusOrb state={nexusState} onClick={handleOrbClick} />
+            <StateLabel state={nexusState} />
+            <Waveform state={nexusState} levels={audioLevels} />
 
-          {/* Orb zone */}
-          <div className="flex flex-col items-center gap-4 py-5 shrink-0">
-            <VoiceOrb state={voiceState} onClick={() => {
-              if (voiceState === 'off' || voiceState === 'error') startSession()
-              else stopSession()
-            }} />
-
-            {/* Waveform — real audio levels when active */}
-            <WaveformBars
-              active={voiceState === 'listening' || voiceState === 'speaking'}
-              color={waveColor}
-              levels={audioLevels}
-            />
-
-            {/* Error message */}
+            {/* Active agent */}
             <AnimatePresence>
-              {errorMsg && (
+              {activeAgent && (
                 <motion.div
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="flex flex-col gap-1.5 px-4 py-3 rounded-2xl bg-red-500/8 border border-red-500/20 text-red-400 text-[11px] max-w-sm mx-4"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl w-full"
+                  style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)' }}
                 >
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span className="flex-1 leading-relaxed">{errorMsg}</span>
-                    <button onClick={() => setErrorMsg(null)}><X className="w-3 h-3" /></button>
-                  </div>
-                  {(errorMsg.toLowerCase().includes('model') || errorMsg.includes('403') || errorMsg.includes('401') || errorMsg.includes('api key')) && (
-                    <p className="text-red-400/60 text-[9px] pl-5">
-                      Verifique <code className="bg-red-500/15 px-1 rounded">OPENAI_API_KEY</code> no Vercel. Conta precisa de acesso à Realtime API.
-                    </p>
-                  )}
-                  <button
-                    onClick={() => { setErrorMsg(null); startSession() }}
-                    className="ml-5 flex items-center gap-1 text-[10px] text-red-300/70 hover:text-red-300 transition-colors"
-                  >
-                    <RefreshCw className="w-3 h-3" /> Tentar novamente
-                  </button>
+                  <BrainCircuit className="w-3 h-3 shrink-0" style={{ color: '#a78bfa' }} strokeWidth={1.5} />
+                  <span className="text-[10px] font-medium truncate" style={{ color: '#c4b5fd' }}>{activeAgent.agent}</span>
+                  <Loader2 className="w-2.5 h-2.5 shrink-0 animate-spin" style={{ color: '#a78bfa', opacity: 0.6 }} strokeWidth={2} />
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {voiceState === 'off' && !errorMsg && (
-              <p className="text-white/20 text-[11px] text-center">
-                Clique para ativar o Sistema Operacional de IA
-              </p>
-            )}
-          </div>
-
-          {/* Transcript */}
-          <div className="flex-1 w-full max-w-2xl px-5 overflow-hidden flex flex-col min-h-0">
-            <div className="flex items-center gap-2 mb-2.5">
-              <MessageSquare className="w-3 h-3 text-white/20" />
-              <span className="text-[9px] text-white/20 uppercase tracking-widest font-semibold">Transcrição em tempo real</span>
-            </div>
-            <div
-              ref={transcriptRef}
-              className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-white/8"
-            >
-              {transcript.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-20 gap-2 text-white/15 text-[11px]">
-                  <Cpu className="w-6 h-6 opacity-30" />
-                  Inicie uma sessão para ativar o NEXUS
-                </div>
-              ) : (
-                transcript.map(e => <TranscriptBubble key={e.id} entry={e} />)
-              )}
-            </div>
-          </div>
-
-          {/* Quick commands — 5×4 grid */}
-          <div className="w-full max-w-2xl px-5 py-4 border-t border-white/4 shrink-0">
-            <p className="text-[9px] text-white/20 uppercase tracking-widest font-semibold mb-2.5">Comandos rápidos</p>
-            <div className="grid grid-cols-5 gap-1.5">
-              {QUICK.map(q => {
-                const Icon     = q.icon
-                const colorCls = COLOR_MAP[q.color] ?? ''
-                return (
-                  <button
-                    key={q.label}
-                    disabled={!isActive}
-                    onClick={() => sendTextCommand(q.prompt)}
-                    className={cn(
-                      'flex flex-col items-center gap-1 p-2 rounded-xl bg-white/3 border border-white/6 text-white/40 transition-all',
-                      'disabled:opacity-25 disabled:cursor-not-allowed text-[9px] leading-tight text-center',
-                      colorCls,
-                    )}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span className="leading-none">{q.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Right: Action Log + Memory ── */}
-        <div className="w-72 border-l border-white/4 flex flex-col overflow-hidden shrink-0 bg-black/10">
-
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/4">
-            <div className="flex items-center gap-2">
-              <Activity className="w-3 h-3 text-white/25" />
-              <span className="text-[9px] text-white/25 uppercase tracking-widest font-semibold">Execução em tempo real</span>
-            </div>
-            {actionLog.length > 0 && (
-              <button onClick={() => setActionLog([])} className="text-white/15 hover:text-white/30 text-[9px] transition-colors">
-                Limpar
+            {/* Connect button when off */}
+            {(nexusState === 'off' || nexusState === 'disconnected') && (
+              <button
+                onClick={startSession}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl w-full justify-center text-[12px] font-semibold transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(6,182,212,0.1))',
+                  border: '1px solid rgba(16,185,129,0.3)',
+                  color: '#10b981',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                <Mic className="w-3.5 h-3.5" strokeWidth={1.5} />
+                INICIAR NEXUS
               </button>
             )}
           </div>
 
-          {/* Active agent indicator */}
-          <AnimatePresence>
-            {activeAgent && (
-              <AgentBadge agent={activeAgent.agent} task={activeAgent.task} />
-            )}
-          </AnimatePresence>
-
-          {/* Action log */}
-          <div className="flex-1 overflow-y-auto px-2.5 py-2 space-y-1.5 scrollbar-thin scrollbar-thumb-white/6">
-            {actionLog.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-24 gap-2 text-white/15 text-[10px]">
-                <Zap className="w-5 h-5 opacity-30" />
-                Nenhuma ação executada
+          {/* Operational metrics */}
+          {metrics.loaded && (
+            <div className="flex flex-col gap-0 w-full border-b" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+              <div className="px-4 py-2">
+                <span className="text-[9px] uppercase tracking-[0.18em] font-medium" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                  Métricas Operacionais
+                </span>
               </div>
-            ) : (
-              <AnimatePresence initial={false}>
-                {actionLog.map(a => <ActionCard key={a.id} a={a} />)}
-              </AnimatePresence>
-            )}
-          </div>
-
-          {/* Memory */}
-          {recentCommands.length > 0 && (
-            <div className="border-t border-white/4">
-              <div className="flex items-center gap-1.5 px-4 py-2">
-                <Eye className="w-3 h-3 text-white/20" />
-                <span className="text-[9px] text-white/20 uppercase tracking-widest font-semibold">Memória de sessão</span>
-              </div>
-              <div className="px-2.5 pb-3 space-y-0.5">
-                {recentCommands.slice(0, 6).map((cmd, i) => (
-                  <button
-                    key={i}
-                    disabled={!isActive}
-                    onClick={() => sendTextCommand(cmd)}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] text-white/30 hover:bg-white/5 hover:text-white/55 transition-all truncate disabled:opacity-20 disabled:cursor-not-allowed"
-                  >
-                    {cmd}
-                  </button>
-                ))}
+              {[
+                { label: 'Conversas ativas',  val: metrics.conversations, color: '#60a5fa',  dot: '#3b82f6' },
+                { label: 'Mensagens pendentes',val: metrics.unread,       color: '#fbbf24',  dot: '#f59e0b' },
+                { label: 'Instâncias de IA',  val: metrics.ai_active,    color: '#a78bfa',  dot: '#8b5cf6' },
+                { label: 'Leads quentes',     val: metrics.hot_leads,    color: '#fb923c',  dot: '#f97316' },
+              ].map(({ label, val, color, dot }) => (
+                <div key={label}
+                  className="flex items-center justify-between px-4 py-2.5 border-b"
+                  style={{ borderColor: 'rgba(255,255,255,0.03)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-1 h-1 rounded-full" style={{ background: dot }} />
+                    <span className="text-[10.5px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{label}</span>
+                  </div>
+                  <span className="text-[12px] font-bold tabular-nums" style={{ color }}>{val}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-1 h-1 rounded-full animate-pulse"
+                    style={{ background: metrics.system_ok ? '#10b981' : '#ef4444' }}
+                  />
+                  <span className="text-[10.5px]" style={{ color: 'rgba(255,255,255,0.3)' }}>Saúde do sistema</span>
+                </div>
+                <span className="text-[12px] font-bold tabular-nums"
+                  style={{ color: metrics.health_score >= 70 ? '#10b981' : metrics.health_score >= 40 ? '#f59e0b' : '#ef4444' }}>
+                  {metrics.health_score}%
+                </span>
               </div>
             </div>
           )}
 
-          {/* Status footer */}
-          <div className="px-4 py-2.5 border-t border-white/4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="w-3 h-3 text-white/15" />
-                <span className="text-[9px] text-white/20 font-mono">{REALTIME_MODEL}</span>
-              </div>
-              <div className={cn('flex items-center gap-1 text-[9px]', isActive ? 'text-emerald-400/70' : 'text-white/20')}>
-                <div className={cn('w-1.5 h-1.5 rounded-full', isActive ? 'bg-emerald-400 animate-pulse' : 'bg-white/15')} />
-                {isActive ? 'Online' : 'Offline'}
-              </div>
+          {/* Bottom links */}
+          <div className="flex flex-col gap-0 w-full mt-auto">
+            {[
+              { label: 'Diagnóstico API',  href: '/api/nexus/voice/debug', icon: Shield },
+              { label: 'Configurações',    href: '/dashboard/settings',    icon: Settings2 },
+            ].map(({ label, href, icon: Icon }) => (
+              <a key={label} href={href} target="_blank"
+                className="flex items-center gap-2.5 px-4 py-3 border-t transition-all"
+                style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.2)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,0.4)'; (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(255,255,255,0.02)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,0.2)'; (e.currentTarget as HTMLAnchorElement).style.background = 'transparent' }}
+              >
+                <Icon className="w-3.5 h-3.5" strokeWidth={1.5} />
+                <span className="text-[10.5px]">{label}</span>
+                <ArrowRight className="w-3 h-3 ml-auto" strokeWidth={1.5} />
+              </a>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Center: command grid + transcript ───────────────────────────── */}
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+
+          {/* Error banner */}
+          <AnimatePresence>
+            {errorMsg && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="shrink-0 border-b"
+                style={{ borderColor: 'rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.06)' }}
+              >
+                <div className="flex items-start gap-3 px-5 py-3">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#f87171' }} strokeWidth={1.5} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] leading-relaxed" style={{ color: '#fca5a5' }}>{errorMsg}</p>
+                    {(errorMsg.includes('Beta') || errorMsg.includes('403') || errorMsg.includes('401') || errorMsg.toLowerCase().includes('key')) && (
+                      <p className="text-[11px] mt-1 leading-relaxed" style={{ color: 'rgba(248,113,113,0.55)' }}>
+                        Possíveis causas: (1) <code className="bg-red-900/30 px-1 rounded">OPENAI_API_KEY</code> sem acesso à Realtime GA API —
+                        verifique em platform.openai.com. (2) Cache de deploy — force refresh (Ctrl+Shift+R).
+                        <a href="/api/nexus/voice/debug" target="_blank" className="ml-1 underline opacity-70">Ver diagnóstico →</a>
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => { setErrorMsg(null); startSession() }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] transition-all"
+                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>
+                      <RefreshCw className="w-2.5 h-2.5" strokeWidth={2} />
+                      Reconectar
+                    </button>
+                    <button onClick={() => setErrorMsg(null)}>
+                      <X className="w-4 h-4" style={{ color: 'rgba(248,113,113,0.4)' }} strokeWidth={1.5} />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Transcript panel */}
+          <AnimatePresence>
+            {showTranscript && transcript.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="shrink-0 border-b"
+                style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.3)' }}
+              >
+                <div className="flex items-center justify-between px-5 py-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[10px] uppercase tracking-[0.15em] font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                      Transcrição ao vivo
+                    </span>
+                  </div>
+                  <button onClick={() => setShowTranscript(false)}>
+                    <X className="w-3 h-3" style={{ color: 'rgba(255,255,255,0.2)' }} strokeWidth={1.5} />
+                  </button>
+                </div>
+                <div ref={transcriptRef}
+                  className="px-5 pb-3 flex flex-col gap-2 max-h-[180px] overflow-y-auto scroll-smooth">
+                  {transcript.slice(-8).map(e => <TranscriptBubble key={e.id} entry={e} />)}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Section header */}
+          <div
+            className="flex items-center justify-between px-5 py-3 border-b shrink-0"
+            style={{ borderColor: 'rgba(255,255,255,0.04)' }}
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.2)' }} strokeWidth={1.5} />
+              <span className="text-[10px] uppercase tracking-[0.18em] font-semibold" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                Módulos Operacionais
+              </span>
+              <span
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.2)' }}
+              >
+                {OPS_COMMANDS.length}
+              </span>
+            </div>
+            <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.15)' }}>
+              Clique para executar por voz
+            </span>
+          </div>
+
+          {/* Command grid */}
+          <div className="flex-1 overflow-y-auto p-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {OPS_COMMANDS.map((cmd, i) => (
+                <OpsCard key={i} cmd={cmd} onClick={() => sendCmd(cmd.command)} isActive={isActive} />
+              ))}
             </div>
 
-            {/* Action count */}
-            {actionLog.length > 0 && (
-              <div className="flex items-center justify-between mt-1.5">
-                <span className="text-[9px] text-white/15">{actionLog.length} ações executadas</span>
-                <span className="text-[9px] text-emerald-400/50">
-                  {actionLog.filter(a => a.ok).length} ok
-                </span>
-              </div>
+            {/* Offline hint */}
+            {!isActive && !errorMsg && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.8 }}
+                className="mt-6 flex items-center gap-2 justify-center"
+              >
+                <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.04)' }} />
+                <div className="flex items-center gap-2 px-3">
+                  <Mic className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.15)' }} strokeWidth={1.5} />
+                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.18)' }}>
+                    Ative o NEXUS no painel esquerdo ou clique em qualquer módulo
+                  </span>
+                </div>
+                <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.04)' }} />
+              </motion.div>
             )}
+          </div>
+        </div>
+
+        {/* ── Right panel: execution log ───────────────────────────────────── */}
+        <div
+          className="w-72 flex flex-col border-l shrink-0 overflow-hidden hidden lg:flex"
+          style={{ borderColor: 'rgba(255,255,255,0.04)', background: 'rgba(0,0,0,0.25)' }}
+        >
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+            <Activity className="w-3.5 h-3.5" style={{ color: '#f59e0b' }} strokeWidth={1.5} />
+            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold" style={{ color: 'rgba(255,255,255,0.25)' }}>
+              Execução em Tempo Real
+            </span>
+            {actionLog.length > 0 && (
+              <span className="ml-auto text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                {actionLog.length}
+              </span>
+            )}
+          </div>
+
+          {/* Log list */}
+          <div className="flex-1 overflow-y-auto px-4 py-2">
+            {actionLog.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-10">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <Activity className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.12)' }} strokeWidth={1.5} />
+                </div>
+                <p className="text-[10px] text-center leading-relaxed" style={{ color: 'rgba(255,255,255,0.18)' }}>
+                  As ações executadas pelo NEXUS aparecerão aqui em tempo real
+                </p>
+              </div>
+            ) : (
+              <AnimatePresence initial={false}>
+                {actionLog.map(log => <LogItem key={log.id} log={log} />)}
+              </AnimatePresence>
+            )}
+          </div>
+
+          {/* System status footer */}
+          <div className="px-4 py-3 border-t shrink-0" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-1.5 h-1.5 rounded-full"
+                style={{
+                  background: nexusState === 'idle' || nexusState === 'listening' ||
+                              nexusState === 'speaking' || nexusState === 'processing' ||
+                              nexusState === 'executing' ? '#10b981' :
+                              nexusState === 'error' ? '#ef4444' :
+                              nexusState === 'connecting' ? '#8b5cf6' : '#475569',
+                  boxShadow: isActive ? '0 0 5px #10b981' : 'none',
+                  animation: isActive && nexusState !== 'idle' ? 'pulse 2s infinite' : 'none',
+                }}
+              />
+              <span className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                {ORB_CFG[nexusState].label}
+              </span>
+              {metrics.loaded && (
+                <span className="ml-auto text-[10px]"
+                  style={{ color: metrics.system_ok ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)' }}>
+                  {metrics.system_ok ? 'Sistema OK' : 'Alerta'}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
