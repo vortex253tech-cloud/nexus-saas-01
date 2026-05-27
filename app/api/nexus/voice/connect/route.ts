@@ -1,74 +1,81 @@
 // POST /api/nexus/voice/connect
-// Proxies the WebRTC SDP handshake with OpenAI Realtime API completely server-side.
-// Browser sends SDP offer → this route → OpenAI /v1/realtime → SDP answer → browser.
-// No ephemeral tokens needed — API key never leaves the server.
-// The actual WebRTC audio/data streams still go directly browser ↔ OpenAI (P2P).
+// Returns WebSocket connection info for the OpenAI Realtime API (GA).
+// Creates an ephemeral token server-side and returns the WS URL + token for the browser.
+// Browser then opens: new WebSocket(ws_url, ['realtime', `openai-insecure-api-key.${token}`, 'openai-beta.realtime-v1'])
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseRouteClient }    from '@/lib/supabase-server'
 import { REALTIME_MODEL }            from '@/lib/voice/realtime-config'
 
-export const dynamic    = 'force-dynamic'
-export const maxDuration = 30
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 20
 
 export async function POST(req: NextRequest) {
+  void req
+
   const supabaseAuth = await getSupabaseRouteClient()
   const { data: { user }, error } = await supabaseAuth.auth.getUser()
   if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 503 })
-  }
-
-  let sdpOffer: string
-  try {
-    sdpOffer = await req.text()
-    if (!sdpOffer || !sdpOffer.startsWith('v=')) {
-      return NextResponse.json({ error: 'Invalid SDP offer' }, { status: 400 })
-    }
-  } catch {
-    return NextResponse.json({ error: 'Failed to read SDP offer' }, { status: 400 })
+  const key = process.env.OPENAI_API_KEY
+  if (!key) {
+    return NextResponse.json({
+      error: 'OPENAI_API_KEY não configurada. Acesse Vercel → Settings → Environment Variables.',
+    }, { status: 503 })
   }
 
   try {
-    console.log('[voice/connect] SDP exchange → OpenAI, model:', REALTIME_MODEL)
-
-    const res = await fetch(`https://api.openai.com/v1/realtime?model=${REALTIME_MODEL}`, {
+    // Create ephemeral token via GA sessions endpoint
+    const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
       method:  'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type':  'application/sdp',
+        'Authorization': `Bearer ${key}`,
+        'Content-Type':  'application/json',
       },
-      body:   sdpOffer,
-      signal: AbortSignal.timeout(25000),
+      body: JSON.stringify({
+        model:      REALTIME_MODEL,
+        modalities: ['audio', 'text'],
+        voice:      'alloy',
+      }),
+      signal: AbortSignal.timeout(12000),
     })
 
     if (!res.ok) {
       const text = await res.text()
-      console.error('[voice/connect] OpenAI error:', res.status, text.slice(0, 600))
+      console.error('[voice/connect] session creation error:', res.status, text.slice(0, 400))
 
-      let friendlyError = `OpenAI SDP ${res.status}`
+      let msg = `OpenAI ${res.status}`
       try {
         const parsed = JSON.parse(text) as { error?: { message?: string } }
-        if (parsed.error?.message) friendlyError = parsed.error.message
-      } catch {
-        if (text) friendlyError = `OpenAI ${res.status}: ${text.slice(0, 250)}`
-      }
+        if (parsed.error?.message) msg = parsed.error.message
+      } catch { /* use raw */ }
 
-      return NextResponse.json({ error: friendlyError }, { status: 502 })
+      if (res.status === 401) msg += ' — Verifique OPENAI_API_KEY no Vercel'
+      return NextResponse.json({ error: msg }, { status: 502 })
     }
 
-    const sdpAnswer = await res.text()
-    console.log('[voice/connect] SDP answer received, bytes:', sdpAnswer.length)
+    const data = await res.json() as {
+      client_secret?: { value?: string; expires_at?: number }
+      model?:         string
+    }
 
-    return new NextResponse(sdpAnswer, {
-      status:  200,
-      headers: { 'Content-Type': 'application/sdp' },
+    const token     = data.client_secret?.value
+    const expiresAt = data.client_secret?.expires_at
+
+    if (!token) {
+      return NextResponse.json({ error: 'OpenAI did not return ephemeral token' }, { status: 502 })
+    }
+
+    return NextResponse.json({
+      ok:          true,
+      ephemeral_key: token,
+      expires_at:    expiresAt ?? null,
+      model:         REALTIME_MODEL,
+      ws_url:        `wss://api.openai.com/v1/realtime?model=${REALTIME_MODEL}`,
+      protocols:     ['realtime', `openai-insecure-api-key.${token}`, 'openai-beta.realtime-v1'],
     })
   } catch (err) {
     console.error('[voice/connect] error:', err)
-    return NextResponse.json({
-      error: err instanceof Error ? err.message : 'Server error',
-    }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 })
   }
 }
