@@ -52,6 +52,12 @@ export async function POST(req: NextRequest) {
         if (parsed.error?.message) msg = parsed.error.message
       } catch { /* use raw */ }
 
+      if (response.status === 404) {
+        msg = 'Acesso ao Realtime API negado (404). Sua chave OpenAI não tem acesso ao gpt-4o-realtime-preview. Verifique o tier em platform.openai.com → Settings → Limits (requer Tier 1+).'
+      } else if (response.status === 401) {
+        msg = 'API Key inválida. Atualize OPENAI_API_KEY no Vercel → Settings → Environment Variables → Redeploy.'
+      }
+
       return NextResponse.json({ error: msg }, { status: 502 })
     }
 

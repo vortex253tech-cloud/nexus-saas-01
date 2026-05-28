@@ -50,11 +50,14 @@ export async function GET() {
           status:    res.status,
           error:     errMsg,
           key_hint,
-          fix:       res.status === 401
-            ? 'API Key inválida. Vá em platform.openai.com → API Keys → crie uma nova chave → atualize no Vercel.'
-            : res.status === 403
-            ? 'API Key sem acesso ao Realtime API. Certifique-se de que a chave tem acesso ao modelo gpt-4o-realtime-preview (requer tier pago no OpenAI).'
-            : 'Verifique a API Key no Vercel e confirme que tem billing ativo no OpenAI.',
+          fix:
+            res.status === 401
+              ? 'API Key inválida ou expirada. Vá em platform.openai.com → API Keys → crie uma nova chave → atualize no Vercel → Redeploy.'
+              : res.status === 403
+              ? 'API Key sem permissão. Verifique se a organização tem acesso ao gpt-4o-realtime-preview.'
+              : res.status === 404
+              ? 'ACESSO AO REALTIME API NEGADO (404). Sua chave não tem acesso ao gpt-4o-realtime-preview. Necessário: (1) OpenAI Tier 1+ — use $5 de crédito OU aguarde 30 dias com billing ativo. (2) Verifique em platform.openai.com → Settings → Limits → Usage tier.'
+              : 'Verifique a API Key no Vercel e confirme que tem billing ativo no OpenAI.',
         },
         { status: 502 },
       )
