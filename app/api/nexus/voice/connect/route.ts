@@ -1,13 +1,35 @@
 // POST /api/nexus/voice/connect
-// Creates an ephemeral OpenAI Realtime session.
-// Returns the raw OpenAI response so the browser can extract client_secret.value
-// and open: new WebSocket(wss://api.openai.com/v1/realtime?model=…, [subprotocols])
+// Creates an ephemeral OpenAI Realtime session (GA API).
+// Returns { client_secret: { value }, model } — browser uses client_secret.value
+// to open: new WebSocket(wss://api.openai.com/v1/realtime?model=…, [subprotocols])
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseRouteClient }    from '@/lib/supabase-server'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
+
+const MODELS = [
+  'gpt-4o-realtime-preview',
+  'gpt-4o-mini-realtime-preview',
+]
+
+async function trySession(key: string, model: string) {
+  const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
+    method:  'POST',
+    headers: {
+      'Authorization': `Bearer ${key}`,
+      'Content-Type':  'application/json',
+    },
+    body:   JSON.stringify({
+      model,
+      modalities: ['audio', 'text'],
+      voice:      'alloy',
+    }),
+    signal: AbortSignal.timeout(12000),
+  })
+  return res
+}
 
 export async function POST(req: NextRequest) {
   void req
@@ -19,54 +41,49 @@ export async function POST(req: NextRequest) {
   const key = process.env.OPENAI_API_KEY
   if (!key) {
     return NextResponse.json(
-      { error: 'OPENAI_API_KEY não configurada. Acesse Vercel → Settings → Environment Variables.' },
+      { error: 'OPENAI_API_KEY não configurada no Vercel. Acesse Settings → Environment Variables.' },
       { status: 503 },
     )
   }
 
-  try {
-    const response = await fetch(
-      'https://api.openai.com/v1/realtime/sessions',
-      {
-        method:  'POST',
-        headers: {
-          'Authorization': `Bearer ${key}`,
-          'Content-Type':  'application/json',
-          'OpenAI-Beta':   'realtime=v1',
-        },
-        body:   JSON.stringify({
-          model: 'gpt-4o-realtime-preview',
-          voice: 'alloy',
-        }),
-        signal: AbortSignal.timeout(12000),
-      },
-    )
+  let lastError = ''
 
-    if (!response.ok) {
+  for (const model of MODELS) {
+    try {
+      const response = await trySession(key, model)
+
+      if (response.ok) {
+        const data = await response.json() as Record<string, unknown>
+        console.log(`[voice/connect] OK with model ${model}`)
+        return NextResponse.json({ ...data, _model_used: model })
+      }
+
       const text = await response.text()
-      console.error('[voice/connect] OpenAI error:', response.status, text.slice(0, 400))
+      console.error(`[voice/connect] ${model} → ${response.status}:`, text.slice(0, 200))
 
       let msg = `OpenAI ${response.status}`
       try {
         const parsed = JSON.parse(text) as { error?: { message?: string } }
         if (parsed.error?.message) msg = parsed.error.message
-      } catch { /* use raw */ }
+      } catch { /* raw */ }
 
-      if (response.status === 404) {
-        msg = 'Acesso ao Realtime API negado (404). Sua chave OpenAI não tem acesso ao gpt-4o-realtime-preview. Verifique o tier em platform.openai.com → Settings → Limits (requer Tier 1+).'
-      } else if (response.status === 401) {
-        msg = 'API Key inválida. Atualize OPENAI_API_KEY no Vercel → Settings → Environment Variables → Redeploy.'
+      if (response.status === 401) {
+        return NextResponse.json({
+          error: 'API Key inválida (401). Atualize OPENAI_API_KEY no Vercel → Settings → Environment Variables → Redeploy.',
+        }, { status: 502 })
       }
 
-      return NextResponse.json({ error: msg }, { status: 502 })
+      lastError = msg
+      // 404 = model not accessible — try next model
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'fetch failed'
+      console.error(`[voice/connect] ${model} threw:`, msg)
+      lastError = msg
     }
-
-    return NextResponse.json(await response.json())
-  } catch (err) {
-    console.error('[voice/connect] error:', err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Server error' },
-      { status: 500 },
-    )
   }
+
+  // All models failed
+  return NextResponse.json({
+    error: `Realtime API inacessível com esta chave OpenAI. Verifique se a chave em Vercel → OPENAI_API_KEY pertence à organização com Realtime access (Tier 1+). Último erro: ${lastError}`,
+  }, { status: 502 })
 }

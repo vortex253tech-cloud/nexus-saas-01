@@ -32,7 +32,6 @@ export async function POST(req: NextRequest) {
       headers: {
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type':  'application/json',
-        'OpenAI-Beta':   'realtime=v1',
       },
       body: JSON.stringify({
         model:      REALTIME_MODEL,

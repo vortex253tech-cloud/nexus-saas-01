@@ -35,13 +35,15 @@ export interface NexusClientOptions {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MODEL    = 'gpt-4o-realtime-preview'
-const WS_URL   = `wss://api.openai.com/v1/realtime?model=${MODEL}`
 const SR       = 24000   // sample rate (Hz)
 const FFT      = 128
 const BARS     = 32
 const RETRIES  = 3
 const SESSION  = '/api/nexus/voice/connect'
+
+function wsUrl(model: string) {
+  return `wss://api.openai.com/v1/realtime?model=${model}`
+}
 
 // Inline AudioWorklet processor — avoids a separate static .js file
 const WORKLET  = `
@@ -137,14 +139,17 @@ export class NexusRealtimeClient {
         const b = await r.json().catch(() => ({}) as Record<string, unknown>) as Record<string, unknown>
         throw new Error(String(b.error ?? `Session HTTP ${r.status}`))
       }
-      // GA response: { client_secret: { value: "ek_...", expires_at: N }, model, ... }
+      // GA response: { client_secret: { value: "ek_..." }, model, _model_used, ... }
       const data = await r.json() as {
         client_secret?: { value?: string }
+        _model_used?:   string
+        model?:         string
         ephemeral_key?: string   // legacy fallback
         error?: string
       }
       const token = data.client_secret?.value ?? data.ephemeral_key ?? null
       if (!token) throw new Error(data.error ?? 'No ephemeral token received')
+      const model = data._model_used ?? data.model ?? 'gpt-4o-realtime-preview'
 
       // ── 2. AudioContext ──
       const ctx = new AudioContext({ sampleRate: SR })
@@ -178,7 +183,7 @@ export class NexusRealtimeClient {
       // ── 6. WebSocket — GA subprotocol authentication ──
       //    Browser WebSocket cannot set Authorization headers, so the ephemeral
       //    token is passed as a subprotocol.  This is OpenAI's official GA method.
-      const ws = new WebSocket(WS_URL, [
+      const ws = new WebSocket(wsUrl(model), [
         'realtime',
         `openai-insecure-api-key.${token}`,
         'openai-beta.realtime-v1',
