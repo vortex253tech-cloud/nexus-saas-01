@@ -41,7 +41,7 @@ const SR       = 24000   // sample rate (Hz)
 const FFT      = 128
 const BARS     = 32
 const RETRIES  = 3
-const SESSION  = '/api/nexus/voice/session'
+const SESSION  = '/api/nexus/voice/connect'
 
 // Inline AudioWorklet processor — avoids a separate static .js file
 const WORKLET  = `
@@ -131,14 +131,20 @@ export class NexusRealtimeClient {
     this.set('connecting')
 
     try {
-      // ── 1. Ephemeral token (server holds full API key) ──
+      // ── 1. Ephemeral token (server proxies to OpenAI, returns raw GA response) ──
       const r = await fetch(SESSION, { method: 'POST' })
       if (!r.ok) {
         const b = await r.json().catch(() => ({}) as Record<string, unknown>) as Record<string, unknown>
         throw new Error(String(b.error ?? `Session HTTP ${r.status}`))
       }
-      const { ephemeral_key: token } = await r.json() as { ephemeral_key: string }
-      if (!token) throw new Error('No ephemeral token received')
+      // GA response: { client_secret: { value: "ek_...", expires_at: N }, model, ... }
+      const data = await r.json() as {
+        client_secret?: { value?: string }
+        ephemeral_key?: string   // legacy fallback
+        error?: string
+      }
+      const token = data.client_secret?.value ?? data.ephemeral_key ?? null
+      if (!token) throw new Error(data.error ?? 'No ephemeral token received')
 
       // ── 2. AudioContext ──
       const ctx = new AudioContext({ sampleRate: SR })

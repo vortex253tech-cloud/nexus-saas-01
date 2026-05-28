@@ -1,11 +1,10 @@
 // POST /api/nexus/voice/connect
-// Returns WebSocket connection info for the OpenAI Realtime API (GA).
-// Creates an ephemeral token server-side and returns the WS URL + token for the browser.
-// Browser then opens: new WebSocket(ws_url, ['realtime', `openai-insecure-api-key.${token}`, 'openai-beta.realtime-v1'])
+// Creates an ephemeral OpenAI Realtime session.
+// Returns the raw OpenAI response so the browser can extract client_secret.value
+// and open: new WebSocket(wss://api.openai.com/v1/realtime?model=…, [subprotocols])
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseRouteClient }    from '@/lib/supabase-server'
-import { REALTIME_MODEL }            from '@/lib/voice/realtime-config'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -19,63 +18,49 @@ export async function POST(req: NextRequest) {
 
   const key = process.env.OPENAI_API_KEY
   if (!key) {
-    return NextResponse.json({
-      error: 'OPENAI_API_KEY não configurada. Acesse Vercel → Settings → Environment Variables.',
-    }, { status: 503 })
+    return NextResponse.json(
+      { error: 'OPENAI_API_KEY não configurada. Acesse Vercel → Settings → Environment Variables.' },
+      { status: 503 },
+    )
   }
 
   try {
-    // Create ephemeral token via GA sessions endpoint
-    const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
-      method:  'POST',
-      headers: {
-        'Authorization': `Bearer ${key}`,
-        'Content-Type':  'application/json',
+    const response = await fetch(
+      'https://api.openai.com/v1/realtime/sessions',
+      {
+        method:  'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type':  'application/json',
+          'OpenAI-Beta':   'realtime=v1',
+        },
+        body:   JSON.stringify({
+          model: 'gpt-4o-realtime-preview',
+          voice: 'alloy',
+        }),
+        signal: AbortSignal.timeout(12000),
       },
-      body: JSON.stringify({
-        model:      REALTIME_MODEL,
-        modalities: ['audio', 'text'],
-        voice:      'alloy',
-      }),
-      signal: AbortSignal.timeout(12000),
-    })
+    )
 
-    if (!res.ok) {
-      const text = await res.text()
-      console.error('[voice/connect] session creation error:', res.status, text.slice(0, 400))
+    if (!response.ok) {
+      const text = await response.text()
+      console.error('[voice/connect] OpenAI error:', response.status, text.slice(0, 400))
 
-      let msg = `OpenAI ${res.status}`
+      let msg = `OpenAI ${response.status}`
       try {
         const parsed = JSON.parse(text) as { error?: { message?: string } }
         if (parsed.error?.message) msg = parsed.error.message
       } catch { /* use raw */ }
 
-      if (res.status === 401) msg += ' — Verifique OPENAI_API_KEY no Vercel'
       return NextResponse.json({ error: msg }, { status: 502 })
     }
 
-    const data = await res.json() as {
-      client_secret?: { value?: string; expires_at?: number }
-      model?:         string
-    }
-
-    const token     = data.client_secret?.value
-    const expiresAt = data.client_secret?.expires_at
-
-    if (!token) {
-      return NextResponse.json({ error: 'OpenAI did not return ephemeral token' }, { status: 502 })
-    }
-
-    return NextResponse.json({
-      ok:          true,
-      ephemeral_key: token,
-      expires_at:    expiresAt ?? null,
-      model:         REALTIME_MODEL,
-      ws_url:        `wss://api.openai.com/v1/realtime?model=${REALTIME_MODEL}`,
-      protocols:     ['realtime', `openai-insecure-api-key.${token}`, 'openai-beta.realtime-v1'],
-    })
+    return NextResponse.json(await response.json())
   } catch (err) {
     console.error('[voice/connect] error:', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 })
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Server error' },
+      { status: 500 },
+    )
   }
 }
