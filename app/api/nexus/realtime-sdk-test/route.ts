@@ -3,7 +3,7 @@
 // Se o SDK funcionar e o raw fetch não, há diferença nos headers enviados.
 
 import { NextResponse } from 'next/server'
-import OpenAI, { VERSION as OPENAI_VERSION } from 'openai'
+import OpenAI from 'openai'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -18,7 +18,6 @@ export async function GET() {
   let sdk_beta_result: unknown = null
   try {
     const client = new OpenAI({ apiKey: key, timeout: 15000 })
-    // @ts-expect-error — pode não ter tipagem em todas as versões do SDK
     const session = await client.beta.realtime.sessions.create({
       model:      'gpt-4o-realtime-preview',
       modalities: ['audio', 'text'],
@@ -38,8 +37,8 @@ export async function GET() {
   let sdk_result: unknown = null
   try {
     const client = new OpenAI({ apiKey: key, timeout: 15000 })
-    // @ts-expect-error — verificar se existe no path não-beta
-    const session = await client.realtime?.sessions?.create?.({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const session = await (client as any).realtime?.sessions?.create?.({
       model:      'gpt-4o-realtime-preview',
       modalities: ['audio', 'text'],
       voice:      'alloy',
@@ -57,7 +56,7 @@ export async function GET() {
   // ── Teste 3: raw fetch mas com User-Agent da SDK OpenAI ───────────────────
   let raw_with_sdk_headers: unknown = null
   try {
-    const openaiVersion = OPENAI_VERSION
+    const openaiVersion = 'unknown'
     const res  = await fetch('https://api.openai.com/v1/realtime/sessions', {
       method:  'POST',
       headers: {
@@ -82,7 +81,7 @@ export async function GET() {
 
   return NextResponse.json({
     key_hint,
-    sdk_version: OPENAI_VERSION,
+    sdk_version: 'unknown',
     sdk_beta_realtime_sessions: sdk_beta_result,
     sdk_realtime_sessions:      sdk_result,
     raw_with_sdk_headers,
