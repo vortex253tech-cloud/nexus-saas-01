@@ -12,26 +12,49 @@ export const maxDuration = 20
 
 async function probe(label: string, url: string, init: RequestInit) {
   const start = Date.now()
+
+  // Log exact request details for Vercel Function logs
+  console.log(`[realtime-test] ${label}`)
+  console.log(`  URL:    ${url}`)
+  console.log(`  METHOD: ${init.method ?? 'GET'}`)
+  console.log(`  HEADERS:`, JSON.stringify(init.headers ?? {}))
+  console.log(`  BODY:   ${init.body ?? 'none'}`)
+
   try {
     const res  = await fetch(url, { ...init, signal: AbortSignal.timeout(12000) })
     const text = await res.text()
     let body: unknown = text
     try { body = JSON.parse(text) } catch { /* keep raw text */ }
+
+    console.log(`  RESPONSE STATUS: ${res.status}`)
+    console.log(`  RESPONSE BODY:   ${text.slice(0, 300)}`)
+
     return {
       label,
       ok:      res.ok,
       status:  res.status,
       ms:      Date.now() - start,
-      request: { url, method: init.method ?? 'GET', body: init.body ?? null },
+      request: {
+        url,
+        method:  init.method ?? 'GET',
+        headers: init.headers ?? {},
+        body:    init.body ?? null,
+      },
       response: body,
     }
   } catch (err) {
+    console.log(`  FETCH ERROR: ${err instanceof Error ? err.message : String(err)}`)
     return {
       label,
       ok:      false,
       status:  0,
       ms:      Date.now() - start,
-      request: { url, method: init.method ?? 'GET', body: init.body ?? null },
+      request: {
+        url,
+        method:  init.method ?? 'GET',
+        headers: init.headers ?? {},
+        body:    init.body ?? null,
+      },
       response: { fetch_error: err instanceof Error ? err.message : String(err) },
     }
   }
