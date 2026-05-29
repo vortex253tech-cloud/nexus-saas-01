@@ -18,16 +18,17 @@ function db() {
 // ── Z-API payload types ───────────────────────────────────────────
 
 interface ZAPIPayload {
-  momType?:    string
-  type?:       string
-  phone?:      string
-  fromMe?:     boolean
-  messageId?:  string
-  zaapId?:     string
-  timestamp?:  number
-  senderName?: string
-  instanceId?: string
-  status?:     string          // MessageStatusCallback
+  momType?:            string
+  type?:               string
+  phone?:              string
+  fromMe?:             boolean
+  messageId?:          string
+  zaapId?:             string
+  timestamp?:          number
+  senderName?:         string
+  instanceId?:         string
+  status?:             string          // MessageStatusCallback
+  profilePictureUrl?:  string | null   // contact photo from Z-API
   text?:       { message?: string }
   image?:      { imageUrl?: string; caption?: string }
   audio?:      { audioUrl?: string }
@@ -269,6 +270,7 @@ export async function POST(req: NextRequest) {
   const mediaUrl   = extractMediaUrl(payload)
   const zapiMsgId  = payload.messageId ?? payload.zaapId ?? null
   const senderName = payload.senderName ?? null
+  const photoUrl   = payload.profilePictureUrl ?? null
   const now        = new Date().toISOString()
 
   if (!content && !mediaUrl) return NextResponse.json({ ok: true })
@@ -290,10 +292,23 @@ export async function POST(req: NextRequest) {
         last_message_at: now,
         updated_at:      now,
         message_count:   (existingConv.message_count ?? 0) + 1,
-        // Update name if we now know it and didn't before
         ...(senderName ? { contact_name: senderName } : {}),
+        ...(photoUrl   ? { photo_url: photoUrl }       : {}),
       })
       .eq('id', convId)
+
+    // Increment unread_count (best-effort, non-critical)
+    void (async () => {
+      try {
+        const { data } = await supabase.from('whatsapp_conversations')
+          .select('unread_count').eq('id', convId).single()
+        if (data) {
+          await supabase.from('whatsapp_conversations')
+            .update({ unread_count: (data.unread_count ?? 0) + 1 })
+            .eq('id', convId)
+        }
+      } catch { /* non-critical */ }
+    })()
   } else {
     const { data: newConv, error: convErr } = await supabase
       .from('whatsapp_conversations')
@@ -301,6 +316,7 @@ export async function POST(req: NextRequest) {
         company_id:      companyId,
         phone,
         contact_name:    senderName,
+        photo_url:       photoUrl,
         status:          'active',
         ai_enabled:      true,
         last_message_at: now,

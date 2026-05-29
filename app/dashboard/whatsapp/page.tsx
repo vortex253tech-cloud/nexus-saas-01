@@ -24,14 +24,23 @@ interface Conversation {
   id:              string
   phone:           string
   contact_name:    string | null
+  photo_url?:      string | null          // V5: contact photo from WhatsApp
   status:          'active' | 'closed' | 'blocked'
   last_message_at: string | null
   message_count:   number
   ai_enabled:      boolean
   created_at:      string
   unread?:         number
+  unread_count?:   number
   label?:          'lead' | 'cliente' | 'negociacao' | 'recuperacao' | null
   temperatura?:    'frio' | 'morno' | 'quente' | 'urgente'
+  pipeline_stage?: string | null          // V5: CRM pipeline stage
+  estimated_value?: string | null         // V5: deal value
+  tags?:           string[]               // V5: contact tags
+}
+
+interface SearchResult extends Conversation {
+  matched_message?: string | null         // V5: snippet from message search
 }
 
 interface Message {
@@ -163,6 +172,127 @@ function ScoreRing({ score }: { score: number }) {
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-xs font-bold text-white leading-none">{pct}</span>
         <span className="text-[8px] text-zinc-600 leading-none">score</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── PhotoAvatar ─────────────────────────────────────────────────
+// Shows real WhatsApp profile photo; falls back to colored initials.
+
+function PhotoAvatar({
+  conv,
+  size = 'md',
+  heat = false,
+  active = false,
+  showOnlineDot = true,
+  online = false,
+}: {
+  conv:          Conversation
+  size?:         'sm' | 'md' | 'lg'
+  heat?:         boolean
+  active?:       boolean
+  showOnlineDot?: boolean
+  online?:       boolean
+}) {
+  const [imgErr, setImgErr] = useState(false)
+  const sz = size === 'sm' ? 'w-8 h-8 text-xs' : size === 'lg' ? 'w-14 h-14 text-base' : 'w-10 h-10 text-sm'
+  const dot = size === 'sm' ? 'w-3 h-3 border-[1.5px]' : 'w-3.5 h-3.5 border-2'
+
+  const hasPhoto = !!conv.photo_url && !imgErr
+
+  return (
+    <div className="relative shrink-0">
+      {hasPhoto ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={conv.photo_url!}
+          alt={conv.contact_name ?? conv.phone}
+          className={cn('rounded-full object-cover', sz)}
+          onError={() => setImgErr(true)}
+        />
+      ) : (
+        <div className={cn(
+          'rounded-full flex items-center justify-center font-bold',
+          sz,
+          heat   ? 'bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30' :
+          active ? 'bg-violet-600/25 text-violet-300' : 'bg-zinc-800 text-zinc-400',
+        )}>
+          {initials(conv)}
+        </div>
+      )}
+      {showOnlineDot && (
+        <span className={cn(
+          'absolute -bottom-0.5 -right-0.5 rounded-full border-zinc-950',
+          dot,
+          online ? 'bg-emerald-500' : conv.ai_enabled ? 'bg-violet-600' : 'bg-zinc-700',
+        )} />
+      )}
+    </div>
+  )
+}
+
+// ─── GlobalSearchOverlay ──────────────────────────────────────────
+
+function GlobalSearchOverlay({
+  query,
+  results,
+  loading,
+  onSelect,
+  onClose,
+}: {
+  query:    string
+  results:  SearchResult[]
+  loading:  boolean
+  onSelect: (r: SearchResult) => void
+  onClose:  () => void
+}) {
+  return (
+    <div
+      className="absolute inset-0 z-20 bg-zinc-950/95 backdrop-blur-sm flex flex-col"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="p-4 border-b border-zinc-800/60">
+        <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+          {loading ? 'Buscando…' : results.length > 0 ? `${results.length} resultado${results.length !== 1 ? 's' : ''}` : 'Nenhum resultado'}
+        </p>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 text-violet-400 animate-spin" />
+          </div>
+        ) : results.length === 0 && query.length >= 2 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+            <Search className="w-8 h-8 text-zinc-700 mb-2" />
+            <p className="text-sm text-zinc-500">Sem resultados para <strong className="text-zinc-300">"{query}"</strong></p>
+            <p className="text-xs text-zinc-600 mt-1">Tente nome, telefone ou trecho da mensagem</p>
+          </div>
+        ) : (
+          results.map(r => (
+            <button
+              key={r.id}
+              onClick={() => onSelect(r)}
+              className="w-full px-4 py-3 flex items-start gap-3 text-left border-b border-zinc-800/30 hover:bg-zinc-800/30 transition"
+            >
+              <PhotoAvatar conv={r} showOnlineDot={false} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{r.contact_name ?? `+${r.phone}`}</p>
+                <p className="text-xs text-zinc-500">+{r.phone}</p>
+                {r.matched_message && (
+                  <p className="text-xs text-violet-400/80 mt-0.5 truncate">
+                    <span className="text-zinc-600">msg: </span>{r.matched_message}
+                  </p>
+                )}
+              </div>
+              {r.pipeline_stage && (
+                <span className="text-[10px] text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full px-2 py-0.5 shrink-0">
+                  {r.pipeline_stage}
+                </span>
+              )}
+            </button>
+          ))
+        )}
       </div>
     </div>
   )
@@ -904,19 +1034,8 @@ const ConvItem = memo(function ConvItem({
           : 'hover:bg-zinc-800/25',
       )}
     >
-      <div className="relative shrink-0 mt-0.5">
-        <div className={cn(
-          'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold',
-          heat   ? 'bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30' :
-          active ? 'bg-violet-600/25 text-violet-300'  : 'bg-zinc-800 text-zinc-400',
-        )}>
-          {initials(conv)}
-        </div>
-        {/* Online dot */}
-        <span className={cn(
-          'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-zinc-950',
-          online ? 'bg-emerald-500' : conv.ai_enabled ? 'bg-violet-600' : 'bg-zinc-700',
-        )} />
+      <div className="mt-0.5">
+        <PhotoAvatar conv={conv} heat={heat} active={active} online={online} />
       </div>
 
       <div className="flex-1 min-w-0">
@@ -1311,10 +1430,20 @@ function AISidebar({
       <div className="p-4 border-b border-zinc-800/60">
         <div className="flex items-start gap-3">
           <div className="flex flex-col items-center gap-0.5 shrink-0">
-            <ScoreRing score={score} />
-            <p className={cn('text-[8px] font-semibold', score >= 70 ? 'text-emerald-400' : score >= 40 ? 'text-amber-400' : 'text-zinc-500')}>
-              {score >= 70 ? 'Quente' : score >= 40 ? 'Morno' : 'Frio'}
-            </p>
+            {/* V5: show real photo if available, else ScoreRing */}
+            {conv.photo_url ? (
+              <div className="flex flex-col items-center gap-0.5">
+                <PhotoAvatar conv={conv} size="lg" showOnlineDot={false} />
+                <ScoreRing score={score} />
+              </div>
+            ) : (
+              <>
+                <ScoreRing score={score} />
+                <p className={cn('text-[8px] font-semibold', score >= 70 ? 'text-emerald-400' : score >= 40 ? 'text-amber-400' : 'text-zinc-500')}>
+                  {score >= 70 ? 'Quente' : score >= 40 ? 'Morno' : 'Frio'}
+                </p>
+              </>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white truncate">
@@ -1536,6 +1665,14 @@ export default function WhatsAppPage() {
   })
   const [autoClose, setAutoClose] = useState(false)
 
+  // V5: pagination + global search
+  const [hasMore,        setHasMore]        = useState(false)
+  const [loadingMore,    setLoadingMore]    = useState(false)
+  const [searchResults,  setSearchResults]  = useState<SearchResult[]>([])
+  const [searchLoading,  setSearchLoading]  = useState(false)
+  const [searchMode,     setSearchMode]     = useState(false) // true when typing → shows overlay
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const messagesEnd    = useRef<HTMLDivElement>(null)
   const messagesBox    = useRef<HTMLDivElement>(null)
   const inputRef       = useRef<HTMLInputElement>(null)
@@ -1563,6 +1700,51 @@ export default function WhatsAppPage() {
     }).catch(() => {})
   }, [autoClose])
 
+  // V5: load more (cursor pagination)
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return
+    const cursor = conversations[conversations.length - 1]?.last_message_at
+    if (!cursor) return
+    setLoadingMore(true)
+    try {
+      const res  = await fetch(`/api/whatsapp/conversations?cursor=${encodeURIComponent(cursor)}`)
+      if (!res.ok) return
+      const data = await res.json()
+      const more: Conversation[] = data.conversations ?? []
+      setHasMore(data.has_more ?? false)
+      setConversations(prev => {
+        const ids = new Set(prev.map(c => c.id))
+        return [...prev, ...more.filter(c => !ids.has(c.id))]
+      })
+    } catch (e) {
+      console.error('[WA] loadMore failed:', e)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [loadingMore, hasMore, conversations])
+
+  // V5: global search (debounced, server-side)
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (value.trim().length < 2) {
+      setSearchMode(false)
+      setSearchResults([])
+      return
+    }
+    setSearchMode(true)
+    setSearchLoading(true)
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/nexus/whatsapp/search?q=${encodeURIComponent(value.trim())}`)
+        const data = await res.json()
+        setSearchResults(data.results ?? [])
+      } catch { /* ignore */ } finally {
+        setSearchLoading(false)
+      }
+    }, 350)
+  }, [])
+
   // ── Fetchers ──────────────────────────────────────────────────
 
   const fetchStatus = useCallback(async () => {
@@ -1582,9 +1764,9 @@ export default function WhatsAppPage() {
       }
       const data = await res.json()
       const next: Conversation[] = data.conversations ?? []
+      setHasMore(data.has_more ?? false)
       setConversations(prev => {
         if (next.length === 0 && prev.length === 0) return prev
-        // Skip re-render if list is identical (same IDs, timestamps, unread counts)
         if (
           next.length === prev.length &&
           next.every((c, i) =>
@@ -2155,17 +2337,27 @@ export default function WhatsAppPage() {
             </div>
           </div>
 
-          {/* Search */}
+          {/* V5 Search — real-time server search */}
           <div className="px-3 pb-2 pt-1">
             <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800/60 rounded-xl px-3 py-2">
-              <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              {searchLoading
+                ? <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin shrink-0" />
+                : <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />}
               <input
                 type="text"
-                placeholder="Buscar conversas..."
+                placeholder="Buscar por nome, telefone, mensagem…"
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => handleSearchChange(e.target.value)}
                 className="flex-1 bg-transparent text-xs text-zinc-300 placeholder-zinc-600 outline-none"
               />
+              {search && (
+                <button
+                  onClick={() => { handleSearchChange(''); setFilter('all') }}
+                  className="text-zinc-600 hover:text-zinc-300 transition shrink-0"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -2205,9 +2397,25 @@ export default function WhatsAppPage() {
             </div>
           </div>
 
-          {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto border-t border-zinc-800/40">
-            {visibleConvs.length === 0 ? (
+          {/* Conversation list — with V5 search overlay + pagination */}
+          <div className="flex-1 overflow-y-auto border-t border-zinc-800/40 relative">
+
+            {/* V5: Global search overlay */}
+            {searchMode && (
+              <GlobalSearchOverlay
+                query={search}
+                results={searchResults}
+                loading={searchLoading}
+                onSelect={r => {
+                  handleSearchChange('')
+                  setSearchMode(false)
+                  handleSelectConv(r)
+                }}
+                onClose={() => { handleSearchChange(''); setSearchMode(false) }}
+              />
+            )}
+
+            {visibleConvs.length === 0 && !searchMode ? (
               <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
                 <motion.div
                   animate={{ opacity: [0.4, 0.9, 0.4] }}
@@ -2233,16 +2441,31 @@ export default function WhatsAppPage() {
                   </div>
                 )}
               </div>
-            ) : (
-              visibleConvs.map(c => (
-                <ConvItem
-                  key={c.id}
-                  conv={c}
-                  active={selected?.id === c.id}
-                  onClick={() => handleSelectConv(c)}
-                />
-              ))
-            )}
+            ) : !searchMode ? (
+              <>
+                {visibleConvs.map(c => (
+                  <ConvItem
+                    key={c.id}
+                    conv={c}
+                    active={selected?.id === c.id}
+                    onClick={() => handleSelectConv(c)}
+                  />
+                ))}
+                {/* V5: Load more pagination */}
+                {hasMore && !search && (
+                  <div className="p-3 text-center">
+                    <button
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                      className="flex items-center gap-2 mx-auto text-xs text-zinc-500 hover:text-zinc-300 border border-zinc-800 rounded-xl px-4 py-2 transition hover:border-zinc-700 disabled:opacity-50"
+                    >
+                      {loadingMore ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                      {loadingMore ? 'Carregando…' : 'Carregar mais'}
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : null}
           </div>
 
           {/* AUTOMAÇÕES section */}
@@ -2313,12 +2536,16 @@ export default function WhatsAppPage() {
               {/* Chat header */}
               <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-zinc-800/60 bg-zinc-950">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-violet-600/20 text-violet-400 text-sm font-bold flex items-center justify-center">
-                    {initials(selected)}
-                  </div>
+                  {/* V5: real photo in chat header */}
+                  <PhotoAvatar conv={selected} size="md" online={isOnline(selected.last_message_at)} />
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-white">{displayName(selected)}</p>
+                      {selected.pipeline_stage && (
+                        <span className="text-[9px] font-semibold text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full px-1.5 py-0.5">
+                          {STAGE_LABEL[selected.pipeline_stage] ?? selected.pipeline_stage}
+                        </span>
+                      )}
                       {selected.label && (
                         <span className={cn(
                           'text-[10px] font-medium px-1.5 py-0.5 rounded-full border',

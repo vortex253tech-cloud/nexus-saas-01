@@ -479,14 +479,22 @@ export async function processWhatsAppMessage(
 
 // ── Dashboard helpers ─────────────────────────────────────────────
 
-export async function getConversations(companyId: string, limit = 50) {
+export async function getConversations(
+  companyId: string,
+  limit = 30,
+  cursor?: string,   // ISO timestamp — load conversations older than this
+) {
   const db = getDb()
-  const { data } = await db
+  let q = db
     .from('whatsapp_conversations')
-    .select('id, phone, contact_name, status, last_message_at, message_count, ai_enabled, created_at, temperatura, label, unread_count')
+    .select('id, phone, contact_name, photo_url, status, last_message_at, message_count, ai_enabled, created_at, temperatura, label, unread_count, pipeline_stage, estimated_value, tags')
     .eq('company_id', companyId)
-    .order('last_message_at', { ascending: false })
+    .order('last_message_at', { ascending: false, nullsFirst: false })
     .limit(limit)
+
+  if (cursor) q = q.lt('last_message_at', cursor)
+
+  const { data } = await q
   return (data ?? []).map(c => ({ ...c, unread: c.unread_count ?? 0 }))
 }
 
