@@ -3,7 +3,7 @@
 // Retorna { token, model, expires_at } — NexusVoiceEngine usa token nos subprotocols WebSocket.
 
 import { NextRequest, NextResponse }   from 'next/server'
-import { createServerClient }          from '@supabase/ssr'
+import { createClient }                from '@supabase/supabase-js'
 import { getSupabaseRouteClient }      from '@/lib/supabase-server'
 
 export const dynamic     = 'force-dynamic'
@@ -25,11 +25,12 @@ export async function POST(req: NextRequest) {
     const accessToken = authHeader.slice(7)
     const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    const client = createServerClient(supabaseUrl, supabaseAnonKey, {
+    // createClient from supabase-js correctly sets Authorization header for auth calls
+    const client = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: `Bearer ${accessToken}` } },
-      cookies: { getAll: () => [], setAll: () => {} },
+      auth:   { persistSession: false, autoRefreshToken: false },
     })
-    const { data, error: e } = await client.auth.getUser(accessToken)
+    const { data, error: e } = await client.auth.getUser()
     if (e || !data.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     user = data.user
   } else {
