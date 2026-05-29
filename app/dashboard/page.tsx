@@ -165,7 +165,7 @@ function AgentStatusGrid({ overview, autopilot }: AgentStatusGridProps) {
       label:  'Suporte IA',
       icon:   MessageCircle,
       status: autopilot ? 'ativo' : 'aguardando',
-      href:   '/dashboard/assistant',
+      href:   '/dashboard/nexus-os',
     },
   ]
 

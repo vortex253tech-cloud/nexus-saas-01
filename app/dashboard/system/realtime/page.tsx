@@ -88,7 +88,7 @@ export default function RealtimeDiagPage() {
     <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 20% 0%, #0f0a1e 0%, #060608 50%, #040406 100%)', color: '#e2e8f0', fontFamily: 'system-ui, sans-serif', padding: '32px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
-        <Link href="/dashboard/assistant" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#94a3b8', textDecoration: 'none', fontSize: '14px' }}>
+        <Link href="/dashboard/nexus-os" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#94a3b8', textDecoration: 'none', fontSize: '14px' }}>
           <ArrowLeft size={14} /> Voltar
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

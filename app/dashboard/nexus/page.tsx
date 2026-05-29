@@ -403,7 +403,7 @@ const MODULES = [
   { label: 'Automações',    href: '/dashboard/automations',icon: Zap,          color: 'cyan'    },
   { label: 'Growth',        href: '/dashboard/growth-map',icon: TrendingUp,    color: 'pink'    },
   { label: 'Agentes IA',    href: '/dashboard/agents',    icon: Bot,           color: 'indigo'  },
-  { label: 'Assistente',    href: '/dashboard/assistant', icon: Cpu,           color: 'rose'    },
+  { label: 'NEXUS OS',      href: '/dashboard/nexus-os',  icon: Cpu,           color: 'rose'    },
 ]
 
 function ModuleGrid() {
@@ -703,7 +703,7 @@ export default function NexusOSPage() {
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 {[
-                  { label: 'Assistente IA',  href: '/dashboard/assistant',   color: 'violet' },
+                  { label: 'NEXUS OS',       href: '/dashboard/nexus-os',    color: 'violet' },
                   { label: 'WhatsApp',       href: '/dashboard/whatsapp',    color: 'emerald'},
                   { label: 'Leads',          href: '/dashboard/leads',       color: 'cyan'   },
                   { label: 'Financeiro',     href: '/dashboard/financeiro',  color: 'amber'  },
@@ -726,7 +726,7 @@ export default function NexusOSPage() {
                 })}
               </div>
               <Link
-                href="/dashboard/assistant"
+                href="/dashboard/nexus-os"
                 className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-[11px] font-semibold text-violet-400 hover:bg-violet-500/20 transition-colors"
               >
                 <Cpu className="w-3 h-3" />

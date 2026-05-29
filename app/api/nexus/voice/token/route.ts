@@ -1,0 +1,90 @@
+// POST /api/nexus/voice/token
+// Cria ephemeral token para OpenAI Realtime GA.
+// Retorna { token, model, expires_at } — NexusVoiceEngine usa token nos subprotocols WebSocket.
+
+import { NextResponse }             from 'next/server'
+import { getSupabaseRouteClient }   from '@/lib/supabase-server'
+
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 20
+
+const CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets'
+
+const MODELS = [
+  'gpt-realtime',
+  'gpt-4o-realtime-preview',
+  'gpt-4o-mini-realtime-preview',
+]
+
+export async function POST() {
+  const supabase = await getSupabaseRouteClient()
+  const { data: { user }, error } = await supabase.auth.getUser()
+  if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const key = process.env.OPENAI_API_KEY
+  if (!key) {
+    return NextResponse.json(
+      { error: 'OPENAI_API_KEY não configurada. Acesse Vercel → Settings → Environment Variables.' },
+      { status: 503 },
+    )
+  }
+
+  let lastError = 'Nenhum modelo disponível'
+
+  for (const model of MODELS) {
+    try {
+      const body = JSON.stringify({
+        session: {
+          type:  'realtime',
+          model,
+          audio: { output: { voice: 'verse' } },
+        },
+      })
+
+      console.log(`[nexus/token] tentando model=${model}`)
+
+      const res = await fetch(CLIENT_SECRETS_URL, {
+        method:  'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type':  'application/json',
+        },
+        body,
+        signal: AbortSignal.timeout(12000),
+      })
+
+      if (res.ok) {
+        // GA format: { value: "ek_...", expires_at: ..., session: {...} }
+        const data = await res.json() as { value?: string; expires_at?: number; session?: unknown }
+        const token = data.value ?? null
+        console.log(`[nexus/token] OK model=${model}  token=${token?.slice(0, 12) ?? 'NULL'}...`)
+        if (!token) return NextResponse.json({ error: 'Token vazio retornado pela OpenAI' }, { status: 502 })
+        return NextResponse.json({ token, model, expires_at: data.expires_at ?? null })
+      }
+
+      const text = await res.text()
+      let msg = `OpenAI ${res.status}`
+      try {
+        const parsed = JSON.parse(text) as { error?: { message?: string } }
+        if (parsed.error?.message) msg = parsed.error.message
+      } catch { /* raw text */ }
+
+      console.error(`[nexus/token] ${model} → ${res.status}: ${text.slice(0, 200)}`)
+
+      if (res.status === 401) {
+        return NextResponse.json({
+          error: 'API Key inválida (401). Atualize OPENAI_API_KEY no Vercel → Settings → Environment Variables → Redeploy.',
+        }, { status: 502 })
+      }
+
+      lastError = msg
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'fetch failed'
+      console.error(`[nexus/token] ${model} threw: ${lastError}`)
+    }
+  }
+
+  return NextResponse.json({
+    error: `Realtime API inacessível. Último erro: ${lastError}`,
+  }, { status: 502 })
+}

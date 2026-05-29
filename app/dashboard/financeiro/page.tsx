@@ -304,7 +304,7 @@ export default function FinanceiroPage() {
       {/* Quick Links */}
       <div className="flex gap-3 flex-wrap">
         <motion.a
-          href="/dashboard/assistant"
+          href="/dashboard/nexus-os"
           whileHover={{ y: -1 }}
           className="flex items-center gap-1.5 rounded-lg border border-violet-600/25 bg-violet-600/8 px-4 py-2 text-sm text-violet-400 hover:border-violet-500/40 transition-colors"
         >
