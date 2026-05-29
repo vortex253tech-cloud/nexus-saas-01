@@ -183,26 +183,15 @@ export class NexusVoiceEngine {
     this.retries = 0
     console.log('[nexus-os] WS open → session.update')
 
-    // gpt-realtime requires session.type = 'realtime' in session.update
+    // gpt-realtime (GA) only accepts: type, instructions, tools, tool_choice
+    // voice, modalities, audio formats, turn_detection, temperature are not supported
     this.send({
       type: 'session.update',
       session: {
-        type:                      'realtime',
-        modalities:                ['text', 'audio'],
-        instructions:              NEXUS_OS_SYSTEM_PROMPT,
-        voice:                     'verse',
-        input_audio_format:        'pcm16',
-        output_audio_format:       'pcm16',
-        input_audio_transcription: { model: 'whisper-1' },
-        turn_detection: {
-          type:                'server_vad',
-          threshold:           0.5,
-          prefix_padding_ms:   300,
-          silence_duration_ms: 600,
-        },
-        tools:       NEXUS_OS_TOOLS as unknown as Record<string, unknown>[],
-        tool_choice: 'auto',
-        temperature: 0.7,
+        type:         'realtime',
+        instructions: NEXUS_OS_SYSTEM_PROMPT,
+        tools:        NEXUS_OS_TOOLS as unknown as Record<string, unknown>[],
+        tool_choice:  'auto',
       },
     })
 
