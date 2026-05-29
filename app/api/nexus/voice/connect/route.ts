@@ -1,7 +1,9 @@
 // POST /api/nexus/voice/connect
-// Creates an ephemeral OpenAI Realtime session (GA API).
-// Returns { client_secret: { value }, model } — browser uses client_secret.value
-// to open: new WebSocket(wss://api.openai.com/v1/realtime?model=…, [subprotocols])
+// Creates an ephemeral client secret via the current OpenAI Realtime GA API.
+// Endpoint: POST https://api.openai.com/v1/realtime/client_secrets
+// (replaces the deprecated /v1/realtime/sessions)
+// Returns the raw OpenAI response + _model_used so the browser can open:
+//   new WebSocket(wss://api.openai.com/v1/realtime?model=…, [subprotocols])
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseRouteClient }    from '@/lib/supabase-server'
@@ -9,23 +11,37 @@ import { getSupabaseRouteClient }    from '@/lib/supabase-server'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
 
+const CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets'
+
 const MODELS = [
+  'gpt-realtime',
+  'gpt-realtime-mini',
+  // legacy fallbacks (kept for accounts that haven't migrated)
   'gpt-4o-realtime-preview',
   'gpt-4o-mini-realtime-preview',
 ]
 
+function buildBody(model: string) {
+  return JSON.stringify({
+    session: {
+      type:  'realtime',
+      model,
+      audio: { output: { voice: 'verse' } },
+    },
+  })
+}
+
 async function trySession(key: string, model: string) {
-  const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
+  const body = buildBody(model)
+  console.log(`[voice/connect] trying ${model} → ${CLIENT_SECRETS_URL}`)
+  console.log(`[voice/connect] body: ${body}`)
+  const res = await fetch(CLIENT_SECRETS_URL, {
     method:  'POST',
     headers: {
       'Authorization': `Bearer ${key}`,
       'Content-Type':  'application/json',
     },
-    body:   JSON.stringify({
-      model,
-      modalities: ['audio', 'text'],
-      voice:      'alloy',
-    }),
+    body,
     signal: AbortSignal.timeout(12000),
   })
   return res
@@ -59,7 +75,7 @@ export async function POST(req: NextRequest) {
       }
 
       const text = await response.text()
-      console.error(`[voice/connect] ${model} → ${response.status}:`, text.slice(0, 200))
+      console.error(`[voice/connect] ${model} → ${response.status}: ${text.slice(0, 200)}`)
 
       let msg = `OpenAI ${response.status}`
       try {
@@ -74,16 +90,14 @@ export async function POST(req: NextRequest) {
       }
 
       lastError = msg
-      // 404 = model not accessible — try next model
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'fetch failed'
-      console.error(`[voice/connect] ${model} threw:`, msg)
+      console.error(`[voice/connect] ${model} threw: ${msg}`)
       lastError = msg
     }
   }
 
-  // All models failed
   return NextResponse.json({
-    error: `Realtime API inacessível com esta chave OpenAI. Verifique se a chave em Vercel → OPENAI_API_KEY pertence à organização com Realtime access (Tier 1+). Último erro: ${lastError}`,
+    error: `Realtime API inacessível. Último erro: ${lastError}`,
   }, { status: 502 })
 }

@@ -40,9 +40,10 @@ const FFT      = 128
 const BARS     = 32
 const RETRIES  = 3
 const SESSION  = '/api/nexus/voice/connect'
+const DEFAULT_MODEL = 'gpt-realtime'
 
 function wsUrl(model: string) {
-  return `wss://api.openai.com/v1/realtime?model=${model}`
+  return `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`
 }
 
 // Inline AudioWorklet processor — avoids a separate static .js file
@@ -149,7 +150,7 @@ export class NexusRealtimeClient {
       }
       const token = data.client_secret?.value ?? data.ephemeral_key ?? null
       if (!token) throw new Error(data.error ?? 'No ephemeral token received')
-      const model = data._model_used ?? data.model ?? 'gpt-4o-realtime-preview'
+      const model = data._model_used ?? data.model ?? DEFAULT_MODEL
 
       // ── 2. AudioContext ──
       const ctx = new AudioContext({ sampleRate: SR })

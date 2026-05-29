@@ -1,9 +1,8 @@
 // POST /api/nexus/voice/session
-// Creates an ephemeral OpenAI Realtime API token for browser-side WebRTC connection.
-// Uses the GA endpoint: POST https://api.openai.com/v1/realtime/sessions
+// Creates an ephemeral OpenAI Realtime API token for browser-side WebSocket connection.
+// Uses the current GA endpoint: POST https://api.openai.com/v1/realtime/client_secrets
+// (replaces deprecated /v1/realtime/sessions)
 // The ephemeral key expires in ~1 minute and is safe to expose to the browser.
-// Full session config (instructions, tools, turn_detection) is sent via session.update
-// over the DataChannel after WebRTC connects — avoids sending unsupported params here.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseRouteClient }    from '@/lib/supabase-server'
@@ -12,6 +11,8 @@ import { REALTIME_MODEL }            from '@/lib/voice/realtime-config'
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 15
 
+const CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets'
+
 export async function POST(req: NextRequest) {
   const supabaseAuth = await getSupabaseRouteClient()
   const { data: { user }, error } = await supabaseAuth.auth.getUser()
@@ -19,24 +20,23 @@ export async function POST(req: NextRequest) {
 
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json({
-      error: 'OPENAI_API_KEY não configurada no servidor. Acesse Vercel → Settings → Environment Variables e adicione a chave.',
+      error: 'OPENAI_API_KEY não configurada no servidor.',
     }, { status: 503 })
   }
 
   try {
-    // Minimal session creation body — only fields the GA sessions endpoint reliably accepts.
-    // Full config (instructions, tools, tool_choice, turn_detection) is pushed via
-    // session.update message over the DataChannel once WebRTC is established.
-    const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
+    const res = await fetch(CLIENT_SECRETS_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type':  'application/json',
       },
       body: JSON.stringify({
-        model:      REALTIME_MODEL,
-        modalities: ['audio', 'text'],
-        voice:      'alloy',
+        session: {
+          type:  'realtime',
+          model: REALTIME_MODEL,
+          audio: { output: { voice: 'verse' } },
+        },
       }),
       signal: AbortSignal.timeout(12000),
     })
@@ -47,18 +47,12 @@ export async function POST(req: NextRequest) {
 
       let friendlyError = `OpenAI ${res.status}`
       try {
-        const parsed = JSON.parse(text) as { error?: { message?: string; code?: string } }
+        const parsed = JSON.parse(text) as { error?: { message?: string } }
         if (parsed.error?.message) friendlyError = parsed.error.message
       } catch { /* use raw text */ }
 
-      const hint = res.status === 401
-        ? ' — Verifique OPENAI_API_KEY no Vercel (Settings → Environment Variables → Redeploy)'
-        : res.status === 403 || friendlyError.includes('beta') || friendlyError.includes('deprecated')
-          ? ' — Sua chave pode não ter acesso ao Realtime API. Use uma chave de projeto com acesso ao gpt-4o-realtime-preview.'
-          : ''
-
       return NextResponse.json({
-        error:   friendlyError + hint,
+        error:   friendlyError,
         details: text,
         status:  res.status,
       }, { status: 502 })
@@ -70,7 +64,6 @@ export async function POST(req: NextRequest) {
     let data: Record<string, unknown> = {}
     try { data = JSON.parse(raw) } catch { /* non-JSON */ }
 
-    // Extract ephemeral key from client_secret.value
     type MaybeSecret = { value?: string; expires_at?: number } | undefined
     const csObj   = data?.client_secret as MaybeSecret
     const ekValue = csObj?.value ?? null

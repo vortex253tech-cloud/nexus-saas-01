@@ -1,10 +1,12 @@
 // GET /api/nexus/voice/debug
-// Diagnostic: tests the ephemeral token endpoint and verifies API key access.
+// Diagnostic: tests the ephemeral client secret endpoint (current GA API).
 import { NextResponse } from 'next/server'
 import { REALTIME_MODEL } from '@/lib/voice/realtime-config'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 15
+
+const CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets'
 
 export async function GET() {
   const key = process.env.OPENAI_API_KEY
@@ -12,14 +14,19 @@ export async function GET() {
 
   const key_hint = `${key.slice(0, 7)}...${key.slice(-4)}`
 
-  // Test: ephemeral token creation (same call the session route makes)
   let session_test: unknown
   try {
-    const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
+    const res = await fetch(CLIENT_SECRETS_URL, {
       method:  'POST',
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ model: REALTIME_MODEL, modalities: ['audio', 'text'], voice: 'alloy' }),
-      signal:  AbortSignal.timeout(10000),
+      body:    JSON.stringify({
+        session: {
+          type:  'realtime',
+          model: REALTIME_MODEL,
+          audio: { output: { voice: 'verse' } },
+        },
+      }),
+      signal: AbortSignal.timeout(10000),
     })
     const text = await res.text()
     let parsed: unknown
@@ -33,8 +40,9 @@ export async function GET() {
     ok:           true,
     model:        REALTIME_MODEL,
     key_hint,
-    approach:     'WebSocket (ephemeral token via /v1/realtime/sessions)',
-    note:         'Browser connects via wss://api.openai.com/v1/realtime using ephemeral token as subprotocol.',
+    endpoint:     CLIENT_SECRETS_URL,
+    approach:     'WebSocket (ephemeral token via /v1/realtime/client_secrets)',
+    note:         'Browser connects via wss://api.openai.com/v1/realtime?model=gpt-realtime using ephemeral token as subprotocol.',
     session_test,
   })
 }

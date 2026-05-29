@@ -1,7 +1,8 @@
 // Shared Realtime API config — no 'use client' so it's importable by both
 // server routes (session/route.ts) and client code (nexus-realtime-client.ts).
 
-export const REALTIME_MODEL = 'gpt-4o-realtime-preview'
+export const REALTIME_MODEL         = 'gpt-realtime'
+export const REALTIME_MODEL_MINI    = 'gpt-realtime-mini'
 
 export const NEXUS_SYSTEM_PROMPT = `Você é o NEXUS — Sistema Operacional de IA da empresa. COO executivo de alto nível.
 Você é o cérebro operacional central. Fala português, age como um COO + CEO de IA de elite.
