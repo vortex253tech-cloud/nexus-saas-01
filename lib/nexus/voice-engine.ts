@@ -222,6 +222,8 @@ export class NexusVoiceEngine {
         if (this._state === 'listening') this.set('processing')
         break
 
+      // gpt-realtime GA uses response.output_audio.* (not response.audio.*)
+      case 'response.output_audio.delta':
       case 'response.audio.delta': {
         const d = msg.delta as string | undefined
         if (d) {
@@ -231,10 +233,12 @@ export class NexusVoiceEngine {
         break
       }
 
+      case 'response.output_audio_transcript.delta':
       case 'response.audio_transcript.delta':
         if (msg.delta) this.cb.onTranscript('assistant', msg.delta as string, false)
         break
 
+      case 'response.output_audio_transcript.done':
       case 'response.audio_transcript.done':
         if (msg.transcript) this.cb.onTranscript('assistant', msg.transcript as string, true)
         break
