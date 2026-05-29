@@ -1,37 +1,24 @@
 'use client'
 
 // app/dashboard/nexus-os/page.tsx
-// NEXUS OS — Sistema Operacional de Inteligência Artificial
-// Arquitetura: NexusVoiceEngine + NexusActionEngine
-// Fluxo: microfone → WebSocket → transcrição → tool call → ação → resposta de voz
+// NEXUS OS — UI only. Engine lives in NexusSessionManager (singleton, never unmounts).
+// Calling deactivate() here is the ONLY way to close the WebSocket.
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { motion, AnimatePresence }                   from 'framer-motion'
+import { useEffect, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Mic, MicOff, Zap, MessageSquare, CheckSquare, FolderOpen,
   Users, Phone, Cog, FileText, Calendar, DollarSign, BarChart2,
 } from 'lucide-react'
 
-import { NexusVoiceEngine, NexusOSState } from '@/lib/nexus/voice-engine'
-import { NexusActionEngine, ActionResult } from '@/lib/nexus/action-engine'
-import { useRouter }                       from 'next/navigation'
+import { useNexusSession }         from '@/lib/nexus/nexus-context'
+import { NexusActionEngine }        from '@/lib/nexus/action-engine'
+import { nexusSessionManager }      from '@/lib/nexus/nexus-session-manager'
+import type { NexusSessionState }   from '@/lib/nexus/nexus-session-manager'
+import { useRouter }                from 'next/navigation'
+import { useRef }                   from 'react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TranscriptLine {
-  id:     number
-  role:   'user' | 'assistant'
-  text:   string
-  final:  boolean
-}
-
-interface ActionLog {
-  id:      number
-  name:    string
-  message: string
-  success: boolean
-  ts:      Date
-}
 
 // ── Quick commands ─────────────────────────────────────────────────────────────
 
@@ -50,7 +37,7 @@ const COMMANDS = [
 
 // ── State label helpers ────────────────────────────────────────────────────────
 
-const STATE_LABEL: Record<NexusOSState, string> = {
+const STATE_LABEL: Record<NexusSessionState, string> = {
   connecting:   'Conectando...',
   ready:        'Pronto',
   listening:    'Ouvindo',
@@ -61,7 +48,7 @@ const STATE_LABEL: Record<NexusOSState, string> = {
   disconnected: 'Desconectado',
 }
 
-const STATE_COLOR: Record<NexusOSState, string> = {
+const STATE_COLOR: Record<NexusSessionState, string> = {
   connecting:   'text-yellow-400',
   ready:        'text-emerald-400',
   listening:    'text-blue-400',
@@ -74,14 +61,13 @@ const STATE_COLOR: Record<NexusOSState, string> = {
 
 // ── Orb component ─────────────────────────────────────────────────────────────
 
-function Orb({ state, levels }: { state: NexusOSState; levels: number[] }) {
+function Orb({ state, levels }: { state: NexusSessionState; levels: number[] }) {
   const active   = state !== 'disconnected' && state !== 'error'
   const pulsing  = state === 'listening' || state === 'processing'
   const speaking = state === 'speaking'
 
   return (
     <div className="relative flex items-center justify-center w-40 h-40 mx-auto">
-      {/* Outer glow rings */}
       {active && (
         <>
           <motion.div
@@ -97,7 +83,6 @@ function Orb({ state, levels }: { state: NexusOSState; levels: number[] }) {
         </>
       )}
 
-      {/* Waveform bars (speaking / listening) */}
       {(pulsing || speaking) && (
         <div className="absolute inset-[-24px] flex items-center justify-center gap-[2px]">
           {levels.slice(0, 20).map((lvl, i) => (
@@ -112,7 +97,6 @@ function Orb({ state, levels }: { state: NexusOSState; levels: number[] }) {
         </div>
       )}
 
-      {/* Core orb */}
       <motion.div
         className="relative w-24 h-24 rounded-full flex items-center justify-center"
         style={{
@@ -138,86 +122,35 @@ function Orb({ state, levels }: { state: NexusOSState; levels: number[] }) {
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function NexusOSPage() {
-  const router = useRouter()
+  const router     = useRouter()
+  const actionRef  = useRef(new NexusActionEngine())
 
-  const engineRef = useRef<NexusVoiceEngine | null>(null)
-  const actionRef = useRef<NexusActionEngine>(new NexusActionEngine())
+  const {
+    state, levels, transcript, actionLog, errorMsg,
+    activate, deactivate, sendText, pushAction,
+  } = useNexusSession()
 
-  const [osState,    setOsState]    = useState<NexusOSState>('disconnected')
-  const [levels,     setLevels]     = useState<number[]>(new Array(24).fill(0))
-  const [transcript, setTranscript] = useState<TranscriptLine[]>([])
-  const [actionLog,  setActionLog]  = useState<ActionLog[]>([])
-  const [errorMsg,   setErrorMsg]   = useState<string | null>(null)
-  const idRef = useRef(0)
-
-  // ── Callbacks ──────────────────────────────────────────────────────────────
-
-  const onState = useCallback((s: NexusOSState) => {
-    setOsState(s)
-    if (s !== 'error') setErrorMsg(null)
-  }, [])
-
-  const onTranscript = useCallback((role: 'user' | 'assistant', text: string, final: boolean) => {
-    setTranscript(prev => {
-      // Update last partial or append new line
-      if (!final) {
-        const last = prev[prev.length - 1]
-        if (last && last.role === role && !last.final) {
-          return [...prev.slice(0, -1), { ...last, text }]
-        }
-      }
-      idRef.current += 1
-      const next: TranscriptLine = { id: idRef.current, role, text, final }
-      const capped = prev.length >= 50 ? prev.slice(-49) : prev
-      return [...capped, next]
+  // Register tool handler while this page is mounted.
+  // Navigation to other pages unmounts this, but the session stays alive.
+  // The handler is restored when the user comes back to Nexus OS.
+  useEffect(() => {
+    const unregister = nexusSessionManager.registerToolHandler(async (name, args) => {
+      const result = await actionRef.current.execute(name, args)
+      pushAction({ name, message: result.message, success: result.success, ts: new Date() })
+      if (result.path) router.push(result.path)
+      return result
     })
-  }, [])
+    return unregister
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, pushAction])
 
-  const onToolCall = useCallback(async (name: string, args: Record<string, unknown>): Promise<unknown> => {
-    const result: ActionResult = await actionRef.current.execute(name, args)
-    idRef.current += 1
-    setActionLog(prev => {
-      const capped = prev.length >= 20 ? prev.slice(-19) : prev
-      return [...capped, { id: idRef.current, name, message: result.message, success: result.success, ts: new Date() }]
-    })
-    if (result.path) router.push(result.path)
-    return result
-  }, [router])
+  // NO disconnect on unmount — session persists across navigation.
 
-  const onAudioLevels = useCallback((lvls: number[]) => setLevels(lvls), [])
-
-  const onError = useCallback((msg: string) => {
-    setErrorMsg(msg)
-    setOsState('error')
-  }, [])
-
-  // ── Engine lifecycle ───────────────────────────────────────────────────────
-
-  const startNexus = useCallback(async () => {
-    if (engineRef.current) return
-    setErrorMsg(null)
-    const engine = new NexusVoiceEngine({ onState, onTranscript, onToolCall, onAudioLevels, onError })
-    engineRef.current = engine
-    await engine.connect()
-  }, [onState, onTranscript, onToolCall, onAudioLevels, onError])
-
-  const stopNexus = useCallback(() => {
-    engineRef.current?.disconnect()
-    engineRef.current = null
-    setLevels(new Array(24).fill(0))
-  }, [])
-
-  useEffect(() => () => { engineRef.current?.disconnect() }, [])
-
-  const isOn = osState !== 'disconnected'
-
-  // ── Quick command handler ──────────────────────────────────────────────────
+  const isOn = state !== 'disconnected'
 
   const sendCommand = useCallback((text: string) => {
-    engineRef.current?.sendText(text)
-  }, [])
-
-  // ── Render ─────────────────────────────────────────────────────────────────
+    sendText(text)
+  }, [sendText])
 
   return (
     <div className="min-h-screen bg-[#080c14] text-white flex flex-col">
@@ -227,24 +160,24 @@ export default function NexusOSPage() {
         <div className="flex items-center gap-3">
           <Zap className="w-6 h-6 text-cyan-400" fill="currentColor" />
           <span className="text-lg font-semibold tracking-wide text-white/90">NEXUS OS</span>
-          <span className="text-xs text-slate-500 font-mono ml-1">v4.0</span>
+          <span className="text-xs text-slate-500 font-mono ml-1">v4.1</span>
         </div>
-        <div className={`text-sm font-medium ${STATE_COLOR[osState]}`}>
-          {STATE_LABEL[osState]}
+        <div className={`text-sm font-medium ${STATE_COLOR[state]}`}>
+          {STATE_LABEL[state]}
         </div>
       </div>
 
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left panel — Orb + controls + error */}
+        {/* Left panel */}
         <div className="w-80 flex-shrink-0 flex flex-col items-center justify-start pt-12 px-6 border-r border-slate-800/40 gap-8">
 
-          <Orb state={osState} levels={levels} />
+          <Orb state={state} levels={levels} />
 
           {/* Power button */}
           <motion.button
-            onClick={isOn ? stopNexus : startNexus}
+            onClick={isOn ? deactivate : activate}
             className={`w-full py-3 rounded-xl text-sm font-semibold tracking-wider transition-all duration-300 ${
               isOn
                 ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'

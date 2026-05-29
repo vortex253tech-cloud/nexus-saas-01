@@ -22,6 +22,7 @@ import { resolveCompanyId } from '@/lib/get-company-id'
 import { TourProvider } from '@/lib/tour/context'
 import { TourEngine } from '@/components/tour/TourEngine'
 import { ChatPanel } from '@/components/ai-chat/ChatPanel'
+import { NexusProvider, useNexusSession } from '@/lib/nexus/nexus-context'
 
 // ─── Nav Structure ─────────────────────────────────────────────
 
@@ -844,6 +845,44 @@ function CheckoutSync({ onSuccess }: { onSuccess: () => void }) {
   return null
 }
 
+// ─── Nexus Float Button ────────────────────────────────────────
+
+function NexusFloatButton() {
+  const { state } = useNexusSession()
+
+  const dotColor =
+    state === 'disconnected' ? 'bg-slate-500' :
+    state === 'error'        ? 'bg-red-400'   :
+    state === 'connecting'   ? 'bg-yellow-400 animate-pulse' :
+    state === 'listening'    ? 'bg-blue-400 animate-pulse'   :
+    state === 'executing'    ? 'bg-orange-400 animate-pulse' :
+    'bg-emerald-400'
+
+  const label =
+    state === 'disconnected' ? 'OFFLINE' :
+    state === 'error'        ? 'ERRO'    :
+    state === 'connecting'   ? 'CONECTANDO' :
+    state === 'listening'    ? 'OUVINDO' :
+    state === 'speaking'     ? 'FALANDO' :
+    state === 'executing'    ? 'EXECUTANDO' :
+    state === 'processing'   ? 'PROCESSANDO' :
+    'ONLINE'
+
+  return (
+    <Link
+      href="/dashboard/nexus-os"
+      title={`NEXUS OS — ${label}`}
+      className="fixed bottom-22 right-6 z-40 hidden lg:flex items-center justify-center rounded-2xl h-12 w-12 bg-gradient-to-br from-violet-700 to-purple-900 text-white hover:scale-105 transition-all duration-200 shadow-xl"
+      style={{ boxShadow: '0 0 20px rgba(139,92,246,0.45), 0 8px 16px rgba(0,0,0,0.4)', bottom: '5.5rem' }}
+    >
+      <Mic size={19} />
+      <span className={`absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full ${dotColor} ring-2 ring-zinc-950`}>
+        <span className="h-1.5 w-1.5 rounded-full bg-white" />
+      </span>
+    </Link>
+  )
+}
+
 // ─── Layout ────────────────────────────────────────────────────
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -921,6 +960,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [])
 
   return (
+    <NexusProvider>
     <TourProvider>
       <div className="min-h-screen bg-zinc-950 text-white">
         <Sidebar
@@ -976,17 +1016,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* Floating voice assistant — desktop */}
-        <Link
-          href="/dashboard/nexus-os"
-          title="NEXUS OS"
-          className="fixed bottom-22 right-6 z-40 hidden lg:flex items-center justify-center rounded-2xl h-12 w-12 bg-gradient-to-br from-violet-700 to-purple-900 text-white hover:scale-105 transition-all duration-200 shadow-xl"
-          style={{ boxShadow: '0 0 20px rgba(139,92,246,0.45), 0 8px 16px rgba(0,0,0,0.4)', bottom: '5.5rem' }}
-        >
-          <Mic size={19} />
-          <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-purple-400 ring-2 ring-zinc-950">
-            <span className="h-1.5 w-1.5 rounded-full bg-white" />
-          </span>
-        </Link>
+        <NexusFloatButton />
 
         {/* Floating AI chat — desktop */}
         <button
@@ -1011,5 +1041,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <TourEngine />
       </div>
     </TourProvider>
+    </NexusProvider>
   )
 }
