@@ -146,10 +146,10 @@ export class NexusVoiceEngine {
       ctx.createMediaStreamSource(mic).connect(worklet)
       worklet.port.onmessage = (e: MessageEvent<Float32Array>) => this.onMicChunk(e.data)
 
-      // 6. WebSocket — subprotocol auth (OpenAI Realtime GA browser method)
+      // 6. WebSocket — GA ephemeral-token auth (NO openai-beta protocol)
       const ws = new WebSocket(
         `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
-        ['realtime', `openai-insecure-api-key.${token}`, 'openai-beta.realtime-v1'],
+        ['realtime', `openai-insecure-api-key.${token}`],
       )
       this.ws     = ws
       this.playAt = 0

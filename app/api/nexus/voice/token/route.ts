@@ -74,12 +74,14 @@ export async function POST(req: NextRequest) {
       })
 
       if (res.ok) {
-        // GA format: { value: "ek_...", expires_at: ..., session: {...} }
-        const data = await res.json() as { value?: string; expires_at?: number; session?: unknown }
-        const token = data.value ?? null
-        console.log(`[nexus/token] OK model=${model}  token=${token?.slice(0, 12) ?? 'NULL'}...`)
+        // GA format: { value: "ek_...", expires_at: ..., session: { model: "...", ... } }
+        const data = await res.json() as { value?: string; expires_at?: number; session?: { model?: string } }
+        const token      = data.value ?? null
+        // Use the actual model from the response so the client opens WS with the right model
+        const actualModel = (data.session as { model?: string } | undefined)?.model ?? model
+        console.log(`[nexus/token] OK model=${model} actual=${actualModel} token=${token?.slice(0, 12) ?? 'NULL'}...`)
         if (!token) return NextResponse.json({ error: 'Token vazio retornado pela OpenAI' }, { status: 502 })
-        return NextResponse.json({ token, model, expires_at: data.expires_at ?? null })
+        return NextResponse.json({ token, model: actualModel, expires_at: data.expires_at ?? null })
       }
 
       const text = await res.text()
