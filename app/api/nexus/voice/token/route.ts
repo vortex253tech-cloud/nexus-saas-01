@@ -12,8 +12,7 @@ export const maxDuration = 20
 const CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets'
 
 const MODELS = [
-  'gpt-4o-realtime-preview',
-  'gpt-4o-mini-realtime-preview',
+  'gpt-realtime',
 ]
 
 export async function POST(req: NextRequest) {
