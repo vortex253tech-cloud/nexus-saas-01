@@ -70,8 +70,16 @@ export async function POST(req: NextRequest) {
 
       if (response.ok) {
         const data = await response.json() as Record<string, unknown>
-        console.log(`[voice/connect] OK with model ${model}`)
-        return NextResponse.json({ ...data, _model_used: model })
+        // New GA format: { value: "ek_...", expires_at: ..., session: {...} }
+        // Wrap into client_secret.value so client.ts can extract the token.
+        const tokenValue = (data.value as string | undefined) ?? null
+        console.log(`[voice/connect] OK with model ${model}, token: ${tokenValue?.slice(0, 12)}...`)
+        return NextResponse.json({
+          client_secret: { value: tokenValue, expires_at: data.expires_at ?? null },
+          session:        data.session ?? null,
+          _model_used:    model,
+          model,
+        })
       }
 
       const text = await response.text()

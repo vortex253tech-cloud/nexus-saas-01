@@ -140,15 +140,19 @@ export class NexusRealtimeClient {
         const b = await r.json().catch(() => ({}) as Record<string, unknown>) as Record<string, unknown>
         throw new Error(String(b.error ?? `Session HTTP ${r.status}`))
       }
-      // GA response: { client_secret: { value: "ek_..." }, model, _model_used, ... }
+      // GA response (wrapped by voice/connect):
+      // { client_secret: { value: "ek_..." }, _model_used, model, session }
       const data = await r.json() as {
         client_secret?: { value?: string }
         _model_used?:   string
         model?:         string
-        ephemeral_key?: string   // legacy fallback
+        ephemeral_key?: string   // legacy
+        value?:         string   // raw GA format fallback
         error?: string
       }
-      const token = data.client_secret?.value ?? data.ephemeral_key ?? null
+      const token = data.client_secret?.value ?? data.ephemeral_key ?? data.value ?? null
+      console.log('[nexus] voice/connect raw keys:', Object.keys(data))
+      console.log('[nexus] token:', token?.slice(0, 12) ?? 'NULL')
       if (!token) throw new Error(data.error ?? 'No ephemeral token received')
       const model = data._model_used ?? data.model ?? DEFAULT_MODEL
 
