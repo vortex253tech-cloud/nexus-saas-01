@@ -197,8 +197,14 @@ export class NexusRealtimeClient {
       this.playAt = 0
 
       ws.onopen    = () => this.onOpen()
-      ws.onclose   = (e) => this.onClose(e.code)
-      ws.onerror   = () => this.opts.onError('WebSocket error — verifique a API key no Vercel')
+      ws.onclose   = (e) => {
+        console.log('[nexus] WebSocket closed — code:', e.code, 'reason:', e.reason || '(none)')
+        this.onClose(e.code)
+      }
+      ws.onerror   = (e) => {
+        console.error('[nexus] WebSocket error event:', e)
+        this.opts.onError('WebSocket error — verifique a API key no Vercel')
+      }
       ws.onmessage = (e) => this.onMsg(JSON.parse(e.data as string) as Record<string, unknown>)
 
       // ── 7. Waveform loop ──
@@ -216,28 +222,27 @@ export class NexusRealtimeClient {
 
   private onOpen(): void {
     this.retries = 0
+    console.log('[nexus] WebSocket open — sending session.update')
 
-    // Session configuration pushed after connect.
-    // Uses gpt-realtime field structure (audio-only output, nested transcription).
+    // Standard flat session.update format (works with all OpenAI Realtime models)
     this.send({
       type: 'session.update',
       session: {
-        instructions: NEXUS_SYSTEM_PROMPT,
-        temperature:  0.7,
-        tools:        NEXUS_TOOLS as unknown as Record<string, unknown>[],
-        tool_choice:  'auto',
-        audio: {
-          input: {
-            transcription: { model: 'whisper-1' },
-            turn_detection: {
-              type:                'server_vad',
-              threshold:           0.5,
-              prefix_padding_ms:   300,
-              silence_duration_ms: 700,
-            },
-          },
-          output: { voice: 'verse' },
+        modalities:                 ['text', 'audio'],
+        instructions:               NEXUS_SYSTEM_PROMPT,
+        voice:                      'verse',
+        input_audio_format:         'pcm16',
+        output_audio_format:        'pcm16',
+        input_audio_transcription:  { model: 'whisper-1' },
+        turn_detection: {
+          type:                'server_vad',
+          threshold:           0.5,
+          prefix_padding_ms:   300,
+          silence_duration_ms: 700,
         },
+        tools:       NEXUS_TOOLS as unknown as Record<string, unknown>[],
+        tool_choice: 'auto',
+        temperature: 0.7,
       },
     })
 
@@ -309,6 +314,7 @@ export class NexusRealtimeClient {
 
       case 'error': {
         const err = msg.error as Record<string, unknown> | undefined
+        console.error('[nexus] OpenAI error event:', JSON.stringify(err ?? msg))
         this.opts.onError(String(err?.message ?? 'OpenAI Realtime error'))
         this.set('error')
         break
