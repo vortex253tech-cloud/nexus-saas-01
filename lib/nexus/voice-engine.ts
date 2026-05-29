@@ -183,10 +183,11 @@ export class NexusVoiceEngine {
     this.retries = 0
     console.log('[nexus-os] WS open → session.update')
 
-    // Standard flat session.update (works with all OpenAI Realtime models)
+    // gpt-realtime requires session.type = 'realtime' in session.update
     this.send({
       type: 'session.update',
       session: {
+        type:                      'realtime',
         modalities:                ['text', 'audio'],
         instructions:              NEXUS_OS_SYSTEM_PROMPT,
         voice:                     'verse',
