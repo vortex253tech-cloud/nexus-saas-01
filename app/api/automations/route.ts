@@ -1,12 +1,16 @@
 // GET /api/automations — list automations for company
 // POST /api/automations — create automation with steps
 
-import { NextRequest, NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/auth'
-import { getSupabaseServerClient } from '@/lib/supabase'
-import { getString, isRecord } from '@/lib/unknown'
+import { NextRequest, NextResponse }  from 'next/server'
+import { getAuthContext }             from '@/lib/auth'
+import { getSupabaseServerClient }    from '@/lib/supabase'
+import { getString, isRecord }        from '@/lib/unknown'
+import { denyIfCannot }               from '@/lib/plan-middleware'
 
 export async function GET() {
+  const denied = await denyIfCannot('automations')
+  if (denied) return denied
+
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 

@@ -1,9 +1,10 @@
 // POST /api/nexus/whatsapp/send — Send a message via Z-API and persist to DB
 // Credentials stay server-side. Returns { ok: true } on success.
 
-import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseRouteClient }  from '@/lib/supabase-server'
-import { createClient }            from '@supabase/supabase-js'
+import { NextRequest, NextResponse }  from 'next/server'
+import { getSupabaseRouteClient }    from '@/lib/supabase-server'
+import { createClient }              from '@supabase/supabase-js'
+import { denyIfCannot }              from '@/lib/plan-middleware'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 15
@@ -16,6 +17,10 @@ function db() {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Plan gate: WhatsApp requires PRO+ ─────────────────────────
+  const denied = await denyIfCannot('whatsapp')
+  if (denied) return denied
+
   // ── Auth ──────────────────────────────────────────────────────
   const supabaseAuth = await getSupabaseRouteClient()
   const { data: { user }, error: authErr } = await supabaseAuth.auth.getUser()

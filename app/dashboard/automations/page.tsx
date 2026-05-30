@@ -10,7 +10,10 @@ import {
   Settings, Eye, Target, Activity, X, Lock, Crown,
   Brain, Bot, Workflow, Shield,
 } from 'lucide-react'
-import { cn } from '@/lib/cn'
+import { cn }           from '@/lib/cn'
+import { usePlan }      from '@/lib/hooks/use-plan'
+import { canAccess }    from '@/lib/nexus-plan'
+import { UpgradeCard }  from '@/components/ui/plan-gate'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1171,24 +1174,16 @@ export default function AutomationsPage() {
   const [previewTemplate, setPreview]   = useState<Template | null>(null)
   const [activeTemplate, setActive]     = useState<Template | null>(null)
   const [filterType, setFilterType]     = useState<string>('all')
-  const [plan, setPlan]                 = useState<string>('free')
-  const [planLoading, setPlanLoading]   = useState(true)
 
-  // Fetch plan
-  useEffect(() => {
-    fetch('/api/auth/session')
-      .then(r => r.ok ? r.json() : null)
-      .then((d: unknown) => {
-        if (d && typeof d === 'object') {
-          const data = d as { user?: { effectivePlan?: string } }
-          setPlan(data.user?.effectivePlan ?? 'free')
-        }
-      })
-      .catch(() => {})
-      .finally(() => setPlanLoading(false))
-  }, [])
+  // V5: use unified plan hook
+  const effectivePlan = usePlan()
+  const plan          = effectivePlan ?? 'free'
+  const isPro         = effectivePlan ? canAccess(effectivePlan, 'automations') : false
 
-  const isPro = ['pro', 'scale', 'enterprise'].includes(plan)
+  // Gate: show upgrade card for non-PRO users
+  if (effectivePlan && !canAccess(effectivePlan, 'automations')) {
+    return <UpgradeCard requiredPlan="Pro" feature="Automações" />
+  }
 
   const loadAutomations = useCallback(async () => {
     try {
@@ -1237,26 +1232,8 @@ export default function AutomationsPage() {
 
   const activeCount = automations.filter(a => a.status === 'active').length
 
-  // Show PRO gate after plan is loaded and user is not pro
-  if (!planLoading && !isPro) {
-    return (
-      <div className="min-h-screen bg-[#070709] relative overflow-hidden">
-        {/* Blurred content hint */}
-        <div className="blur-sm opacity-30 pointer-events-none select-none">
-          <div className="px-6 pt-8 pb-6">
-            <h1 className="text-[26px] font-bold text-white mb-2">Automações</h1>
-            <p className="text-sm text-white/40">Fluxos inteligentes que trabalham enquanto você dorme</p>
-            <div className="mt-6 grid grid-cols-1 gap-4">
-              {[1, 2].map(i => (
-                <div key={i} className="h-64 rounded-2xl bg-white/[0.02] border border-white/[0.06]" />
-              ))}
-            </div>
-          </div>
-        </div>
-        <ProGateOverlay />
-      </div>
-    )
-  }
+  // V5: plan gate — handled at top of component (returns UpgradeCard if no access)
+  // isPro is now derived from effectivePlan via canAccess()
 
   return (
     <div className="min-h-screen bg-[#070709] pb-16">

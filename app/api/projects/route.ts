@@ -1,9 +1,11 @@
 // GET /api/projects        — list projects for company
 // POST /api/projects       — create project
 
-import { NextRequest, NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/auth'
-import { getSupabaseServerClient } from '@/lib/supabase'
+import { NextRequest, NextResponse }  from 'next/server'
+import { getAuthContext }             from '@/lib/auth'
+import { getSupabaseServerClient }    from '@/lib/supabase'
+import { denyIfAtLimit }              from '@/lib/plan-middleware'
+import { getLimit }                   from '@/lib/nexus-plan'
 
 export async function GET() {
   const ctx = await getAuthContext()
@@ -51,6 +53,15 @@ export async function POST(req: NextRequest) {
 
   if (!body.name?.trim()) {
     return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 })
+  }
+
+  // ── Plan limit: max_projects ──────────────────────────────────
+  const maxProjects = getLimit(ctx.effectivePlan, 'max_projects')
+  if (maxProjects !== -1) {
+    const db0 = getSupabaseServerClient()
+    const { count } = await db0.from('projects').select('*', { count: 'exact', head: true }).eq('company_id', ctx.company.id)
+    const denied = await denyIfAtLimit('max_projects', count ?? 0)
+    if (denied) return denied
   }
 
   const db = getSupabaseServerClient()

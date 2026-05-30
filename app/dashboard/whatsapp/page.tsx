@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback, useRef, memo } from 'react'
 import { createClient }            from '@supabase/supabase-js'
 import { motion, AnimatePresence } from 'framer-motion'
+import { usePlan }                 from '@/lib/hooks/use-plan'
+import { canAccess }               from '@/lib/nexus-plan'
+import { UpgradeCard }             from '@/components/ui/plan-gate'
 import {
   MessageCircle, Bot, Zap, Sparkles, Send, Phone,
   Search, Star, MoreHorizontal, ChevronRight,
@@ -2134,6 +2137,7 @@ export default function WhatsAppPage() {
 
   // ── Derived ───────────────────────────────────────────────────
 
+  const plan      = usePlan()
   const connected = waStatus?.connected ?? false
 
   const aiActiveConvs     = conversations.filter(c => c.ai_enabled).length
@@ -2196,6 +2200,12 @@ export default function WhatsAppPage() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ conversation_id: conv.id }),
     }).catch(() => {})
+  }
+
+  // ── Plan gate: PRO+ required for WhatsApp ────────────────────────────────
+
+  if (plan && !canAccess(plan, 'whatsapp')) {
+    return <UpgradeCard requiredPlan="Pro" feature="WhatsApp AI" />
   }
 
   // ── Loading ───────────────────────────────────────────────────
