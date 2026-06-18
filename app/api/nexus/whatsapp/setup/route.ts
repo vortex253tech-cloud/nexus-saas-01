@@ -16,7 +16,7 @@ export async function POST() {
     return NextResponse.json({ error: 'Z-API not configured' }, { status: 503 })
   }
 
-  const webhookUrl = `${siteUrl}/api/whatsapp/webhook`
+  const webhookUrl = `${siteUrl}/api/nexus/whatsapp/webhook`
 
   const base    = `https://api.z-api.io/instances/${instanceId}/token/${token}`
   const headers = { 'Content-Type': 'application/json', 'Client-Token': clientToken ?? '' }

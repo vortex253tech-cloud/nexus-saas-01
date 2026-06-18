@@ -21,7 +21,7 @@ export async function GET() {
       connected:  result.connected,
       phone:      result.phone ?? null,
       error:      result.error ?? null,
-      webhookUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/whatsapp/webhook`,
+      webhookUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/nexus/whatsapp/webhook`,
       instanceId: config.instanceId,
     })
   } catch (err) {
