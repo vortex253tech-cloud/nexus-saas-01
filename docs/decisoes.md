@@ -193,6 +193,20 @@ Eu não tenho credenciais para o painel do n8n (infraestrutura externa, não há
 
 `npx tsc --noEmit` limpo.
 
+### ✅ Resolvido em 2026-06-19 — leads do quiz (Lovable) não chegavam ao NEXUS; decisão de espelhar, não migrar
+
+Contexto: ao tentar ativar o sistema de indicação do waitlist, descobri que o funil real de captura (`diagnostico.nexusaas.com.br`, construído no Lovable) não tem nenhuma relação com a tabela `waitlist` deste banco — os 2 únicos registros lá eram testes do próprio usuário. O Lovable Cloud provisionou, sem o usuário perceber, um projeto Supabase **separado e próprio** (`mrhsieznrxaclvohusjs`) para o app do quiz, gerenciado inteiramente pela infraestrutura do Lovable (não aparece na conta pessoal do usuário no Supabase).
+
+Auditoria feita via Lovable (não consigo acessar esse projeto diretamente — sem credenciais, sem dashboard próprio): a única tabela do fluxo do quiz é `public.quiz_leads` (24 colunas — `name`, `company_name`, `email`, `whatsapp`, `operational_score`, `ai_diagnosis`, etc. — schema completo no migration abaixo), com um trigger que deriva `lead_temperature` de `operational_score`. RLS permite INSERT anônimo (o form escreve direto do browser).
+
+**Tentativa descartada:** pedir ao Lovable para trocar a conexão do backend para o projeto do NEXUS. A resposta do Lovable revelou que isso quebraria login, área admin e todo o subsistema de email (precisaria recriar `user_roles`, enum `app_role`, função `has_role()`, tabelas de email transacional, filas `pgmq`) — risco desproporcional ao objetivo real, que era só ter os leads também no NEXUS.
+
+**Decisão tomada:** manter os dois bancos como estão (Lovable Cloud continua sendo a fonte de verdade do quiz) e fazer o app do Lovable espelhar cada novo lead, via um segundo client Supabase (`@supabase/supabase-js`, só com a anon key do NEXUS) inserido depois do insert original, em try/catch isolado — se o espelhamento falhar, não pode afetar o fluxo principal do quiz. Implementação fica do lado do Lovable (fora deste repositório); a tabela espelho já foi criada aqui.
+
+**O que foi feito neste repositório:** `supabase/migrations/20260619_quiz_leads.sql` recria a tabela `quiz_leads` (schema, trigger `quiz_leads_set_temperature`, RLS — `service_role` full access + INSERT anônimo) — aplicada manualmente pelo usuário via SQL Editor, confirmada (0 linhas, tabela existe). Esperando confirmação de que o espelhamento do lado do Lovable foi implementado e testado.
+
+**Pendente:** confirmar com um envio de teste no quiz que o lead chega nas duas tabelas (Lovable e NEXUS). Depois disso, decidir o que fazer com os dados já capturados no projeto antigo (se houver volume relevante) e só então seguir para o sistema de indicação propriamente dito — que ficou bloqueado por essa descoberta.
+
 ## Como registrar uma nova decisão
 
 Adicionar uma linha na tabela "Decisões já tomadas" com: a decisão, a evidência no código (arquivo/padrão), e o racional (mesmo que inferido). Se a decisão foi tomada em conversa com o usuário e não está visível no código ainda, registrar aqui mesmo assim — esse é exatamente o tipo de informação que se perde quando não há memória persistente.
