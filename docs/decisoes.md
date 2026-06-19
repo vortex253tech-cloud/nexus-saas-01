@@ -118,6 +118,30 @@ O que foi construído:
 | A instância n8n com os 5 workflows está ativa e mantida? | Define se sequências de nutrição de leads por email realmente disparam | [integracoes.md](./integracoes.md) |
 | O canvas visual do Flow Engine (drag-and-drop) foi implementado desde o manifesto antigo? | Define se é prioridade de roadmap ou item já resolvido | [roadmap.md](./roadmap.md) |
 
+### ✅ Resolvido em 2026-06-18 — WhatsApp V5 CRM não era multi-tenant (achado grave durante o item 7)
+
+Ao investigar o item 7 (unificar WhatsApp com Leads), descobri que o problema era mais profundo: **13 arquivos** do CRM (webhook, analyze, conversations, search, transfer, new-conversation, send-image, suggest, debug, messages, voice/execute, `lib/whatsapp-engine.ts`) resolviam `company_id` via `process.env.NEXUS_PLATFORM_COMPANY_ID` em vez da empresa do usuário logado. Em 8 desses arquivos o padrão era "env var primeiro, sessão só se a env var estiver vazia" — como a env var está sempre configurada em produção, o fallback de sessão nunca rodava na prática: **todo usuário logado, de qualquer empresa, via e contribuía para os dados da mesma empresa fixa.**
+
+**Decisão do usuário (2026-06-18), explícita:** "Hoje é uso interno da NEXUS. Mas a arquitetura final deve ser multi-tenant... Implemente desde agora isolamento completo por company_id... Preparar o sistema para clientes pagantes e múltiplas empresas." Não era um bug em produção hoje (só a própria NEXUS usa o módulo), mas bloquearia completamente a venda do CRM a qualquer cliente.
+
+**O que foi corrigido:**
+
+| Arquivo | Mudança |
+|---|---|
+| `lib/business-identity.ts` | Nova função `getCompanyIdByZapiInstance()` — lookup reverso (Z-API `instanceId` → `company_id`) via `business_identity.zapi_instance_id`. É o único sinal multi-tenant que um webhook de entrada tem, já que não carrega sessão. |
+| `app/api/nexus/whatsapp/webhook/route.ts` | `company_id` resolvido via `payload.instanceId` → `getCompanyIdByZapiInstance()`, com fallback para `NEXUS_PLATFORM_COMPANY_ID` apenas se a instância não tiver `business_identity` cadastrada. `autoReply()` agora envia pela instância Z-API **da própria empresa** (via `getBusinessIdentity()` + `resolveZApiConfig()`), não mais pela instância global da plataforma. |
+| `app/api/nexus/whatsapp/analyze/route.ts` | Removida a dependência da env var inteiramente — `company_id` vem direto da conversa (`whatsapp_conversations.company_id`), que já foi resolvida corretamente no momento do recebimento da mensagem. |
+| `app/api/whatsapp/conversations`, `nexus/whatsapp/{search,transfer,new-conversation,send-image,suggest,debug}`, `whatsapp/messages` (8 rotas) | Resolução de `company_id` trocada de "env var primeiro" para `getAuthContext()` exclusivamente — nunca mais consulta a env var para rotas com sessão. `new-conversation` e `send-image` também passaram a enviar pela instância Z-API da própria empresa, não a global. |
+| `app/api/nexus/voice/execute/route.ts` | Já estava correto (resolvia via `company_members` primeiro) — não precisou de mudança. |
+
+**Dependência para funcionar de ponta a ponta:** uma empresa só é roteada corretamente pelo webhook depois de cadastrar sua própria instância Z-API em `/dashboard/settings/business-identity` (campo já existe na UI). Até lá, a mensagem cai no fallback da plataforma — comportamento atual preservado, não é regressão.
+
+**Não corrigido, fora de escopo:** `app/api/whatsapp/webhook/route.ts` (rota antiga, separada — bot de vendas da própria NEXUS, não o CRM v5) continua hardcoded. Não é a rota ativa de produção (confirmado: o painel da Z-API aponta para `/api/nexus/whatsapp/webhook`), e parece ser uma ferramenta de vendas interna da NEXUS, não uma feature de cliente — não foi tocada para não arriscar o funil de vendas da própria empresa sem confirmação explícita.
+
+`npx tsc --noEmit` limpo após todas as correções (14 arquivos no total, incluindo o novo helper).
+
+**Pendência remanescente do item 7 original** (sincronizar leads do WhatsApp com `/dashboard/leads`) — ainda não implementada; ficou maior por causa deste achado, mas continua válida como próximo passo natural agora que o `company_id` está correto em toda a pipeline.
+
 ## Como registrar uma nova decisão
 
 Adicionar uma linha na tabela "Decisões já tomadas" com: a decisão, a evidência no código (arquivo/padrão), e o racional (mesmo que inferido). Se a decisão foi tomada em conversa com o usuário e não está visível no código ainda, registrar aqui mesmo assim — esse é exatamente o tipo de informação que se perde quando não há memória persistente.
