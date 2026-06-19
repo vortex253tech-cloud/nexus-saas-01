@@ -3,6 +3,7 @@ import { Geist } from 'next/font/google'
 import { AuthProvider }  from '@/lib/auth-provider'
 import { ThemeProvider } from '@/lib/themes/theme-context'
 import { THEMES_INLINE_SCRIPT } from '@/lib/themes/themes'
+import Analytics from '@/components/Analytics'
 import './globals.css'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
+        <Analytics />
         <ThemeProvider>
           <AuthProvider>
             {children}
