@@ -152,6 +152,26 @@ Também corrigi um bug pequeno do código de referência: ele tinha `name: merge
 
 `npx tsc --noEmit` limpo.
 
+### ✅ Resolvido em 2026-06-19 — health-check automatizado da voz (NEXUS OS)
+
+`/dashboard/system/realtime` já existia (a pergunta do roadmap "já existe?" — sim), mas dois problemas: (1) era só manual, alguém precisava abrir a página; (2) **estava quebrado** — chamava `POST /api/nexus/voice/session` e `GET /api/nexus/voice/debug`, nenhuma das duas rotas existe no código hoje (só `voice/token` e `voice/execute` existem). Provavelmente ficou esquecido depois de uma das ~25 correções de 2026-05-27/28.
+
+**Decisões do usuário (2026-06-19), explícitas:**
+- Canal de alerta: email simples (não há Slack webhook configurado).
+- Profundidade do teste: testar a conexão WebSocket real com a OpenAI, não só a emissão do token efêmero — a maioria dos problemas históricos foi em formato de sessão/eventos do WebSocket, não na emissão do token.
+
+**O que foi feito:**
+
+| Arquivo | Mudança |
+|---|---|
+| `app/dashboard/system/realtime/page.tsx` | Corrigido para chamar `POST /api/nexus/voice/token` (rota real) e fazer o parse correto da resposta (`{ token, model, expires_at }` — a página antiga esperava `ephemeral_key`). Adicionado um segundo teste: abre e fecha uma conexão WebSocket real (`wss://api.openai.com/v1/realtime`) com o mesmo esquema de autenticação por subprotocolo que `lib/nexus/voice-engine.ts` usa em produção (`['realtime', 'openai-insecure-api-key.<token>']`), e considera sucesso no primeiro evento recebido do servidor (normalmente `session.created`). |
+| `app/api/cron/voice-health/route.ts` (novo) | Mesmo teste de dois passos (mintar token + handshake WS real), rodando sozinho. Em caso de falha, envia email via `sendEmail()` (`lib/email.ts`) para `VOICE_HEALTH_ALERT_EMAIL` (default: o email do usuário). Protegido por `CRON_SECRET`, mesmo padrão dos outros crons. |
+| `vercel.json` | Novo cron `/api/cron/voice-health`, diário às 13:00 UTC (10:00 BRT). |
+
+**Limitação aceita:** todos os crons do projeto na Vercel são diários (não há nenhum de intervalo menor configurado) — não confirmei se é por limite do plano (Hobby só permite cron diário) ou só preferência. Um health-check diário pega "está completamente fora do ar", mas não pega uma degradação de poucas horas. Se quiser granularidade maior, precisa confirmar o plano da Vercel primeiro.
+
+`npx tsc --noEmit` limpo.
+
 ## Como registrar uma nova decisão
 
 Adicionar uma linha na tabela "Decisões já tomadas" com: a decisão, a evidência no código (arquivo/padrão), e o racional (mesmo que inferido). Se a decisão foi tomada em conversa com o usuário e não está visível no código ainda, registrar aqui mesmo assim — esse é exatamente o tipo de informação que se perde quando não há memória persistente.
