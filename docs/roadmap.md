@@ -6,7 +6,7 @@
 
 | Sprint | Item | Status real observado |
 |---|---|---|
-| 1 — Flow Engine UI | Canvas visual (`@xyflow/react`), painel de execuções, node configurator | `@xyflow/react` já é dependência instalada — verificar se o canvas foi implementado ou se a rota `/dashboard/growth-map/[id]` ainda é placeholder |
+| 1 — Flow Engine UI | Canvas visual (`@xyflow/react`) ✅, painel de execuções ✅, node configurator ❌ | **Verificado em 2026-06-18** (não mais suposição): canvas drag-and-drop completo com save/execute/status em tempo real/"salvar como template" → Marketplace. Falta só o configurador de nó (editar parâmetros de um nó já criado) — hoje todo nó nasce com `config: {}` e não há UI para preenchê-lo. Ver [proximos-passos.md](./proximos-passos.md) #6. |
 | 2 — WhatsApp Real | Substituir stub por provedor real, webhook de entrada, status tracking | ✅ Superado — Z-API está integrado e em produção (WhatsApp V5), muito além do que este sprint previa |
 | 3 — Triggers Avançados | scheduled, webhook, event (Supabase Realtime) | Parcial — `nexus_events` (Realtime) existe; confirmar se TRIGGER nodes do Flow Engine já consomem isso |
 | 4 — IA Autônoma | Agente que cria/executa flows a partir de uma meta | Parcial — `lib/engine/learning`, `lib/decision-engine.ts`, `lib/autopilot.ts` existem; NEXUS OS com 9 agentes é uma versão mais ambiciosa disso, mas não necessariamente conectada ao Flow Engine |

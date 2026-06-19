@@ -77,5 +77,5 @@ Dashboard principal, Financeiro, Clientes, Mensagens, Ações, Alertas, Automaç
 | WhatsApp V5 CRM | ✅ Funcional — busca, pipeline, fotos, paginação por cursor |
 | NEXUS OS (sessão sempre-ativa) | ✅ Funcional — sobrevive à navegação |
 | Voz (OpenAI Realtime GA) | ✅ Funcional — compatibilidade com nomes de evento legados e GA |
-| Canvas visual do Flow Engine (drag-and-drop) | ⚠️ Rota existe, editor visual ainda não implementado (ver manifesto antigo, seção "Não Implementado") |
+| Canvas visual do Flow Engine (drag-and-drop) | ✅ Implementado e verificado (2026-06-18) — manifesto antigo estava desatualizado. Falta só o configurador de parâmetros por nó (ver [proximos-passos.md](./proximos-passos.md) #6) |
 | Stripe / Billing completo | ⚠️ `lib/payments/stripe.ts` e `/api/billing/create-checkout` existem; confirmar se webhooks de Stripe estão implementados antes de assumir fluxo completo |
