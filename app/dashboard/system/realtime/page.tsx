@@ -6,29 +6,27 @@ import Link from 'next/link'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface SessionResult {
-  ok:            boolean
-  status?:       number
-  ephemeral_key?: string
-  model?:        string
-  error?:        string
+interface TokenResult {
+  ok:          boolean
+  status?:     number
+  token?:      string
+  model?:      string
+  expires_at?: number | null
+  error?:      string
 }
 
-interface DebugResult {
-  key_hint?:    string
-  model?:       string
-  approach?:    string
-  note?:        string
-  session_test?: unknown
-  error?:       string
+interface WsResult {
+  ok:    boolean
+  ms?:   number
+  error?: string
 }
 
 interface DiagResult {
-  ts:         number
-  session:    SessionResult | null
-  debug:      DebugResult | null
-  sessionMs:  number
-  debugMs:    number
+  ts:       number
+  token:    TokenResult
+  ws:       WsResult | null
+  tokenMs:  number
+  wsMs:     number
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
@@ -41,44 +39,35 @@ export default function RealtimeDiagPage() {
     setRunning(true)
     setResult(null)
 
-    // 1. Session endpoint
+    // 1. Mint an ephemeral token — same endpoint the real voice engine uses
     const t0 = Date.now()
-    let session: SessionResult | null = null
+    let token: TokenResult
     try {
-      const r    = await fetch('/api/nexus/voice/session', { method: 'POST' })
+      const r    = await fetch('/api/nexus/voice/token', { method: 'POST' })
       const body = await r.json().catch(() => ({})) as Record<string, unknown>
-      session    = {
-        ok:            r.ok,
-        status:        r.status,
-        ephemeral_key: typeof body.ephemeral_key === 'string' ? body.ephemeral_key : undefined,
-        model:         typeof body.model         === 'string' ? body.model         : undefined,
-        error:         typeof body.error         === 'string' ? body.error         : undefined,
+      token = {
+        ok:         r.ok,
+        status:     r.status,
+        token:      typeof body.token === 'string' ? body.token : undefined,
+        model:      typeof body.model === 'string' ? body.model : undefined,
+        expires_at: typeof body.expires_at === 'number' ? body.expires_at : null,
+        error:      typeof body.error === 'string' ? body.error : undefined,
       }
     } catch (e) {
-      session = { ok: false, error: String(e) }
+      token = { ok: false, error: String(e) }
     }
-    const sessionMs = Date.now() - t0
+    const tokenMs = Date.now() - t0
 
-    // 2. Debug endpoint
+    // 2. If a token was minted, open a real WebSocket round-trip to OpenAI —
+    // this is what actually breaks when the Realtime API changes formats.
+    let ws: WsResult | null = null
     const t1 = Date.now()
-    let debug: DebugResult | null = null
-    try {
-      const r    = await fetch('/api/nexus/voice/debug')
-      const body = await r.json().catch(() => ({})) as Record<string, unknown>
-      debug = {
-        key_hint:    typeof body.key_hint  === 'string' ? body.key_hint  : undefined,
-        model:       typeof body.model     === 'string' ? body.model     : undefined,
-        approach:    typeof body.approach  === 'string' ? body.approach  : undefined,
-        note:        typeof body.note      === 'string' ? body.note      : undefined,
-        session_test: body.session_test,
-        error:       typeof body.error     === 'string' ? body.error     : undefined,
-      }
-    } catch (e) {
-      debug = { error: String(e) }
+    if (token.ok && token.token && token.model) {
+      ws = await testWsRoundTrip(token.token, token.model)
     }
-    const debugMs = Date.now() - t1
+    const wsMs = Date.now() - t1
 
-    setResult({ ts: Date.now(), session, debug, sessionMs, debugMs })
+    setResult({ ts: Date.now(), token, ws, tokenMs, wsMs })
     setRunning(false)
   }, [])
 
@@ -95,7 +84,7 @@ export default function RealtimeDiagPage() {
           <Activity size={24} style={{ color: '#8b5cf6' }} />
           <div>
             <h1 style={{ fontSize: '20px', fontWeight: 700, margin: 0, color: '#f1f5f9' }}>Diagnóstico Realtime</h1>
-            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>WebSocket + OpenAI Realtime API</p>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>WebSocket + OpenAI Realtime API — também roda automaticamente todo dia (ver /api/cron/voice-health)</p>
           </div>
         </div>
         <button
@@ -123,50 +112,43 @@ export default function RealtimeDiagPage() {
           {/* Status cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
             <StatusCard
-              label="Ephemeral Token"
-              ok={result.session?.ok === true}
-              extra={result.session?.ok ? `${result.sessionMs}ms — OK` : (result.session?.error ?? 'Falhou')}
+              label="Token efêmero"
+              ok={result.token.ok}
+              extra={result.token.ok ? `${result.tokenMs}ms — OK` : (result.token.error ?? 'Falhou')}
             />
             <StatusCard
-              label="API Key detectada"
-              ok={!!result.debug?.key_hint}
-              extra={result.debug?.key_hint ?? 'Não detectado'}
+              label="Conexão WebSocket real"
+              ok={result.ws?.ok === true}
+              extra={result.ws ? (result.ws.ok ? `${result.ws.ms}ms — handshake OK` : (result.ws.error ?? 'Falhou')) : 'Não testado (token falhou)'}
             />
           </div>
 
-          {/* Session result */}
-          <Panel title="POST /api/nexus/voice/session" ms={result.sessionMs} ok={result.session?.ok === true}>
-            {result.session?.ok ? (
+          {/* Token result */}
+          <Panel title="POST /api/nexus/voice/token" ms={result.tokenMs} ok={result.token.ok}>
+            {result.token.ok ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <DataRow label="Modelo"  value={result.session.model ?? '—'} />
-                <DataRow label="Token"   value={result.session.ephemeral_key ? `${result.session.ephemeral_key.slice(0, 14)}…` : '—'} />
-                <DataRow label="Status"  value={String(result.session.status ?? '—')} />
+                <DataRow label="Modelo"  value={result.token.model ?? '—'} />
+                <DataRow label="Token"   value={result.token.token ? `${result.token.token.slice(0, 14)}…` : '—'} />
+                <DataRow label="Status"  value={String(result.token.status ?? '—')} />
               </div>
             ) : (
-              <ErrBox msg={result.session?.error ?? 'Erro desconhecido'} />
+              <ErrBox msg={result.token.error ?? 'Erro desconhecido'} />
             )}
           </Panel>
 
-          {/* Debug result */}
-          <Panel title="GET /api/nexus/voice/debug" ms={result.debugMs} ok={!!result.debug?.key_hint}>
-            {result.debug ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <DataRow label="API Key"   value={result.debug.key_hint   ?? '—'} />
-                <DataRow label="Modelo"    value={result.debug.model      ?? '—'} />
-                <DataRow label="Abordagem" value={result.debug.approach   ?? '—'} />
-                <DataRow label="Nota"      value={result.debug.note       ?? '—'} />
-                <p style={{ fontSize: '11px', color: '#64748b', margin: '8px 0 4px' }}>session_test:</p>
-                <pre style={{ fontSize: '11px', color: '#94a3b8', background: '#060608', padding: '10px', borderRadius: '6px', overflow: 'auto', maxHeight: '200px', margin: 0 }}>
-                  {JSON.stringify(result.debug.session_test, null, 2)}
-                </pre>
-              </div>
+          {/* WebSocket result */}
+          <Panel title="wss://api.openai.com/v1/realtime (handshake real)" ms={result.wsMs} ok={result.ws?.ok === true}>
+            {result.ws ? (
+              result.ws.ok
+                ? <DataRow label="Handshake" value={`OK em ${result.ws.ms}ms`} />
+                : <ErrBox msg={result.ws.error ?? 'Erro desconhecido'} />
             ) : (
-              <ErrBox msg="Endpoint não respondeu" />
+              <ErrBox msg="Não testado — minte o token primeiro" />
             )}
           </Panel>
 
           {/* Fix instructions */}
-          {result.session?.ok === false && (
+          {(!result.token.ok || result.ws?.ok === false) && (
             <div style={{ padding: '20px', background: '#180f0a', border: '1px solid #451a03', borderRadius: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                 <AlertCircle size={16} style={{ color: '#f97316' }} />
@@ -190,6 +172,36 @@ export default function RealtimeDiagPage() {
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
+}
+
+// ── WebSocket round-trip test (same auth scheme as lib/nexus/voice-engine.ts) ──
+
+function testWsRoundTrip(token: string, model: string): Promise<WsResult> {
+  const TIMEOUT_MS = 10000
+  return new Promise(resolve => {
+    let settled = false
+    const finish = (r: WsResult) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      try { ws.close() } catch { /* already closed */ }
+      resolve(r)
+    }
+
+    const t0 = Date.now()
+    const timer = setTimeout(() => finish({ ok: false, error: `Timeout aguardando handshake (${TIMEOUT_MS}ms)` }), TIMEOUT_MS)
+
+    const ws = new WebSocket(
+      `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
+      ['realtime', `openai-insecure-api-key.${token}`],
+    )
+
+    ws.addEventListener('message', () => finish({ ok: true, ms: Date.now() - t0 }))
+    ws.addEventListener('error',   () => finish({ ok: false, error: 'WebSocket error ao conectar' }))
+    ws.addEventListener('close', (ev) => {
+      if (!settled) finish({ ok: false, error: `Conexão fechada antes do handshake (code ${ev.code})` })
+    })
+  })
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
