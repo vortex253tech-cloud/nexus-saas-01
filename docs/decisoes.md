@@ -140,7 +140,17 @@ Ao investigar o item 7 (unificar WhatsApp com Leads), descobri que o problema er
 
 `npx tsc --noEmit` limpo após todas as correções (14 arquivos no total, incluindo o novo helper).
 
-**Pendência remanescente do item 7 original** (sincronizar leads do WhatsApp com `/dashboard/leads`) — ainda não implementada; ficou maior por causa deste achado, mas continua válida como próximo passo natural agora que o `company_id` está correto em toda a pipeline.
+### ✅ Resolvido em 2026-06-19 — sincronização WhatsApp → tabela `leads` (pedido original do item 7)
+
+Com o `company_id` já correto em toda a pipeline (achado acima), implementei o pedido original: `lib/leads-sync.ts` (novo, `syncWhatsAppLeadToLeads()`), chamado por `app/api/nexus/whatsapp/analyze/route.ts` depois de cada upsert em `lead_context`. Upsert por `(company_id, phone)` — nunca regride o estágio nem abaixa o score de um lead existente.
+
+**Achado durante a implementação:** a tabela `leads` tem dois campos de status paralelos e pré-existentes — `status` (inglês: new/contacted/converted/lost/qualified/proposal/won/nurture, usado por `/api/leads/manage` e o que `/dashboard/leads` filtra) e `stage` (português: novo/contatado/qualificado/proposta/negociando/fechado/perdido, adicionado depois em `20260516_nexus_core.sql`). O `syncToLeads()` de referência (em `app/api/whatsapp/webhook/route.ts`) só setava `stage`, nunca `status` — ou seja, mesmo se tivesse sido conectado, leads criados por ele não apareceriam corretamente nos filtros de status do `/dashboard/leads`. O novo helper mantém os dois em sincronia via um mapa stage→status.
+
+Também corrigi um bug pequeno do código de referência: ele tinha `name: merged.nome ?? existing.id` (caía para o UUID do lead como nome de exibição se a IA não extraísse um nome) — agora cai para o nome já salvo, ou um placeholder `WhatsApp xxxx` baseado no telefone.
+
+**Limitação conhecida, não resolvida:** o prompt de extração do `analyze/route.ts` não pede um campo `score` à IA (só `nome/empresa/nicho/objetivo/dores/estagio/faturamento`) — então hoje todo lead sincronizado por esse caminho entra com `score: 0`. Calcular um score real a partir do conteúdo da conversa é trabalho novo, não uma correção deste fix.
+
+`npx tsc --noEmit` limpo.
 
 ## Como registrar uma nova decisão
 
