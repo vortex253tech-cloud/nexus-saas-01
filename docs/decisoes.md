@@ -94,7 +94,22 @@ O que foi construído:
 
 **Limitação conhecida, não resolvida nesta rodada:** `company_usage.company_id` é `UNIQUE` (uma linha por empresa, não por período) — apesar de existir uma coluna `period_start`, não há lógica de reset mensal implementada em nenhum lugar (nem nas colunas pré-existentes como `automations_count`). Ou seja, `ai_messages_count` acumula para sempre, não reseta todo mês. Isso é uma limitação pré-existente do sistema de usage (não introduzida agora) — resolver exigiria um cron mensal de reset ou mudar a chave para `(company_id, period_start)`. Ficou de fora do escopo desta rodada por ser uma mudança maior de schema/cron, não um simples gate.
 
-**Achado paralelo (fora do escopo de gating, registrado para depois):** `/api/ai/financial-insights` e `/api/creative/generate` confiam no `company_id` vindo do corpo da requisição em vez de derivá-lo da sessão autenticada — um usuário autenticado de uma empresa poderia, em teoria, passar o `company_id` de outra empresa e ver/gerar conteúdo com os dados dela. Isso é um gap de isolamento multi-tenant (IDOR), categoria de bug diferente de plan-gating. Ver [bugs.md](./bugs.md).
+### ✅ Resolvido em 2026-06-18 — isolamento multi-tenant (IDOR)
+
+4 rotas corrigidas para derivar `company_id` exclusivamente da sessão autenticada (`getAuthContext()`), nunca do corpo da requisição:
+
+| Rota | Causa raiz específica |
+|---|---|
+| `/api/ai/financial-insights` | Não chamava `getAuthContext()` — exigia `company_id` direto no body, sem checagem alguma |
+| `/api/creative/generate` | Importava `resolveCompanyId` de `lib/get-company-id.ts` — um helper marcado `'use client'` que faz `if (typeof window === 'undefined') return null`. Chamado a partir de uma API route (sempre server-side), **sempre retornava `null`**. Na prática, essa rota dependia 100% do `company_id` do body — e como o frontend real (`app/dashboard/creative-ai/page.tsx`) nunca envia esse campo, a rota provavelmente **já estava completamente quebrada em produção antes de qualquer mudança de hoje** (sempre caía no `400 company_id required`). A correção (usar `getAuthContext()`) não é só uma correção de segurança — destrava a feature. |
+| `/api/creative/image` | Mesmo import quebrado. Diferença: o código original **não exigia** `company_id` (tinha fallback `'Minha Empresa'`), então a imagem era gerada mesmo sem isso — só não era persistida em `ai_generated_assets` nem associada a nenhuma empresa. Ao adicionar o gate de plano nesta mesma sessão, eu introduzi um `if (!companyId) return 400` que teria quebrado essa rota (regressão). Corrigido junto. |
+| `/api/creative/generate-multi` | Tinha um `resolveCompanyId()` local correto (chama `getAuthContext()`), mas a ordem de prioridade no body estava invertida: `body.company_id ?? resolveCompanyId()` — ou seja, um `company_id` vindo do cliente vencia a sessão. Na prática inofensivo hoje (o frontend real nunca envia esse campo), mas era uma porta aberta. Corrigido para usar exclusivamente a sessão. |
+
+**Não precisaram de correção** (verificados, já resolvem a sessão *antes* de qualquer fallback de body): `/api/ai/chat`, `/api/ai/business-analysis`, `/api/creative/opportunities` (GET, sem body), `/api/ai/generate-flow`, `/api/ai/project-analysis`.
+
+**Achado secundário, não corrigido:** `chat` e `business-analysis` ainda caem, em último caso (se `getAuthContext()` falhar E não houver `company_id` no body), em `db.from('companies').select('id').limit(1).single()` — ou seja, pegam literalmente a primeira empresa da tabela. É um "fail-open" em vez de "fail-closed" num cenário raro (falha transitória de auth com sessão de edge já validada). Risco baixo, mas registrado — ver [bugs.md](./bugs.md).
+
+`npx tsc --noEmit` limpo após todas as correções.
 
 | Pendência | Por que importa | Onde está documentado o problema |
 |---|---|---|
