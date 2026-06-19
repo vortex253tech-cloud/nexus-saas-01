@@ -205,7 +205,9 @@ Auditoria feita via Lovable (não consigo acessar esse projeto diretamente — s
 
 **O que foi feito neste repositório:** `supabase/migrations/20260619_quiz_leads.sql` recria a tabela `quiz_leads` (schema, trigger `quiz_leads_set_temperature`, RLS — `service_role` full access + INSERT anônimo) — aplicada manualmente pelo usuário via SQL Editor, confirmada (0 linhas, tabela existe). Esperando confirmação de que o espelhamento do lado do Lovable foi implementado e testado.
 
-**Pendente:** confirmar com um envio de teste no quiz que o lead chega nas duas tabelas (Lovable e NEXUS). Depois disso, decidir o que fazer com os dados já capturados no projeto antigo (se houver volume relevante) e só então seguir para o sistema de indicação propriamente dito — que ficou bloqueado por essa descoberta.
+**Confirmado funcionando em 2026-06-19** — envio de teste real no quiz chegou nas duas tabelas. Na cópia do NEXUS: todos os 16 campos espelhados corretamente, `pipeline_stage` no default `'novo'`, e `lead_temperature` calculado certo pelo trigger (`operational_score: 44` → `'morno'`, dentro da faixa 40-69). Pipeline de captura → espelhamento → CRM do NEXUS está de ponta a ponta funcional.
+
+**Pendente:** decidir o que fazer com os dados já capturados no projeto antigo antes deste fix (se houver volume relevante, exigiria um backfill manual — não incluído neste fix). Sistema de indicação (objetivo original antes desta descoberta) pode seguir agora que os leads chegam de forma confiável no NEXUS.
 
 ## Como registrar uma nova decisão
 
