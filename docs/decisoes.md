@@ -76,7 +76,25 @@ Sem gate hoje, agrupado por área (todas listadas abaixo **não chamam** `denyIf
 | **WhatsApp CRM (nexus/whatsapp/**)** | Apenas `send` tem gate; `send-image`, `qr`, `setup`, `disconnect`, `transfer`, `suggest`, `analyze`, `new-conversation`, `lead`, `search` não têm | Funcionalidade central do plano Pro+ (segundo o manifesto Enterprise) acessível sem checar plano em quase toda a superfície, exceto o envio de texto simples |
 | **Flow Engine** | `flows/[id]/run`, `flows/executions`, `flows/test`, `growth-maps/**` (CRUD + execução) | O manifesto Enterprise lista "unlimitedFlows" como feature por plano — não há enforcement real de quantidade/execuções no backend |
 
-**Nota importante:** isso não significa necessariamente que o produto está "errado" — é possível que o controle de custo esteja sendo feito de outra forma (ex: rate limit de infraestrutura, ou decisão consciente de não limitar enquanto valida product-market fit). Mas como **fato de código**, hoje o enforcement de plano é quase inexistente fora de 3 rotas. Vale uma conversa explícita com o usuário sobre se isso é intencional antes de "corrigir".
+### ✅ Implementado em 2026-06-18
+
+Decisões confirmadas com o usuário antes de codificar:
+- **Free tem IA com limite**, não bloqueio total — `lib/nexus-plan.ts` atualizado: `free.features` agora inclui `'nexus_ai'`. O enforcement real é por contagem (`max_ai_messages`), não por feature flag (já que todo plano tem `nexus_ai` agora, esse `denyIfCannot` nunca bloqueia sozinho — quem bloqueia é o limite).
+- **Voz (NEXUS OS) = feature `nexus_coo`** (Business+) — já existia no catálogo, só faltava aplicar.
+- **Creative AI = feature `nexus_ai`** (Starter+, e Free dentro do limite).
+
+O que foi construído:
+- `lib/usage.ts` (novo) — `getAiUsage(companyId)` / `incrementAiUsage(companyId, amount?)`, reaproveitando a RPC `increment_usage()` que já existia no banco (`20240003_hardening.sql`) e nunca tinha sido chamada por nenhum código.
+- Migration `supabase/migrations/20260618_ai_usage.sql` — adiciona a coluna `company_usage.ai_messages_count` (aplicada pelo usuário no SQL Editor).
+- Gate aplicado (feature + limite + incremento pós-sucesso) em **6 rotas de `/api/ai/**`**: `chat`, `business-analysis`, `financial-insights`, `generate-flow`, `project-analysis`, `upload` (só nos ramos de imagem/áudio, que custam — parsing de documento é local).
+- Gate aplicado em **5 rotas de `/api/creative/**`**: `generate`, `generate-multi` (incrementa 3 por chamada — gera 3 variações), `image`, `pdf`, `opportunities`.
+- Gate `nexus_coo` aplicado em **2 rotas de voz**: `nexus/voice/token` (só no ramo de cookie/browser — o ramo Bearer é para clientes de API/testes e não é gateado, já que `getAuthContext()` não lê Bearer) e `nexus/voice/execute`.
+- **Deliberadamente não gateado:** `/api/ai/router` — só chama Claude como fallback quase-gratuito (120 tokens) de um helper de navegação interna; bloquear navegação por causa de uma cota de chat não relacionada seria uma troca ruim para um custo irrisório.
+- `npx tsc --noEmit` limpo após todas as edições (14 arquivos).
+
+**Limitação conhecida, não resolvida nesta rodada:** `company_usage.company_id` é `UNIQUE` (uma linha por empresa, não por período) — apesar de existir uma coluna `period_start`, não há lógica de reset mensal implementada em nenhum lugar (nem nas colunas pré-existentes como `automations_count`). Ou seja, `ai_messages_count` acumula para sempre, não reseta todo mês. Isso é uma limitação pré-existente do sistema de usage (não introduzida agora) — resolver exigiria um cron mensal de reset ou mudar a chave para `(company_id, period_start)`. Ficou de fora do escopo desta rodada por ser uma mudança maior de schema/cron, não um simples gate.
+
+**Achado paralelo (fora do escopo de gating, registrado para depois):** `/api/ai/financial-insights` e `/api/creative/generate` confiam no `company_id` vindo do corpo da requisição em vez de derivá-lo da sessão autenticada — um usuário autenticado de uma empresa poderia, em teoria, passar o `company_id` de outra empresa e ver/gerar conteúdo com os dados dela. Isso é um gap de isolamento multi-tenant (IDOR), categoria de bug diferente de plan-gating. Ver [bugs.md](./bugs.md).
 
 | Pendência | Por que importa | Onde está documentado o problema |
 |---|---|---|
