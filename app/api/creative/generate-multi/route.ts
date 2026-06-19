@@ -168,17 +168,18 @@ export async function POST(req: NextRequest) {
       channel?:    Channel
       objective?:  Objective
       context?:    string
-      company_id?: string
     }
 
     const { type, context = '' } = body
     const channel:   Channel   = body.channel   ?? 'whatsapp'
     const objective: Objective = body.objective ?? 'promocao'
 
-    let companyId = body.company_id ?? null
-    if (!companyId) companyId = await resolveCompanyId()
+    // Resolve company from the authenticated session only — never trust a
+    // client-supplied company_id (it would let any logged-in user generate
+    // content branded as another company).
+    const companyId = await resolveCompanyId()
     if (!companyId) {
-      return NextResponse.json({ error: 'company_id required' }, { status: 400 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // 3 tones = 3 LLM calls — check there's room for at least one before spending

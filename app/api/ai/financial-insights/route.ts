@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { getAuthContext } from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
-import { getString, isRecord, readJsonObject } from '@/lib/unknown'
+import { getString, isRecord } from '@/lib/unknown'
 import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
 import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 import Anthropic from '@anthropic-ai/sdk'
@@ -34,14 +35,17 @@ type CustomerRow = {
 
 type CustomerJoin = CustomerRow[] | null
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   const denied = await denyIfCannot('nexus_ai')
   if (denied) return denied
 
   try {
-    const body = await readJsonObject(req)
-    const company_id = body ? getString(body, 'company_id') : undefined
-    if (!company_id) return NextResponse.json({ error: 'company_id obrigatorio' }, { status: 400 })
+    // Derive company_id from the authenticated session — never trust a
+    // client-supplied company_id (it would let any logged-in user read
+    // another company's financial data).
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    const company_id = ctx.company.id
 
     const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(company_id))
     if (overLimit) return overLimit

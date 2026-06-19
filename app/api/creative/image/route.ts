@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { getSupabaseServerClient } from '@/lib/supabase'
-import { resolveCompanyId } from '@/lib/get-company-id'
+import { getAuthContext } from '@/lib/auth'
 import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
 import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 
@@ -91,7 +91,6 @@ export async function POST(req: NextRequest) {
       style?:       string
       ratio?:       string
       objective?:   string
-      company_id?:  string
     }
 
     const {
@@ -101,15 +100,15 @@ export async function POST(req: NextRequest) {
       objective   = 'promocao',
     } = body
 
-    const db = getSupabaseServerClient()
-    let companyId = body.company_id ?? null
-    if (!companyId) {
-      try { companyId = await resolveCompanyId() } catch { /* ok */ }
+    // Resolve company from the authenticated session — never trust a
+    // client-supplied company_id (it would let any logged-in user
+    // generate/bill images as another company).
+    const db  = getSupabaseServerClient()
+    const ctx = await getAuthContext()
+    if (!ctx) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
-
-    if (!companyId) {
-      return NextResponse.json({ error: 'company_id required' }, { status: 400 })
-    }
+    const companyId = ctx.company.id
 
     // DALL-E 3 is the most expensive AI call in the app — gate before spending
     const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
