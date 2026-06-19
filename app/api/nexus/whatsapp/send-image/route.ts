@@ -3,7 +3,9 @@
 // Sends via Z-API and persists to DB
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseRouteClient }  from '@/lib/supabase-server'
+import { getAuthContext }          from '@/lib/auth'
+import { getBusinessIdentity }     from '@/lib/business-identity'
+import { resolveZApiConfig }       from '@/lib/zapi'
 import { createClient }            from '@supabase/supabase-js'
 
 export const dynamic    = 'force-dynamic'
@@ -17,9 +19,9 @@ function db() {
 }
 
 export async function POST(req: NextRequest) {
-  const supabaseAuth = await getSupabaseRouteClient()
-  const { data: { user }, error } = await supabaseAuth.auth.getUser()
-  if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ctx = await getAuthContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const companyId = ctx.companyId
 
   let body: { phone?: string; image?: string; caption?: string; conversation_id?: string }
   try { body = await req.json() } catch {
@@ -35,23 +37,17 @@ export async function POST(req: NextRequest) {
   const base64 = image.includes(',') ? image.split(',')[1] : image
 
   const supabase = db()
-  let companyId  = process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
 
-  if (!companyId) {
-    const { data: userRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
-    if (!userRow) return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    const { data: company } = await supabase.from('companies').select('id').eq('user_id', userRow.id).maybeSingle()
-    if (!company) return NextResponse.json({ error: 'Company not found' }, { status: 404 })
-    companyId = company.id
-  }
-
-  const instanceId  = process.env.ZAPI_INSTANCE_ID
-  const token       = process.env.ZAPI_TOKEN
-  const clientToken = process.env.ZAPI_CLIENT_TOKEN
-
-  if (!instanceId || !token) {
+  const identity = await getBusinessIdentity(companyId)
+  const zapiConfig = resolveZApiConfig(
+    identity?.zapiInstanceId && identity.zapiToken
+      ? { instanceId: identity.zapiInstanceId, token: identity.zapiToken, clientToken: identity.zapiClientToken ?? undefined }
+      : null,
+  )
+  if (!zapiConfig) {
     return NextResponse.json({ error: 'Z-API not configured' }, { status: 503 })
   }
+  const { instanceId, token, clientToken } = zapiConfig
 
   // Send image via Z-API
   let zapiData: Record<string, unknown> = {}

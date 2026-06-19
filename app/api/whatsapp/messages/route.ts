@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseRouteClient }  from '@/lib/supabase-server'
+import { getAuthContext }          from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { getMessages }             from '@/lib/whatsapp-engine'
 
@@ -7,9 +7,9 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   try {
-    const supabaseAuth = await getSupabaseRouteClient()
-    const { data: { user }, error } = await supabaseAuth.auth.getUser()
-    if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const companyId = ctx.companyId
 
     const conversationId = req.nextUrl.searchParams.get('conversationId')
     if (!conversationId) {
@@ -17,21 +17,6 @@ export async function GET(req: NextRequest) {
     }
 
     const db = getSupabaseServerClient()
-
-    // Resolve authorised company_id (same logic as conversations route)
-    let companyId = process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
-
-    if (!companyId) {
-      const { data: userRow } = await db
-        .from('users').select('id').eq('auth_id', user.id).maybeSingle()
-      if (!userRow) return NextResponse.json({ messages: [] })
-
-      const { data: company } = await db
-        .from('companies').select('id').eq('user_id', userRow.id).maybeSingle()
-      if (!company) return NextResponse.json({ messages: [] })
-
-      companyId = company.id
-    }
 
     // Verify the conversation belongs to this company
     const { data: conversation } = await db

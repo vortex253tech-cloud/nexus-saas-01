@@ -103,6 +103,23 @@ export async function getBusinessIdentity(companyId: string): Promise<BusinessId
 }
 
 /**
+ * Reverse lookup: given a Z-API instance ID from an inbound webhook payload,
+ * find which company owns it. Used by the WhatsApp webhook to route an
+ * incoming message to the right tenant — the webhook itself carries no
+ * session, so the instance ID is the only multi-tenant signal available.
+ */
+export async function getCompanyIdByZapiInstance(zapiInstanceId: string): Promise<string | null> {
+  const db = getSupabaseServerClient()
+  const { data } = await db
+    .from('business_identity')
+    .select('company_id')
+    .eq('zapi_instance_id', zapiInstanceId)
+    .maybeSingle()
+
+  return (data?.company_id as string | undefined) ?? null
+}
+
+/**
  * Returns the "From" string to use for outgoing emails.
  * Falls back to the platform-level RESEND_FROM env var.
  */

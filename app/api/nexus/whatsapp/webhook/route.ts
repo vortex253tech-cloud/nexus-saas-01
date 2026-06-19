@@ -4,6 +4,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient }              from '@supabase/supabase-js'
+import { getCompanyIdByZapiInstance, getBusinessIdentity } from '@/lib/business-identity'
+import { resolveZApiConfig }         from '@/lib/zapi'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 30
@@ -66,7 +68,13 @@ async function autoReply(
   phone:       string,
   contactName: string | null,
 ) {
-  if (!process.env.ZAPI_INSTANCE_ID || !process.env.ZAPI_TOKEN) return
+  const identity   = await getBusinessIdentity(companyId)
+  const zapiConfig = resolveZApiConfig(
+    identity?.zapiInstanceId && identity.zapiToken
+      ? { instanceId: identity.zapiInstanceId, token: identity.zapiToken, clientToken: identity.zapiClientToken ?? undefined }
+      : null,
+  )
+  if (!zapiConfig) return
   if (!process.env.OPENAI_API_KEY) return
 
   // Fetch last 12 messages
@@ -143,10 +151,8 @@ async function autoReply(
 
   if (!replyText) return
 
-  // Send via Z-API
-  const instanceId  = process.env.ZAPI_INSTANCE_ID
-  const token       = process.env.ZAPI_TOKEN
-  const clientToken = process.env.ZAPI_CLIENT_TOKEN ?? ''
+  // Send via the company's own Z-API instance (resolved above)
+  const { instanceId, token, clientToken } = zapiConfig
 
   let zapiData: Record<string, unknown> = {}
   try {
@@ -154,7 +160,7 @@ async function autoReply(
       `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`,
       {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'Client-Token': clientToken },
+        headers: { 'Content-Type': 'application/json', 'Client-Token': clientToken ?? '' },
         body:    JSON.stringify({ phone, message: replyText }),
         signal:  AbortSignal.timeout(10000),
       },
@@ -234,12 +240,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  const supabase   = db()
-  const companyId  = process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
+  const supabase = db()
 
-  // If no platform company ID, try to look up by instance
+  // Multi-tenant routing: the Z-API instanceId in the payload is the only
+  // signal this webhook has for which company a message belongs to. Look it
+  // up against business_identity (where each company stores their own Z-API
+  // credentials); fall back to the platform's own company for instances that
+  // haven't configured their own business_identity row yet.
+  const companyId = payload.instanceId
+    ? (await getCompanyIdByZapiInstance(payload.instanceId)) ?? process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
+    : process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
+
   if (!companyId) {
-    console.error('[webhook] NEXUS_PLATFORM_COMPANY_ID not set')
+    console.error('[webhook] Could not resolve company_id for instance', payload.instanceId)
     return NextResponse.json({ ok: true })
   }
 

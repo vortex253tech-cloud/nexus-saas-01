@@ -3,7 +3,7 @@
 // Returns up to 20 conversations with a matched_message preview if the hit is in a message.
 
 import { NextRequest, NextResponse }   from 'next/server'
-import { getSupabaseRouteClient }      from '@/lib/supabase-server'
+import { getAuthContext }              from '@/lib/auth'
 import { getSupabaseServerClient }     from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
@@ -12,21 +12,9 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? ''
   if (q.length < 2) return NextResponse.json({ results: [] })
 
-  // Auth
-  const supabaseAuth = await getSupabaseRouteClient()
-  const { data: { user }, error: authErr } = await supabaseAuth.auth.getUser()
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  // Resolve company
-  let companyId = process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
-  if (!companyId) {
-    const db = getSupabaseServerClient()
-    const { data: userRow } = await db.from('users').select('id').eq('auth_id', user.id).maybeSingle()
-    if (!userRow) return NextResponse.json({ results: [] })
-    const { data: company } = await db.from('companies').select('id').eq('user_id', userRow.id).maybeSingle()
-    if (!company) return NextResponse.json({ results: [] })
-    companyId = company.id
-  }
+  const ctx = await getAuthContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const companyId = ctx.companyId
 
   const db = getSupabaseServerClient()
   const like = `%${q}%`

@@ -33,7 +33,9 @@ export async function GET() {
       : { data: null }
 
     const platformCompanyId = process.env.NEXUS_PLATFORM_COMPANY_ID ?? null
-    const effectiveCompanyId = platformCompanyId ?? company?.id ?? null
+    // The session's own company is what every other WhatsApp route now uses —
+    // this debug endpoint mirrors that so it actually reflects what the user sees.
+    const effectiveCompanyId = company?.id ?? null
 
     // 3. Count conversations
     const { count: convCount } = effectiveCompanyId

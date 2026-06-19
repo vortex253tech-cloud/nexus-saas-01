@@ -41,21 +41,18 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = db()
-  const companyId = process.env.NEXUS_PLATFORM_COMPANY_ID ?? ''
 
-  if (!companyId) {
-    return NextResponse.json({ error: 'NEXUS_PLATFORM_COMPANY_ID not set' }, { status: 503 })
-  }
-
-  // Verify conversation exists
+  // Derive company_id from the conversation itself — this route is called
+  // fire-and-forget by the webhook (no session), and the conversation row
+  // already carries the right tenant, resolved at message-receive time.
   const { data: conv } = await supabase
     .from('whatsapp_conversations')
-    .select('id, phone, contact_name')
+    .select('id, company_id, phone, contact_name')
     .eq('id', conversation_id)
-    .eq('company_id', companyId)
     .maybeSingle()
 
   if (!conv) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+  const companyId = conv.company_id as string
 
   // Check if we already have context (skip if analyzed recently)
   const { data: existing } = await supabase
