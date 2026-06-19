@@ -172,6 +172,27 @@ Também corrigi um bug pequeno do código de referência: ele tinha `name: merge
 
 `npx tsc --noEmit` limpo.
 
+### ✅ Resolvido em 2026-06-19 — n8n decomissionado; sequência de nutrição do waitlist migrada para cron nativo
+
+Eu não tenho credenciais para o painel do n8n (infraestrutura externa, não há API/PAT do n8n no código) — não dava para confirmar sozinho se a instância estava ativa. Achei evidência indireta forte: os 5 arquivos em `n8n-workflows/` (último commit 2026-05-15, mesma data do "AI engine nativo" do WhatsApp) mostram os 4 workflows de email do waitlist com `"active": false` no JSON exportado, e o workflow de WhatsApp (`NEXUS-whatsapp-lead-responder.json`) recebia o webhook da Z-API diretamente e respondia via Claude+Z-API **sem passar pelo NEXUS** — uma pipeline paralela e independente da que corrigimos no item 7.
+
+**Confirmado pelo usuário (2026-06-19):** n8n não está mais em uso, foi substituído pelo engine nativo.
+
+**Achado consequente, não previsto na pergunta original:** sem o n8n, `/api/waitlist/send-sequence` (que dispara os emails de nutrição do waitlist — bastidores no dia 2, case study no dia 5, urgência no dia 9) **não tinha mais nenhum gatilho automático**. Os 3 workflows agendados do n8n eram o único disparador — sem eles, ninguém recebia esses emails, silenciosamente, desde o abandono do n8n (~2026-05-15 ou depois).
+
+**O que foi feito:**
+
+| Arquivo | Mudança |
+|---|---|
+| `lib/waitlist-sequence.ts` (novo) | Extrai a lógica de envio (antes só dentro do route handler) para `runWaitlistSequenceStep()`, reaproveitável tanto pela rota HTTP quanto pelo cron. |
+| `app/api/waitlist/send-sequence/route.ts` | Simplificado para só validar e delegar ao helper. Mantido — ainda serve para disparo manual/ad-hoc (em particular o step 5, e-mail de acesso, que sempre foi manual mesmo no n8n). |
+| `app/api/cron/waitlist-sequence/route.ts` (novo) | Roda diariamente os 3 steps agendados (`step 2 / days_ago 2`, `step 3 / days_ago 5`, `step 4 / days_ago 9`), substituindo nativamente os workflows agendados do n8n. O 4º workflow (acesso manual) não foi automatizado — continua exigindo disparo manual, como era no design original. |
+| `vercel.json` | Novo cron `/api/cron/waitlist-sequence`, diário às 14:00 UTC. |
+
+**Não corrigido, fora de escopo:** o workflow de WhatsApp do n8n (`NEXUS-whatsapp-lead-responder.json`) não foi tocado — está confirmado abandonado/substituído, mas como não está mais registrado como webhook ativo na Z-API (confirmado no item 5/7, a Z-API aponta para `/api/nexus/whatsapp/webhook`), não há ação necessária além de eventualmente arquivar a pasta `n8n-workflows/` como histórico morto (não fiz isso agora — é só renomeação/organização, baixo risco, mas não pedido explicitamente).
+
+`npx tsc --noEmit` limpo.
+
 ## Como registrar uma nova decisão
 
 Adicionar uma linha na tabela "Decisões já tomadas" com: a decisão, a evidência no código (arquivo/padrão), e o racional (mesmo que inferido). Se a decisão foi tomada em conversa com o usuário e não está visível no código ainda, registrar aqui mesmo assim — esse é exatamente o tipo de informação que se perde quando não há memória persistente.
