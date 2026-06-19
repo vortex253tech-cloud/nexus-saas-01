@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { getString, isRecord, readJsonObject } from '@/lib/unknown'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 import Anthropic from '@anthropic-ai/sdk'
 
 export const dynamic = 'force-dynamic'
@@ -33,10 +35,16 @@ type CustomerRow = {
 type CustomerJoin = CustomerRow[] | null
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   try {
     const body = await readJsonObject(req)
     const company_id = body ? getString(body, 'company_id') : undefined
     if (!company_id) return NextResponse.json({ error: 'company_id obrigatorio' }, { status: 400 })
+
+    const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(company_id))
+    if (overLimit) return overLimit
 
     const db = getSupabaseServerClient()
 
@@ -85,6 +93,7 @@ export async function POST(req: NextRequest) {
     }
 
     const aiAnalysis = await generateInsights({ metrics, top_debtors, monthlyRevenue })
+    void incrementAiUsage(company_id)
 
     return NextResponse.json({ metrics, top_debtors, monthly_revenue: monthlyRevenue, ai_analysis: aiAnalysis })
   } catch (err) {

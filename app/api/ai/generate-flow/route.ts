@@ -2,6 +2,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext }            from '@/lib/auth'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 import Anthropic                     from '@anthropic-ai/sdk'
 
 const SYSTEM = `Você é um especialista em automação de negócios e CRM.
@@ -34,8 +36,14 @@ Regras:
 - Máximo 6 nós`
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+
+  const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(ctx.company.id))
+  if (overLimit) return overLimit
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: 'AI não configurada' }, { status: 503 })
@@ -67,6 +75,7 @@ export async function POST(req: NextRequest) {
 
     if (!flow.nodes?.length) throw new Error('Fluxo inválido')
 
+    void incrementAiUsage(ctx.company.id)
     return NextResponse.json({ flow })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

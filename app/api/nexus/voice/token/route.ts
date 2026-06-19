@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse }   from 'next/server'
 import { createClient }                from '@supabase/supabase-js'
 import { getSupabaseRouteClient }      from '@/lib/supabase-server'
+import { denyIfCannot }                from '@/lib/plan-middleware'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -37,6 +38,11 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase.auth.getUser()
     if (error || !data.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     user = data.user
+
+    // Plan gate applies to the real browser flow (cookie auth).
+    // Bearer path above is for API clients/testing — not plan-gated.
+    const denied = await denyIfCannot('nexus_coo')
+    if (denied) return denied
   }
   void user // validated
 

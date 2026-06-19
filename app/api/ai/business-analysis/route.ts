@@ -13,6 +13,8 @@ import {
   buildStubAnalysis,
   type BusinessAnalysis,
 } from '@/lib/services/business-advisor'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60   // Vercel Pro — LLM calls can take 20-40s
@@ -118,6 +120,9 @@ Ordene recommended_actions por priority (1 = mais urgente).`
 // ─── Route ─────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   try {
     const body        = await readJsonObject(req)
     const bodyCompany = body ? getString(body, 'company_id') : undefined
@@ -127,6 +132,9 @@ export async function POST(req: NextRequest) {
     if (!companyId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
+    if (overLimit) return overLimit
 
     // 2. Fetch all business data in parallel
     const data = await fetchBusinessData(companyId)
@@ -175,6 +183,7 @@ export async function POST(req: NextRequest) {
             },
           }
           console.log('[business-analysis] ✅ AI score:', analysis.score)
+          void incrementAiUsage(companyId)
           return NextResponse.json(analysis)
         } catch {
           console.warn('[business-analysis] JSON parse failed — stub fallback')

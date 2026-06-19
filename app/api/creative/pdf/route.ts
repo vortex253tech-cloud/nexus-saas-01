@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic                     from '@anthropic-ai/sdk'
 import { getSupabaseServerClient }   from '@/lib/supabase'
 import { getAuthContext }            from '@/lib/auth'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 30
@@ -110,6 +112,9 @@ Use linguagem prática, direta e motivadora. Inclua exemplos reais do contexto f
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 503 })
   }
@@ -130,11 +135,18 @@ export async function POST(req: NextRequest) {
   const db  = getSupabaseServerClient()
   const ctx = await getAuthContext()
 
-  let companyId: string | null = ctx?.company.id ?? null
+  const companyId: string | null = ctx?.company.id ?? null
+  if (!companyId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
+  if (overLimit) return overLimit
+
   let companyName = ctx?.company.name ?? 'Minha Empresa'
   let niche       = ''
 
-  if (companyId) {
+  {
     const { data } = await db
       .from('company_identity')
       .select('fantasy_name, niche')
@@ -167,16 +179,15 @@ IMPORTANTE: Retorne APENAS o documento formatado em texto, sem introduções ou 
     const content = (message.content[0] as { type: string; text: string })?.text ?? ''
 
     // Persist to ai_generated_assets (best effort)
-    if (companyId) {
-      db.from('ai_generated_assets').insert({
-        company_id: companyId,
-        type:       `pdf_${type}`,
-        channel:    'document',
-        content,
-        metadata:   { context, pdf_type: type },
-      }).then(() => {}, () => {})
-    }
+    db.from('ai_generated_assets').insert({
+      company_id: companyId,
+      type:       `pdf_${type}`,
+      channel:    'document',
+      content,
+      metadata:   { context, pdf_type: type },
+    }).then(() => {}, () => {})
 
+    void incrementAiUsage(companyId)
     return NextResponse.json({ content, type, company_name: companyName })
   } catch (err) {
     console.error('[creative/pdf] Claude error:', err)

@@ -12,6 +12,8 @@ import { uploadFile } from '@/lib/storage/upload'
 import { extractDocumentText } from '@/lib/ai/processors'
 import { analyzeImage } from '@/lib/ai/vision/analyze-image'
 import { transcribeAudio } from '@/lib/ai/audio/transcribe'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 
 type MimeCategory = 'document' | 'image' | 'audio'
 
@@ -29,6 +31,10 @@ export async function POST(req: NextRequest) {
   }
 
   const { companyId, authId } = auth
+
+  // Image/audio analysis costs an AI call; plain document parsing is local (no LLM)
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
 
   // ── 2. Parse multipart form ───────────────────────────────────────────────────
   let formData: FormData
@@ -75,18 +81,26 @@ export async function POST(req: NextRequest) {
       aiSummary = meta.join(' | ')
 
     } else if (category === 'image') {
+      const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
+      if (overLimit) return overLimit
+
       const imageMime = mime as 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
       const analysis  = await analyzeImage(buffer, imageMime)
       extractedText   = analysis.description
       aiSummary       = `Imagem analisada: ${filename}`
+      void incrementAiUsage(companyId)
 
     } else if (category === 'audio') {
+      const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
+      if (overLimit) return overLimit
+
       const transcription = await transcribeAudio(buffer, filename, mime)
       extractedText       = transcription.text
       const dur = transcription.duration
         ? ` (${Math.round(transcription.duration)}s)`
         : ''
       aiSummary = `Áudio transcrito: ${filename}${dur}`
+      void incrementAiUsage(companyId)
     }
   } catch (err) {
     console.error('[upload] extraction error:', err)

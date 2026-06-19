@@ -22,6 +22,8 @@ import { getString } from '@/lib/unknown'
 import { buildFinancialContext, buildSmartFallback, fmtBRL } from '@/lib/services/context-builder'
 import { detectIntent, runAction, formatActionResult } from '@/lib/actions/runner'
 import { loadMemory, formatMemoryForPrompt, extractAndSaveMemory } from '@/lib/ai/memory'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 import Anthropic from '@anthropic-ai/sdk'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -133,6 +135,9 @@ function sseError(message: string): string {
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   let body: Record<string, unknown> | null = null
   try { body = await req.json() } catch { /* empty body */ }
 
@@ -173,6 +178,15 @@ export async function POST(req: NextRequest) {
         return
       }
       const { companyId, authId } = resolved
+
+      // ── 1b. AI usage limit ───────────────────────────────────────────────────
+      const usage = await getAiUsage(companyId)
+      const overLimit = await denyIfAtLimit('max_ai_messages', usage)
+      if (overLimit) {
+        await writer.write(sseError('Limite de mensagens de IA do seu plano foi atingido. Faça upgrade para continuar.'))
+        await writer.close()
+        return
+      }
 
       // ── 2. Build context ────────────────────────────────────────────────────
       const db = getSupabaseServerClient()
@@ -291,6 +305,7 @@ ${JSON.stringify(ctx, null, 2)}${supplierCtx}${memoryBlock}${attachmentBlock}${a
       }
 
       // ── 10. Send done event ─────────────────────────────────────────────────
+      void incrementAiUsage(companyId)
       await writer.write(sseDone({ action_card: actionCard, conversation_id: convId }))
       await writer.close()
 

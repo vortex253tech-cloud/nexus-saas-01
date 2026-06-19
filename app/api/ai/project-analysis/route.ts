@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 import Anthropic from '@anthropic-ai/sdk'
 
 interface Product  { name: string; price: number; cost: number; margin: number; status: string }
@@ -10,8 +12,14 @@ interface Revenue  { name: string; value: number; source: string; date: string }
 interface Expense  { name: string; value: number; category: string; date: string }
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+
+  const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(ctx.company.id))
+  if (overLimit) return overLimit
 
   const { projectId } = await req.json() as { projectId?: string }
   if (!projectId) return NextResponse.json({ error: 'projectId obrigatório' }, { status: 400 })
@@ -143,6 +151,7 @@ ${dataStr}`,
     }
 
     await saveAnalysis(db, projectId, ctx.company.id, parsed)
+    void incrementAiUsage(ctx.company.id)
     return NextResponse.json({ ...parsed, metrics })
   } catch (err) {
     console.error('[project-analysis]', err)

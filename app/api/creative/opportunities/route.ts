@@ -7,6 +7,8 @@ import Anthropic                     from '@anthropic-ai/sdk'
 import { getAuthContext }            from '@/lib/auth'
 import { getSupabaseServerClient }   from '@/lib/supabase'
 import { fetchBusinessData, buildAnalysisContext } from '@/lib/services/business-advisor'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 45
@@ -177,6 +179,9 @@ function buildStubCards(companyName: string): OpportunityResponse {
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function GET() {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   try {
     const companyId = await resolveCompanyId()
     if (!companyId) {
@@ -189,6 +194,9 @@ export async function GET() {
     if (!apiKey) {
       return NextResponse.json({ ...buildStubCards(companyName) })
     }
+
+    const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
+    if (overLimit) return overLimit
 
     // Fetch real business data
     const data = await fetchBusinessData(companyId)
@@ -220,6 +228,7 @@ export async function GET() {
       cards: OpportunityCard[]
     }
 
+    void incrementAiUsage(companyId)
     return NextResponse.json({
       ...parsed,
       company_name: companyName,

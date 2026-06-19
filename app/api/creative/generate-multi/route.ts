@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic                     from '@anthropic-ai/sdk'
 import { getSupabaseServerClient }   from '@/lib/supabase'
 import { getAuthContext }            from '@/lib/auth'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -152,6 +154,9 @@ Headline + subtítulo + texto curto.`,
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY não configurada' }, { status: 503 })
@@ -175,6 +180,10 @@ export async function POST(req: NextRequest) {
     if (!companyId) {
       return NextResponse.json({ error: 'company_id required' }, { status: 400 })
     }
+
+    // 3 tones = 3 LLM calls — check there's room for at least one before spending
+    const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
+    if (overLimit) return overLimit
 
     const identity = await loadIdentity(companyId)
     const client   = new Anthropic({ apiKey })
@@ -216,6 +225,7 @@ export async function POST(req: NextRequest) {
       ),
     )
 
+    void incrementAiUsage(companyId, variations.length)
     return NextResponse.json({
       variations,
       generation_ms: generationMs,

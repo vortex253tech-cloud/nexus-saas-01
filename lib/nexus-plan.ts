@@ -48,7 +48,7 @@ const PLAN_CONFIG: Record<Plan, {
   limits:   Record<PlanLimit, number>
 }> = {
   free: {
-    features: [],
+    features: ['nexus_ai'],
     limits: {
       max_users:        1,
       max_leads:        10,

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { resolveCompanyId } from '@/lib/get-company-id'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 
 // ─── DALL-E size mapping ──────────────────────────────────────────────────────
 
@@ -75,6 +77,9 @@ function buildDallePrompt(
 // ─── POST /api/creative/image ─────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     return NextResponse.json({ error: 'OPENAI_API_KEY não configurada' }, { status: 503 })
@@ -102,9 +107,15 @@ export async function POST(req: NextRequest) {
       try { companyId = await resolveCompanyId() } catch { /* ok */ }
     }
 
-    const companyName = companyId
-      ? await loadCompanyName(db, companyId)
-      : 'Minha Empresa'
+    if (!companyId) {
+      return NextResponse.json({ error: 'company_id required' }, { status: 400 })
+    }
+
+    // DALL-E 3 is the most expensive AI call in the app — gate before spending
+    const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
+    if (overLimit) return overLimit
+
+    const companyName = await loadCompanyName(db, companyId)
 
     const size  = RATIO_SIZE[ratio] ?? '1024x1024'
     const prompt = buildDallePrompt(description, style, objective, companyName)
@@ -129,19 +140,18 @@ export async function POST(req: NextRequest) {
     const generationMs = Date.now() - t0
 
     // Persist asset record
-    if (companyId) {
-      await db.from('ai_generated_assets').insert({
-        company_id:    companyId,
-        type:          'image',
-        subtype:       ratio,
-        prompt:        description,
-        image_url:     imageUrl,
-        model_used:    'dall-e-3',
-        generation_ms: generationMs,
-        metadata:      { style, objective, size, revised_prompt: revisedPrompt },
-      })
-    }
+    await db.from('ai_generated_assets').insert({
+      company_id:    companyId,
+      type:          'image',
+      subtype:       ratio,
+      prompt:        description,
+      image_url:     imageUrl,
+      model_used:    'dall-e-3',
+      generation_ms: generationMs,
+      metadata:      { style, objective, size, revised_prompt: revisedPrompt },
+    })
 
+    void incrementAiUsage(companyId)
     return NextResponse.json({
       url:            imageUrl,
       revised_prompt: revisedPrompt,

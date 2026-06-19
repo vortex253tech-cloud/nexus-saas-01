@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { resolveCompanyId } from '@/lib/get-company-id'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
+import { getAiUsage, incrementAiUsage } from '@/lib/usage'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -166,6 +168,9 @@ Retorne JSON:
 // ─── POST /api/creative/generate ─────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('nexus_ai')
+  if (denied) return denied
+
   try {
     const body = await req.json() as {
       type:       GenerateType
@@ -190,6 +195,9 @@ export async function POST(req: NextRequest) {
     if (!companyId) {
       return NextResponse.json({ error: 'company_id required' }, { status: 400 })
     }
+
+    const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
+    if (overLimit) return overLimit
 
     // Load identity
     const identity = await loadIdentity(db, companyId)
@@ -246,6 +254,7 @@ export async function POST(req: NextRequest) {
       .select('id')
       .single()
 
+    void incrementAiUsage(companyId)
     return NextResponse.json({
       ...result,
       asset_id:       asset?.id,

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseRouteClient }    from '@/lib/supabase-server'
 import { createClient }              from '@supabase/supabase-js'
+import { denyIfCannot }              from '@/lib/plan-middleware'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 20
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
   const supabaseAuth = await getSupabaseRouteClient()
   const { data: { user }, error } = await supabaseAuth.auth.getUser()
   if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const denied = await denyIfCannot('nexus_coo')
+  if (denied) return denied
 
   let body: { tool: string; params: Record<string, unknown> }
   try { body = await req.json() } catch {
