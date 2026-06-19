@@ -2,8 +2,9 @@
 // Auto-populate lead_context from conversation messages via OpenAI
 // Called internally by webhook (fire-and-forget) or manually
 
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient }              from '@supabase/supabase-js'
+import { NextRequest, NextResponse }   from 'next/server'
+import { createClient }                from '@supabase/supabase-js'
+import { syncWhatsAppLeadToLeads }     from '@/lib/leads-sync'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 30
@@ -157,6 +158,23 @@ Se não houver informação suficiente para um campo, use null (ou [] para dores
   if (upsertErr) {
     console.error('[analyze] upsert error:', upsertErr)
     return NextResponse.json({ ok: true, skipped: 'upsert_error' })
+  }
+
+  // Mirror into the general Leads/CRM table — see lib/leads-sync.ts
+  try {
+    await syncWhatsAppLeadToLeads({
+      supabase,
+      companyId: companyId,
+      phone:     conv.phone as string,
+      context: {
+        nome:    upsertData.nome    as string | undefined,
+        empresa: upsertData.empresa as string | undefined,
+        nicho:   upsertData.nicho   as string | undefined,
+        estagio: upsertData.estagio as string | undefined,
+      },
+    })
+  } catch (err) {
+    console.error('[analyze] leads sync error:', err)
   }
 
   return NextResponse.json({ ok: true, extracted })
