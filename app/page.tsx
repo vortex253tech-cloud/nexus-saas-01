@@ -10,27 +10,6 @@ import {
   Play, Sparkles, Globe,
 } from 'lucide-react'
 
-// ─── Count-up hook ────────────────────────────────────────────────────────────
-
-function useCountUp(target: number, duration = 2200, start = false) {
-  const [count, setCount] = useState(0)
-  useEffect(() => {
-    if (!start) return
-    let raf: number
-    const startTime = performance.now()
-    const tick = (now: number) => {
-      const p    = Math.min((now - startTime) / duration, 1)
-      const ease = 1 - Math.pow(1 - p, 3)
-      setCount(Math.floor(ease * target))
-      if (p < 1) raf = requestAnimationFrame(tick)
-      else setCount(target)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [target, duration, start])
-  return count
-}
-
 // ─── Ambient background ──────────────────────────────────────────────────────
 
 function Mesh() {
@@ -433,21 +412,16 @@ function LiveDemo() {
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
-const IMPACT = [
-  { label: 'Ações executadas pela IA',  value: 50000, suf: '+',   pre: '' },
-  { label: 'Tarefas criadas',           value: 10000, suf: '+',   pre: '' },
-  { label: 'Empresas operadas',         value: 1000,  suf: '+',   pre: '' },
-  { label: 'Receita recuperada',        value: 24,    suf: 'M+',  pre: 'R$ ' },
+const EARLY_ACCESS = [
+  { icon: Users,      label: 'Onboarding direto com o time', desc: 'Sem suporte terceirizado — você fala com quem construiu o NEXUS.' },
+  { icon: DollarSign, label: 'Preço de fundador travado',     desc: 'O valor que você ativa agora não sobe nos próximos reajustes.' },
+  { icon: Workflow,   label: 'Prioridade nas próximas features', desc: 'O que você pedir entra na fila de desenvolvimento primeiro.' },
+  { icon: Check,      label: 'Sem contrato de fidelidade',    desc: '7 dias grátis, cancele quando quiser, sem multa.' },
 ]
 
-function ImpactStats() {
+function EarlyAccess() {
   const ref      = useRef<HTMLDivElement>(null)
   const isInView = useInView(ref, { once: true, margin: '-80px' })
-  const c0 = useCountUp(IMPACT[0].value, 2200, isInView)
-  const c1 = useCountUp(IMPACT[1].value, 2200, isInView)
-  const c2 = useCountUp(IMPACT[2].value, 2200, isInView)
-  const c3 = useCountUp(IMPACT[3].value, 2200, isInView)
-  const counts = [c0, c1, c2, c3]
 
   return (
     <section className="py-24 px-6" ref={ref}>
@@ -457,24 +431,26 @@ function ImpactStats() {
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           className="text-center mb-12"
         >
-          <h2 className="text-4xl md:text-5xl font-black text-white mb-4">Números que provam</h2>
-          <p className="text-zinc-400 text-lg">Resultados reais de empresas com Nexus OS.</p>
+          <p className="text-[11px] font-black text-violet-400 uppercase tracking-widest mb-4">Fase de acesso antecipado</p>
+          <h2 className="text-4xl md:text-5xl font-black text-white mb-4">Entrar agora vale mais que entrar depois</h2>
+          <p className="text-zinc-400 text-lg">NEXUS está em lançamento. Quem ativa agora trava condições que não voltam.</p>
         </motion.div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-px rounded-2xl overflow-hidden border border-white/5 bg-white/5">
-          {IMPACT.map((s, i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-px rounded-2xl overflow-hidden border border-white/5 bg-white/5">
+          {EARLY_ACCESS.map((s, i) => (
             <motion.div
               key={s.label}
               initial={{ opacity: 0, y: 20 }}
               animate={isInView ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.6, delay: i * 0.1 }}
-              className="flex flex-col items-center justify-center p-8 text-center"
-              style={{ background: 'rgba(8,8,18,0.98)' }}
+              className="flex flex-col items-start gap-3 p-7"
+              style={{ background: 'rgba(10,14,22,0.97)' }}
             >
-              <p className="text-[clamp(28px,5vw,48px)] font-black text-white leading-none mb-2">
-                {s.pre}{counts[i].toLocaleString('pt-BR')}{s.suf}
-              </p>
-              <p className="text-[12px] text-zinc-500 leading-tight">{s.label}</p>
+              <div className="w-9 h-9 rounded-lg bg-violet-600/15 border border-violet-500/25 flex items-center justify-center">
+                <s.icon className="w-4 h-4 text-violet-400" />
+              </div>
+              <p className="text-[15px] font-bold text-white leading-tight">{s.label}</p>
+              <p className="text-[13px] text-zinc-500 leading-relaxed">{s.desc}</p>
             </motion.div>
           ))}
         </div>
@@ -660,58 +636,53 @@ function OSModules() {
   )
 }
 
-// ─── Social Proof ─────────────────────────────────────────────────────────────
+// ─── Founder's note ───────────────────────────────────────────────────────────
+// Deliberately no fabricated logos/testimonials/usage stats here. NEXUS is
+// pre-scale — an honest "why trust something new" framing converts better
+// with this audience than invented social proof, and doesn't blow up the
+// moment a prospect asks to talk to "Ricardo Melo da AgênciaPrime".
 
-const TESTIMONIALS = [
-  { name: 'Ricardo Melo',     role: 'CEO · AgênciaPrime',  text: 'Em 30 dias, o Nexus automatizou 80% das cobranças. Recuperamos R$ 42.000 sem esforço manual.', stars: 5 },
-  { name: 'Fernanda Costa',   role: 'Diretora · Saúde+',   text: 'Nossa equipe passou de 12h respondendo WhatsApp para 2h. O Nexus faz o resto com perfeição.', stars: 5 },
-  { name: 'Paulo Drummond',   role: 'Fundador · StartupBR', text: 'Finalmente um sistema que age como COO real. Triplicamos conversão em 60 dias.', stars: 5 },
+const SELF_SELECT = [
+  { fit: true,  text: 'Sua empresa já fatura e você quer ver onde a IA recupera receita ou corta custo — com números, não promessa.' },
+  { fit: true,  text: 'Você toma a decisão de comprar (sócio, CEO, diretor) e quer testar antes de comprometer o time todo.' },
+  { fit: false, text: 'Sua empresa ainda não tem faturamento recorrente, ou você só está pesquisando IA por curiosidade.' },
 ]
 
-function SocialProof() {
+function FounderNote() {
   const ref      = useRef<HTMLDivElement>(null)
   const isInView = useInView(ref, { once: true, margin: '-60px' })
 
   return (
     <section className="py-24 px-6" ref={ref}>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           className="text-center mb-12"
         >
-          <p className="text-[11px] font-black text-violet-400 uppercase tracking-widest mb-4">Prova social</p>
-          <h2 className="text-4xl md:text-5xl font-black text-white mb-4">Empresas que operam com Nexus</h2>
+          <p className="text-[11px] font-black text-violet-400 uppercase tracking-widest mb-4">Direto ao ponto</p>
+          <h2 className="text-4xl md:text-5xl font-black text-white mb-4">NEXUS é novo. É por isso que vale entrar agora.</h2>
+          <p className="text-zinc-400 text-lg max-w-xl mx-auto">
+            Não vamos inventar 1.000 clientes que não existem. NEXUS está em fase de
+            acesso antecipado — quem entra agora ajuda a moldar o produto e trava
+            condições que não vão existir depois.
+          </p>
         </motion.div>
 
-        {/* Logos */}
-        <motion.div initial={{ opacity: 0 }} animate={isInView ? { opacity: 1 } : {}} transition={{ delay: 0.2 }}
-          className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4 mb-14">
-          {['AGÊNCIA PRIME', 'SAÚDE+', 'STARTUPBR', 'CONTABILIZA', 'FIT CLUB', 'DELIVERY MAX'].map((l, i) => (
-            <motion.span key={l} initial={{ opacity: 0 }} animate={isInView ? { opacity: 1 } : {}} transition={{ delay: 0.05 * i }}
-              className="text-[11px] font-black text-zinc-700 tracking-[0.2em]">{l}</motion.span>
-          ))}
-        </motion.div>
-
-        {/* Testimonials */}
-        <div className="grid md:grid-cols-3 gap-5">
-          {TESTIMONIALS.map((t, i) => (
+        <div className="space-y-3">
+          {SELF_SELECT.map((s, i) => (
             <motion.div
-              key={t.name}
-              initial={{ opacity: 0, y: 20 }}
-              animate={isInView ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.6, delay: 0.15 + i * 0.1 }}
-              className="rounded-2xl border border-white/5 p-6"
-              style={{ background: 'rgba(12,12,20,0.8)' }}
+              key={s.text}
+              initial={{ opacity: 0, x: -12 }}
+              animate={isInView ? { opacity: 1, x: 0 } : {}}
+              transition={{ duration: 0.5, delay: 0.1 + i * 0.08 }}
+              className="flex items-start gap-3 rounded-xl border border-white/5 p-4"
+              style={{ background: 'rgba(10,14,22,0.97)' }}
             >
-              <div className="flex gap-0.5 mb-4">
-                {[...Array(t.stars)].map((_, j) => <span key={j} className="text-amber-400 text-xs">★</span>)}
-              </div>
-              <p className="text-[13px] text-zinc-400 leading-relaxed mb-5">"{t.text}"</p>
-              <div>
-                <p className="text-[13px] font-bold text-white">{t.name}</p>
-                <p className="text-[11px] text-zinc-600">{t.role}</p>
-              </div>
+              <span className={`mt-0.5 text-[13px] font-black ${s.fit ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                {s.fit ? 'É pra você ·' : 'Não é pra você ·'}
+              </span>
+              <span className="text-[13px] text-zinc-400 leading-relaxed">{s.text}</span>
             </motion.div>
           ))}
         </div>
@@ -937,10 +908,10 @@ export default function HomePage() {
         <Nav />
         <Hero />
         <LiveDemo />
-        <ImpactStats />
+        <EarlyAccess />
         <CooVsChat />
         <OSModules />
-        <SocialProof />
+        <FounderNote />
         <Pricing />
         <FinalCTA />
         <Footer />
