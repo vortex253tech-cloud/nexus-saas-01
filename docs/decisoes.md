@@ -14,6 +14,23 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ✅ 2026-06-21 — Dashboard: Autopilot reconectado ao motor real + voice/v8 rebrand da landing page
+
+**Contexto para quem abrir esta sessão sem o histórico do chat**: o usuário pediu, em sequência, (1) corrigir o botão "Autopilot" do dashboard, (2) um rebrand visual da home pública preservando a identidade azul/escura atual (não voltar ao roxo/neon antigo), com voz e simulação do NEXUS operando, e depois (3) intensificar o azul porque a primeira versão ficou "flat/banco".
+
+**1) Bug real corrigido — Autopilot do dashboard era 100% decorativo.** O botão em `app/dashboard/page.tsx` lia/escrevia `localStorage` e chamava `POST /api/user/preferences` com `{ autopilotEnabled }`, campo que essa rota **ignora silenciosamente** (só trata `themeKey`). Ou seja, clicar nunca setava `companies.autopilot_enabled`, a flag real que o cron `/api/cron/ai-runner` (motor de decisão rule-based, já existente) verifica antes de rodar. Religado para usar `/api/autopilot/enable` (GET/POST), que já existia e já fazia a coisa certa. Bloqueado por outro bug até o usuário rodar manualmente: `ALTER TABLE companies ADD COLUMN IF NOT EXISTS updated_at ...` — faltava a coluna que um trigger genérico já esperava. **Confirmado pelo usuário em 2026-06-21 que a migration foi rodada.** Falta só testar o toggle na UI pra fechar o ciclo.
+
+**2) Novo cron `/api/cron/insights-generate`** — o motor de insights via Claude (`lib/ai.ts`, usado pela página Advisor) só rodava on-demand. Agora roda diário (`vercel.json`, 08:30) para empresas com assinatura ativa/trial e `financial_data`, com debounce de 20h e WhatsApp do top insight.
+
+**3) Rebrand da home (`app/page.tsx`) — v8**: Hero virou duas colunas (texto+CTA à esquerda, orb de voz à direita). Orb novo (`components/VoiceOrb.tsx`) com waveform **real** (Web Audio API `AnalyserNode`, não CSS fake), tocando um áudio gerado por TTS (`public/audio/nexus-welcome.mp3`, OpenAI `tts-1-hd`, voz `onyx`) com o script de apresentação do NEXUS. Seção de módulos renomeada para "O NEXUS pensa" (6 cards: Vendas/Financeiro/CRM/Projetos/WhatsApp/Automações). Nova seção "Como o NEXUS trabalha" (timeline de 6 passos). Nebulosa azul + partículas discretas de volta no fundo (uma só, baixa opacidade — não é o mesh roxo/neon antigo).
+**Decisão explícita de não fazer**: o briefing original pedia números de prova social fabricados (+50.000 automações, +1.000.000 mensagens, 99,9% disponibilidade) e um vídeo de avatar humano falando. Ambos ficaram de fora — o primeiro por ser propaganda enganosa (mesmo problema já corrigido antes no funil do Lovable, ver [[project_nexus_marketing_stack]] na memória), o segundo por exigir um serviço terceiro (HeyGen/D-ID) fora do escopo desta sessão.
+
+**4) Ajuste de cor (2026-06-21, mesma sessão)**: a primeira versão usava `#1E40AF` (azul-marinho) sólido nos CTAs, e o usuário achou "flat, parece banco". Troquei para um gradiente mais vívido `#2563EB → #1D4ED8` em todos os CTAs sólidos (home, planos, login, resultado, setup) e intensifiquei todo glow que ainda estava em `rgba(30,64,175,...)` para `rgba(37,99,235,...)`, mantendo a mesma família de azul (não voltou pra roxo).
+
+**Commits**: `4ff6997` (autopilot fix + cron) e `6106b79` (ajuste de azul vívido), ambos já em `origin/main`.
+
+**Pendente**: usuário ainda vai testar a home no navegador e o toggle do Autopilot na UI — nenhum dos dois foi visualmente verificado por mim (sem acesso a browser nesta sessão).
+
 ## 🟠 Confirmado contra o painel real da Z-API em 2026-06-18 — código de setup está dessincronizado da config em produção (risco de regressão)
 
 O usuário verificou diretamente o painel da Z-API (app.z-api.io → instância "nexus" → Webhooks e configurações gerais). Isso resolve a hipótese anterior e revela um problema mais preciso:
