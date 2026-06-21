@@ -44,7 +44,7 @@ function OnboardingScreen({ onEnter }: { onEnter: () => void }) {
         initial={{ scale: 0.6, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.1 }}
-        className="mb-8 flex h-20 w-20 items-center justify-center rounded-2xl bg-violet-600 shadow-[0_0_60px_rgba(30,64,175,0.5)]"
+        className="mb-8 flex h-20 w-20 items-center justify-center rounded-2xl bg-violet-600 shadow-[0_0_60px_rgba(37,99,235,0.5)]"
       >
         <Sparkles className="h-10 w-10 text-white" />
       </motion.div>
@@ -201,7 +201,7 @@ function LoginForm() {
         {/* ── Left panel ─────────────────────────────────────────────────────── */}
         <div className="hidden flex-col justify-between p-12 lg:flex lg:w-[45%] xl:w-[40%]">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 shadow-[0_0_20px_rgba(30,64,175,0.4)]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 shadow-[0_0_20px_rgba(37,99,235,0.4)]">
               <Activity className="h-5 w-5 text-white" />
             </div>
             <span className="text-xl font-bold tracking-tight">
@@ -381,7 +381,7 @@ function LoginForm() {
                   <button
                     type="submit"
                     disabled={busy}
-                    className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(30,64,175,0.25)] transition-all hover:bg-violet-500 hover:shadow-[0_0_32px_rgba(30,64,175,0.4)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-violet-600 py-3.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(37,99,235,0.25)] transition-all hover:bg-violet-500 hover:shadow-[0_0_32px_rgba(37,99,235,0.4)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {loading ? (
                       <><Loader2 className="h-4 w-4 animate-spin" />Verificando…</>

@@ -30,7 +30,7 @@ function Mesh() {
         animate={{ x: [0, 40, 0], y: [0, -30, 0] }}
         transition={{ duration: 26, repeat: Infinity, ease: 'easeInOut' }}
         className="absolute -top-40 left-1/3 w-[900px] h-[700px] rounded-full opacity-[0.07]"
-        style={{ background: 'radial-gradient(ellipse, #1E40AF 0%, transparent 70%)', filter: 'blur(100px)' }}
+        style={{ background: 'radial-gradient(ellipse, #2563EB 0%, transparent 70%)', filter: 'blur(100px)' }}
       />
 
       {/* Grid */}
@@ -100,7 +100,7 @@ function Nav() {
         <Link
           href="/signup"
           className="text-[13px] font-bold text-white px-5 py-2 rounded-xl transition-all duration-200 hover:scale-[1.02]"
-          style={{ background: '#1E40AF' }}
+          style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)' }}
         >
           Começar grátis
         </Link>
@@ -167,8 +167,8 @@ function Hero() {
                 href="/signup"
                 className="group inline-flex items-center gap-2.5 text-[15px] font-black text-white px-9 py-4 rounded-2xl transition-all duration-300 hover:scale-[1.02]"
                 style={{
-                  background: '#1E40AF',
-                  boxShadow: '0 0 28px rgba(30,64,175,0.35), 0 8px 24px rgba(0,0,0,0.35)',
+                  background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
+                  boxShadow: '0 0 28px rgba(37,99,235,0.35), 0 8px 24px rgba(0,0,0,0.35)',
                 }}
               >
                 <Zap className="w-4 h-4" fill="currentColor" />
@@ -413,7 +413,7 @@ function LiveDemo() {
                     >
                       <div
                         className="max-w-[82%] rounded-2xl rounded-tl-sm px-4 py-3 border border-violet-500/15"
-                        style={{ background: 'rgba(30,64,175,0.12)' }}
+                        style={{ background: 'rgba(37,99,235,0.12)' }}
                       >
                         {isCurrent && phase === 'waiting' ? (
                           <div className="flex items-center gap-2">
@@ -714,7 +714,7 @@ function Timeline() {
               >
                 <div
                   className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-black text-white border border-violet-500/30 z-10"
-                  style={{ background: 'rgba(30,64,175,0.18)' }}
+                  style={{ background: 'rgba(37,99,235,0.18)' }}
                 >
                   {step.n}
                 </div>
@@ -843,15 +843,15 @@ function Pricing() {
               className="relative rounded-2xl p-6 border"
               style={{
                 background: plan.hot
-                  ? 'rgba(30,64,175,0.08)'
+                  ? 'rgba(37,99,235,0.08)'
                   : 'rgba(10,14,22,0.97)',
-                border: plan.hot ? '1px solid rgba(30,64,175,0.5)' : '1px solid rgba(255,255,255,0.06)',
+                border: plan.hot ? '1px solid rgba(37,99,235,0.5)' : '1px solid rgba(255,255,255,0.06)',
                 boxShadow: plan.hot ? '0 20px 40px rgba(0,0,0,0.4)' : undefined,
               }}
             >
               {plan.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-black text-white tracking-wider"
-                  style={{ background: '#1E40AF' }}>
+                  style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)' }}>
                   {plan.badge}
                 </div>
               )}
@@ -880,7 +880,7 @@ function Pricing() {
                   plan.hot ? 'text-white' : 'text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-200'
                 }`}
                 style={plan.hot ? {
-                  background: '#1E40AF',
+                  background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
                 } : {}}
               >
                 {plan.cta}
@@ -908,7 +908,7 @@ function FinalCTA() {
         className="max-w-4xl mx-auto relative rounded-3xl overflow-hidden text-center"
         style={{
           background: 'rgba(13,20,33,0.98)',
-          border: '1px solid rgba(30,64,175,0.35)',
+          border: '1px solid rgba(37,99,235,0.35)',
           boxShadow: '0 40px 80px rgba(0,0,0,0.5)',
         }}
       >
@@ -950,8 +950,8 @@ function FinalCTA() {
               href="/signup"
               className="group inline-flex items-center gap-3 text-[17px] font-black text-white px-14 py-5 rounded-2xl transition-all duration-300 hover:scale-[1.02]"
               style={{
-                background: '#1E40AF',
-                boxShadow: '0 0 36px rgba(30,64,175,0.4), 0 12px 32px rgba(0,0,0,0.4)',
+                background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
+                boxShadow: '0 0 36px rgba(37,99,235,0.4), 0 12px 32px rgba(0,0,0,0.4)',
               }}
             >
               <Zap className="w-5 h-5" fill="currentColor" />

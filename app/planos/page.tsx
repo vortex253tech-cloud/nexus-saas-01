@@ -147,7 +147,7 @@ export default function PlanosPage() {
               className={cn(
                 'relative flex flex-col overflow-hidden rounded-2xl border p-6',
                 plano.destaque
-                  ? 'border-violet-600/60 bg-gradient-to-b from-violet-950/40 to-zinc-950 shadow-[0_0_40px_rgba(30,64,175,0.15)]'
+                  ? 'border-violet-600/60 bg-gradient-to-b from-violet-950/40 to-zinc-950 shadow-[0_0_40px_rgba(37,99,235,0.15)]'
                   : 'border-zinc-800 bg-zinc-900/60',
               )}
             >
@@ -159,7 +159,7 @@ export default function PlanosPage() {
               {/* Badge */}
               {plano.badge && (
                 <div className="absolute -top-px right-6">
-                  <div className="flex items-center gap-1 rounded-b-lg bg-violet-600 px-3 py-1 text-xs font-bold text-white shadow-[0_0_16px_rgba(30,64,175,0.4)]">
+                  <div className="flex items-center gap-1 rounded-b-lg bg-violet-600 px-3 py-1 text-xs font-bold text-white shadow-[0_0_16px_rgba(37,99,235,0.4)]">
                     <Star className="h-2.5 w-2.5 fill-current" />
                     {plano.badge}
                   </div>
@@ -216,7 +216,7 @@ export default function PlanosPage() {
                 className={cn(
                   'group flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-all active:scale-[0.98]',
                   plano.destaque
-                    ? 'bg-violet-600 text-white shadow-[0_0_24px_rgba(30,64,175,0.3)] hover:bg-violet-500 hover:shadow-[0_0_32px_rgba(30,64,175,0.45)]'
+                    ? 'bg-violet-600 text-white shadow-[0_0_24px_rgba(37,99,235,0.3)] hover:bg-violet-500 hover:shadow-[0_0_32px_rgba(37,99,235,0.45)]'
                     : 'border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white',
                 )}
               >

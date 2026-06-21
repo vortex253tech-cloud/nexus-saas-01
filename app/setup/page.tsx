@@ -130,7 +130,7 @@ function BootStep({ onStart }: { onStart: () => void }) {
       <div className="relative mb-12">
         <div
           className="relative flex h-24 w-24 items-center justify-center rounded-full border border-violet-700/40"
-          style={{ background: 'rgba(30,64,175,0.12)' }}
+          style={{ background: 'rgba(37,99,235,0.12)' }}
         >
           <Brain size={38} className="text-violet-300" />
         </div>
@@ -190,7 +190,7 @@ function BootStep({ onStart }: { onStart: () => void }) {
         transition={{ delay: 0.2 }}
         onClick={onStart}
         className="group relative flex items-center gap-3 rounded-2xl px-8 py-4 text-base font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
-        style={{ background: '#1E40AF' }}
+        style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)' }}
       >
         <Zap size={18} className="text-violet-200" />
         Inicializar NEXUS
@@ -652,7 +652,7 @@ function AnalysisStep({ companyName, onNext }: { companyName: string; onNext: ()
           animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0, 0.3] }}
           transition={{ duration: 2, repeat: Infinity }}
         />
-        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-violet-700/40" style={{ background: 'rgba(30,64,175,0.12)' }}>
+        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-violet-700/40" style={{ background: 'rgba(37,99,235,0.12)' }}>
           <Brain size={32} className="text-violet-400" />
         </div>
       </div>
@@ -741,7 +741,7 @@ function ActivationStep({ companyName, onComplete, completing }: {
             className="absolute rounded-full"
             style={{
               inset: -(i + 1) * 20,
-              border: `1px solid rgba(30,64,175,${0.2 - i * 0.05})`,
+              border: `1px solid rgba(37,99,235,${0.2 - i * 0.05})`,
             }}
             animate={{ scale: [1, 1 + (i + 1) * 0.05, 1], opacity: [0.2 - i * 0.05, 0.4 - i * 0.1, 0.2 - i * 0.05] }}
             transition={{ duration: 3 + i, repeat: Infinity, ease: 'easeInOut', delay: i * 0.4 }}
@@ -749,7 +749,7 @@ function ActivationStep({ companyName, onComplete, completing }: {
         ))}
         <motion.div
           className="relative flex h-24 w-24 items-center justify-center rounded-full border border-violet-600/40"
-          style={{ background: '#1E40AF' }}
+          style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)' }}
         >
           <Zap size={38} className="text-violet-200" />
         </motion.div>
@@ -811,7 +811,7 @@ function ActivationStep({ companyName, onComplete, completing }: {
             onClick={onComplete}
             disabled={completing}
             className="group relative flex items-center gap-3 rounded-2xl px-8 py-4 text-base font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: '#1E40AF' }}
+            style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)' }}
           >
             {completing
               ? <><Loader2 size={16} className="animate-spin" /> Abrindo Centro Operacional…</>

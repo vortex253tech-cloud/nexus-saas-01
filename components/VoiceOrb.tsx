@@ -143,7 +143,7 @@ export default function VoiceOrb() {
         <button
           onClick={handlePlay}
           className="relative z-10 w-24 h-24 rounded-full flex items-center justify-center border border-blue-400/30 transition-transform hover:scale-105"
-          style={{ background: 'linear-gradient(135deg, #1E40AF, #1E3A8A)' }}
+          style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)' }}
           aria-label={playing ? 'Pausar apresentação' : 'Ouvir apresentação do NEXUS'}
         >
           {playing ? <Pause className="w-7 h-7 text-white" /> : <Play className="w-7 h-7 text-white" fill="currentColor" />}
