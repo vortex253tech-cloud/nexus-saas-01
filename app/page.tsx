@@ -36,15 +36,7 @@ function useCountUp(target: number, duration = 2200, start = false) {
 function Mesh() {
   return (
     <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-      <div className="absolute inset-0 bg-[#030305]" />
-      <div
-        className="absolute -top-48 left-1/2 -translate-x-1/2 w-[1000px] h-[700px] rounded-full opacity-[0.18]"
-        style={{ background: 'radial-gradient(ellipse, #6d28d9 0%, transparent 65%)', filter: 'blur(80px)' }}
-      />
-      <div
-        className="absolute top-1/2 -right-60 w-[600px] h-[600px] rounded-full opacity-[0.08]"
-        style={{ background: 'radial-gradient(ellipse, #0ea5e9 0%, transparent 65%)', filter: 'blur(100px)' }}
-      />
+      <div className="absolute inset-0 bg-[#0A0E16]" />
       <div
         className="absolute inset-0 opacity-[0.025]"
         style={{
@@ -99,8 +91,8 @@ function Nav() {
         </Link>
         <Link
           href="/signup"
-          className="text-[13px] font-bold text-white px-5 py-2 rounded-xl transition-all duration-200 hover:scale-[1.03] hover:shadow-violet-500/50"
-          style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 0 20px rgba(124,58,237,0.4)' }}
+          className="text-[13px] font-bold text-white px-5 py-2 rounded-xl transition-all duration-200 hover:scale-[1.02]"
+          style={{ background: '#1E40AF' }}
         >
           Começar grátis
         </Link>
@@ -118,14 +110,6 @@ function Hero() {
 
   return (
     <section className="relative min-h-[100svh] flex flex-col items-center justify-center text-center px-6 pt-16 overflow-hidden">
-      {/* Animated glows */}
-      <motion.div
-        animate={{ scale: [1, 1.08, 1], opacity: [0.18, 0.28, 0.18] }}
-        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute -top-32 left-1/2 -translate-x-1/2 w-[800px] h-[600px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse, #7c3aed 0%, transparent 70%)', filter: 'blur(60px)' }}
-      />
-
       <motion.div style={{ y: heroY, opacity: heroOpacity }} className="relative z-10 flex flex-col items-center gap-8 max-w-5xl w-full">
 
         {/* Badge */}
@@ -135,7 +119,7 @@ function Hero() {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="inline-flex items-center gap-2.5 rounded-full border border-violet-500/25 bg-violet-500/6 px-5 py-2 text-[13px] text-violet-300"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+          <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
           Nexus OS · Inteligência Operacional em Tempo Real
           <span className="text-violet-500">→</span>
         </motion.div>
@@ -148,15 +132,7 @@ function Hero() {
           className="text-[clamp(40px,8vw,88px)] font-black tracking-[-0.03em] leading-[0.9] text-white"
         >
           <span className="block">Seu COO de IA que</span>
-          <span
-            className="block mt-1"
-            style={{
-              background: 'linear-gradient(135deg, #c4b5fd 0%, #7c3aed 40%, #06b6d4 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}
-          >
+          <span className="block mt-1 text-violet-400">
             opera sua empresa
           </span>
           <span className="block mt-1">em tempo real.</span>
@@ -182,10 +158,10 @@ function Hero() {
         >
           <Link
             href="/signup"
-            className="group inline-flex items-center gap-2.5 text-[15px] font-black text-white px-9 py-4 rounded-2xl transition-all duration-300 hover:scale-[1.03]"
+            className="group inline-flex items-center gap-2.5 text-[15px] font-black text-white px-9 py-4 rounded-2xl transition-all duration-300 hover:scale-[1.02]"
             style={{
-              background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-              boxShadow: '0 0 40px rgba(124,58,237,0.5), 0 8px 32px rgba(0,0,0,0.4)',
+              background: '#1E40AF',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
             }}
           >
             <Zap className="w-4 h-4" fill="currentColor" />
@@ -218,15 +194,11 @@ function Hero() {
         transition={{ duration: 1.1, delay: 0.75, ease: [0.21, 0.45, 0.15, 1] }}
         className="relative z-10 mt-20 w-full max-w-4xl mx-auto px-4"
       >
-        {/* Glow under */}
-        <div className="absolute -bottom-16 inset-x-4 h-32 blur-3xl opacity-25 rounded-full"
-          style={{ background: 'radial-gradient(ellipse, #7c3aed 0%, transparent 60%)' }} />
-
         <div
           className="relative rounded-[20px] overflow-hidden border border-white/8"
           style={{
-            background: 'rgba(8,8,18,0.95)',
-            boxShadow: '0 0 0 1px rgba(124,58,237,0.15), 0 40px 80px rgba(0,0,0,0.7)',
+            background: 'rgba(10,14,22,0.97)',
+            boxShadow: '0 40px 80px rgba(0,0,0,0.7)',
           }}
         >
           {/* Chrome */}
@@ -247,7 +219,7 @@ function Hero() {
             {[
               { label: 'Receita ativa',    value: 'R$ 48.320', delta: '+23% este mês',   color: '#22c55e' },
               { label: 'Leads quentes',    value: '247',        delta: '+17 hoje',         color: '#f59e0b' },
-              { label: 'IA executou hoje', value: '1.847',      delta: 'ações automáticas', color: '#8b5cf6' },
+              { label: 'IA executou hoje', value: '1.847',      delta: 'ações automáticas', color: '#3b82f6' },
             ].map((m, i) => (
               <motion.div
                 key={m.label}
@@ -377,8 +349,8 @@ function LiveDemo() {
           transition={{ duration: 0.8, delay: 0.15 }}
           className="rounded-[22px] overflow-hidden border border-white/8"
           style={{
-            background: 'rgba(7,7,16,0.97)',
-            boxShadow: '0 0 0 1px rgba(124,58,237,0.12), 0 40px 80px rgba(0,0,0,0.6)',
+            background: 'rgba(10,14,22,0.98)',
+            boxShadow: '0 40px 80px rgba(0,0,0,0.6)',
           }}
         >
           {/* Header */}
@@ -422,7 +394,7 @@ function LiveDemo() {
                     >
                       <div
                         className="max-w-[82%] rounded-2xl rounded-tl-sm px-4 py-3 border border-violet-500/15"
-                        style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(10,10,20,0.8))' }}
+                        style={{ background: 'rgba(30,64,175,0.12)' }}
                       >
                         {isCurrent && phase === 'waiting' ? (
                           <div className="flex items-center gap-2">
@@ -572,8 +544,7 @@ function CooVsChat() {
             transition={{ duration: 0.7, delay: 0.15 }}
             className="relative rounded-2xl border border-violet-500/25 p-8 overflow-hidden"
             style={{
-              background: 'linear-gradient(135deg, rgba(124,58,237,0.07) 0%, rgba(8,8,18,0.97) 100%)',
-              boxShadow: '0 0 40px rgba(124,58,237,0.12)',
+              background: 'rgba(10,14,22,0.97)',
             }}
           >
             <div className="absolute top-5 right-5">
@@ -609,13 +580,13 @@ function CooVsChat() {
 
 const MODULES = [
   { icon: Users,         label: 'CRM',         desc: 'Leads, pipeline, clientes',          color: '#3b82f6' },
-  { icon: BarChart3,     label: 'Projetos',     desc: 'Tarefas, times, entregas',           color: '#8b5cf6' },
+  { icon: BarChart3,     label: 'Projetos',     desc: 'Tarefas, times, entregas',           color: '#2563eb' },
   { icon: MessageSquare, label: 'WhatsApp',     desc: 'Atendimento e cobrança com IA',      color: '#22c55e' },
-  { icon: Workflow,      label: 'Automações',   desc: 'Fluxos inteligentes 24/7',           color: '#f59e0b' },
-  { icon: Bot,           label: 'Agentes',      desc: 'IA especialista por departamento',   color: '#a78bfa' },
-  { icon: DollarSign,    label: 'Financeiro',   desc: 'DRE, fluxo de caixa, receita',      color: '#06b6d4' },
-  { icon: Brain,         label: 'CEO Mode',     desc: 'Dashboard executivo em tempo real',  color: '#ec4899' },
-  { icon: Sparkles,      label: 'NEXUS OS',     desc: 'Voz, comandos, orquestração total', color: '#7c3aed' },
+  { icon: Workflow,      label: 'Automações',   desc: 'Fluxos inteligentes 24/7',           color: '#C9A227' },
+  { icon: Bot,           label: 'Agentes',      desc: 'IA especialista por departamento',   color: '#60a5fa' },
+  { icon: DollarSign,    label: 'Financeiro',   desc: 'DRE, fluxo de caixa, receita',      color: '#0891b2' },
+  { icon: Brain,         label: 'CEO Mode',     desc: 'Dashboard executivo em tempo real',  color: '#64748b' },
+  { icon: Sparkles,      label: 'NEXUS OS',     desc: 'Voz, comandos, orquestração total', color: '#1e40af' },
 ]
 
 function OSModules() {
@@ -806,15 +777,15 @@ function Pricing() {
               className="relative rounded-2xl p-6 border"
               style={{
                 background: plan.hot
-                  ? 'linear-gradient(135deg, rgba(124,58,237,0.12) 0%, rgba(8,8,18,0.98) 100%)'
-                  : 'rgba(9,9,18,0.97)',
-                border: plan.hot ? '1px solid rgba(124,58,237,0.4)' : '1px solid rgba(255,255,255,0.06)',
-                boxShadow: plan.hot ? '0 0 40px rgba(124,58,237,0.15), 0 20px 40px rgba(0,0,0,0.4)' : undefined,
+                  ? 'rgba(30,64,175,0.08)'
+                  : 'rgba(10,14,22,0.97)',
+                border: plan.hot ? '1px solid rgba(30,64,175,0.5)' : '1px solid rgba(255,255,255,0.06)',
+                boxShadow: plan.hot ? '0 20px 40px rgba(0,0,0,0.4)' : undefined,
               }}
             >
               {plan.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-black text-white tracking-wider"
-                  style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 4px 12px rgba(124,58,237,0.5)' }}>
+                  style={{ background: '#1E40AF' }}>
                   {plan.badge}
                 </div>
               )}
@@ -843,8 +814,7 @@ function Pricing() {
                   plan.hot ? 'text-white' : 'text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-200'
                 }`}
                 style={plan.hot ? {
-                  background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-                  boxShadow: '0 8px 24px rgba(124,58,237,0.4)',
+                  background: '#1E40AF',
                 } : {}}
               >
                 {plan.cta}
@@ -871,15 +841,11 @@ function FinalCTA() {
         transition={{ duration: 0.9 }}
         className="max-w-4xl mx-auto relative rounded-3xl overflow-hidden text-center"
         style={{
-          background: 'linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(8,8,18,0.98) 55%, rgba(6,182,212,0.06) 100%)',
-          border: '1px solid rgba(124,58,237,0.22)',
-          boxShadow: '0 0 80px rgba(124,58,237,0.18), 0 40px 80px rgba(0,0,0,0.5)',
+          background: 'rgba(13,20,33,0.98)',
+          border: '1px solid rgba(30,64,175,0.35)',
+          boxShadow: '0 40px 80px rgba(0,0,0,0.5)',
         }}
       >
-        {/* Top glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-40 blur-3xl opacity-25 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse, #7c3aed 0%, transparent 70%)' }} />
-
         <div className="relative px-8 py-24">
           <motion.p
             initial={{ opacity: 0 }}
@@ -887,7 +853,7 @@ function FinalCTA() {
             transition={{ delay: 0.2 }}
             className="text-[11px] font-black text-violet-400 uppercase tracking-widest mb-6"
           >
-            O futuro é agora
+            Resultado no caixa, não promessa
           </motion.p>
 
           <motion.h2
@@ -916,10 +882,10 @@ function FinalCTA() {
           >
             <Link
               href="/signup"
-              className="group inline-flex items-center gap-3 text-[17px] font-black text-white px-14 py-5 rounded-2xl transition-all duration-300 hover:scale-[1.04]"
+              className="group inline-flex items-center gap-3 text-[17px] font-black text-white px-14 py-5 rounded-2xl transition-all duration-300 hover:scale-[1.02]"
               style={{
-                background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-                boxShadow: '0 0 50px rgba(124,58,237,0.5), 0 12px 40px rgba(0,0,0,0.4)',
+                background: '#1E40AF',
+                boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
               }}
             >
               <Zap className="w-5 h-5" fill="currentColor" />
@@ -965,7 +931,7 @@ function Footer() {
 
 export default function HomePage() {
   return (
-    <div className="relative bg-[#030305] text-white antialiased scroll-smooth">
+    <div className="relative bg-[#0A0E16] text-white antialiased scroll-smooth">
       <Mesh />
       <div className="relative z-10">
         <Nav />

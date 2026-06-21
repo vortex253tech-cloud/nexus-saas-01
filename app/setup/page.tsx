@@ -51,19 +51,6 @@ const CHANNELS = [
   { id: 'api',         label: 'API Externa',  icon: Globe,         color: '#8b5cf6' },
 ]
 
-const FAKE_PARTICLES = [
-  { x: 15, y: 20, s: 1.5, d: 7,  o: 0.2 },
-  { x: 80, y: 10, s: 2,   d: 9,  o: 0.15 },
-  { x: 30, y: 75, s: 1,   d: 11, o: 0.18 },
-  { x: 70, y: 60, s: 2.5, d: 8,  o: 0.12 },
-  { x: 50, y: 40, s: 1.5, d: 13, o: 0.22 },
-  { x: 90, y: 80, s: 1,   d: 6,  o: 0.2  },
-  { x: 10, y: 55, s: 2,   d: 10, o: 0.14 },
-  { x: 60, y: 25, s: 1.5, d: 8,  o: 0.2  },
-  { x: 40, y: 90, s: 1,   d: 12, o: 0.16 },
-  { x: 25, y: 45, s: 2,   d: 9,  o: 0.18 },
-]
-
 // ─── Helpers ─────────────────────────────────────────────────
 
 function formatBytes(bytes: number) {
@@ -77,47 +64,17 @@ function formatBytes(bytes: number) {
 function NeuralBackground() {
   return (
     <div className="pointer-events-none fixed inset-0 overflow-hidden">
-      {/* Base gradient */}
-      <div className="absolute inset-0" style={{ background: '#030309' }} />
-
-      {/* Ambient glows */}
-      <div
-        className="absolute rounded-full blur-3xl"
-        style={{
-          width: 600, height: 600, left: '10%', top: '-10%',
-          background: 'radial-gradient(circle, rgba(109,40,217,0.12) 0%, transparent 70%)',
-        }}
-      />
-      <div
-        className="absolute rounded-full blur-3xl"
-        style={{
-          width: 500, height: 500, right: '5%', bottom: '10%',
-          background: 'radial-gradient(circle, rgba(6,182,212,0.08) 0%, transparent 70%)',
-        }}
-      />
+      {/* Base */}
+      <div className="absolute inset-0" style={{ background: '#0A0E16' }} />
 
       {/* Grid */}
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: 'linear-gradient(rgba(139,92,246,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.04) 1px, transparent 1px)',
+          backgroundImage: 'linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)',
           backgroundSize: '48px 48px',
         }}
       />
-
-      {/* Particles */}
-      {FAKE_PARTICLES.map((p, i) => (
-        <motion.div
-          key={i}
-          className="absolute rounded-full bg-violet-400"
-          style={{
-            left: `${p.x}%`, top: `${p.y}%`,
-            width: p.s, height: p.s, opacity: p.o,
-          }}
-          animate={{ y: [0, -12, 0], opacity: [p.o, p.o * 1.6, p.o] }}
-          transition={{ duration: p.d, repeat: Infinity, ease: 'easeInOut', delay: i * 0.4 }}
-        />
-      ))}
     </div>
   )
 }
@@ -169,28 +126,14 @@ function BootStep({ onStart }: { onStart: () => void }) {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen text-center px-6">
-      {/* Neural ring */}
+      {/* Boot icon */}
       <div className="relative mb-12">
-        <motion.div
-          className="absolute inset-0 rounded-full"
-          style={{ border: '1px solid rgba(139,92,246,0.3)' }}
-          animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.6, 0.3] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute inset-[-24px] rounded-full"
-          style={{ border: '1px solid rgba(6,182,212,0.15)' }}
-          animate={{ scale: [1, 1.08, 1], opacity: [0.15, 0.3, 0.15] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-        />
-        <motion.div
-          className="relative flex h-24 w-24 items-center justify-center rounded-full"
-          style={{ background: 'linear-gradient(135deg, rgba(109,40,217,0.3), rgba(6,182,212,0.2))' }}
-          animate={{ boxShadow: ['0 0 20px rgba(109,40,217,0.2)', '0 0 60px rgba(109,40,217,0.5)', '0 0 20px rgba(109,40,217,0.2)'] }}
-          transition={{ duration: 2.5, repeat: Infinity }}
+        <div
+          className="relative flex h-24 w-24 items-center justify-center rounded-full border border-violet-700/40"
+          style={{ background: 'rgba(30,64,175,0.12)' }}
         >
           <Brain size={38} className="text-violet-300" />
-        </motion.div>
+        </div>
       </div>
 
       {/* Boot lines */}
@@ -224,17 +167,13 @@ function BootStep({ onStart }: { onStart: () => void }) {
           >
             <motion.p
               className="mb-3 text-xs font-semibold uppercase tracking-[0.2em]"
-              style={{ color: '#8b5cf6' }}
+              style={{ color: '#60a5fa' }}
             >
               Sistema operacional IA
             </motion.p>
             <h1 className="mb-4 text-4xl font-bold text-white md:text-5xl">
               NEXUS IA está pronta para{' '}
-              <span style={{
-                background: 'linear-gradient(135deg, #8b5cf6, #06b6d4)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}>
+              <span className="text-violet-400">
                 conhecer sua empresa.
               </span>
             </h1>
@@ -251,13 +190,8 @@ function BootStep({ onStart }: { onStart: () => void }) {
         transition={{ delay: 0.2 }}
         onClick={onStart}
         className="group relative flex items-center gap-3 rounded-2xl px-8 py-4 text-base font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98]"
-        style={{ background: 'linear-gradient(135deg, #7c3aed, #2563eb)' }}
+        style={{ background: '#1E40AF' }}
       >
-        <motion.div
-          className="absolute inset-0 rounded-2xl"
-          animate={{ boxShadow: ['0 0 0 rgba(139,92,246,0)', '0 0 30px rgba(139,92,246,0.4)', '0 0 0 rgba(139,92,246,0)'] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        />
         <Zap size={18} className="text-violet-200" />
         Inicializar NEXUS
         <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
@@ -718,15 +652,7 @@ function AnalysisStep({ companyName, onNext }: { companyName: string; onNext: ()
           animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0, 0.3] }}
           transition={{ duration: 2, repeat: Infinity }}
         />
-        <motion.div
-          className="absolute rounded-full border border-cyan-500/20"
-          style={{ inset: -16 }}
-          animate={{ rotate: 360 }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-        >
-          <div className="absolute right-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-cyan-400/60" />
-        </motion.div>
-        <div className="flex h-20 w-20 items-center justify-center rounded-full" style={{ background: 'rgba(109,40,217,0.15)' }}>
+        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-violet-700/40" style={{ background: 'rgba(30,64,175,0.12)' }}>
           <Brain size={32} className="text-violet-400" />
         </div>
       </div>
@@ -815,17 +741,15 @@ function ActivationStep({ companyName, onComplete, completing }: {
             className="absolute rounded-full"
             style={{
               inset: -(i + 1) * 20,
-              border: `1px solid rgba(139,92,246,${0.2 - i * 0.05})`,
+              border: `1px solid rgba(30,64,175,${0.2 - i * 0.05})`,
             }}
             animate={{ scale: [1, 1 + (i + 1) * 0.05, 1], opacity: [0.2 - i * 0.05, 0.4 - i * 0.1, 0.2 - i * 0.05] }}
             transition={{ duration: 3 + i, repeat: Infinity, ease: 'easeInOut', delay: i * 0.4 }}
           />
         ))}
         <motion.div
-          className="relative flex h-24 w-24 items-center justify-center rounded-full"
-          style={{ background: 'linear-gradient(135deg, rgba(109,40,217,0.4), rgba(6,182,212,0.2))' }}
-          animate={{ boxShadow: ['0 0 30px rgba(109,40,217,0.3)', '0 0 80px rgba(109,40,217,0.6)', '0 0 30px rgba(109,40,217,0.3)'] }}
-          transition={{ duration: 2.5, repeat: Infinity }}
+          className="relative flex h-24 w-24 items-center justify-center rounded-full border border-violet-600/40"
+          style={{ background: '#1E40AF' }}
         >
           <Zap size={38} className="text-violet-200" />
         </motion.div>
@@ -840,7 +764,7 @@ function ActivationStep({ companyName, onComplete, completing }: {
           : (
             <>
               NEXUS IA{' '}
-              <span style={{ background: 'linear-gradient(135deg, #8b5cf6, #06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              <span className="text-violet-400">
                 inicializada.
               </span>
             </>
@@ -887,13 +811,8 @@ function ActivationStep({ companyName, onComplete, completing }: {
             onClick={onComplete}
             disabled={completing}
             className="group relative flex items-center gap-3 rounded-2xl px-8 py-4 text-base font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #2563eb)' }}
+            style={{ background: '#1E40AF' }}
           >
-            <motion.div
-              className="absolute inset-0 rounded-2xl"
-              animate={{ boxShadow: ['0 0 0 rgba(139,92,246,0)', '0 0 40px rgba(139,92,246,0.5)', '0 0 0 rgba(139,92,246,0)'] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
             {completing
               ? <><Loader2 size={16} className="animate-spin" /> Abrindo Centro Operacional…</>
               : <><Zap size={16} className="text-violet-200" /> Entrar no Centro Operacional <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" /></>
@@ -1056,7 +975,7 @@ export default function SetupPage() {
           className="relative z-10 flex items-center justify-between border-b border-white/5 px-6 py-4 backdrop-blur-sm"
         >
           <span className="text-base font-bold tracking-tight">
-            <span style={{ color: '#8b5cf6' }}>N</span>EXUS
+            <span style={{ color: '#60a5fa' }}>N</span>EXUS
           </span>
           <ProgressBar step={step} total={7} />
           <div className="w-16" />

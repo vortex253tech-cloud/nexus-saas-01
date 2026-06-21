@@ -7,11 +7,25 @@
   --color-muted: #71717a;
   --color-foreground: #fafafa;
   --color-foreground-muted: #a1a1aa;
-  --color-violet-brand: #7c3aed;
-  --color-violet-light: #a78bfa;
-  --color-violet-glow: rgba(124, 58, 237, 0.12);
+  --color-violet-brand: #1e40af;
+  --color-violet-light: #60a5fa;
+  --color-violet-glow: rgba(30, 64, 175, 0.1);
   --radius-xl: 1rem;
   --radius-2xl: 1.25rem;
+
+  /* ── Rebrand 2026-06-21: "violet-*" utility classes across the public
+     pages now render as deep corporate blue instead of neon violet —
+     overriding the scale here means every existing `text-violet-400`,
+     `bg-violet-600`, `border-violet-500/25` etc. picks up the new brand
+     color with no JSX changes required. Gold (--color-amber-*) is left
+     at Tailwind's default and used sparingly as the sole accent. */
+  --color-violet-300: #93c5fd;
+  --color-violet-400: #60a5fa;
+  --color-violet-500: #3b82f6;
+  --color-violet-600: #2563eb;
+  --color-violet-700: #1d4ed8;
+  --color-violet-800: #1e40af;
+  --color-violet-900: #1e3a8a;
 }
 
 /* ── NEXUS Theme CSS Variables (default = aiCore) ──────────────── */

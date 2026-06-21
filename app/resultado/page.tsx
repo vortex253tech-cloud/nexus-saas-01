@@ -159,7 +159,7 @@ function LoadingScreen() {
         <div className="relative flex h-20 w-20 items-center justify-center">
           <div className="absolute inset-0 animate-ping rounded-full bg-violet-600/20" />
           <div className="absolute inset-2 animate-pulse rounded-full bg-violet-600/30" />
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-600 shadow-[0_0_32px_rgba(124,58,237,0.5)]">
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-600 shadow-[0_0_32px_rgba(30,64,175,0.5)]">
             <Activity className="h-7 w-7 text-white" />
           </div>
         </div>
@@ -234,8 +234,7 @@ export default function ResultadoPage() {
     <div className="min-h-screen bg-zinc-950 pb-24">
       {/* Background */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-64 top-0 h-[500px] w-[500px] rounded-full bg-violet-700/8 blur-[120px]" />
-        <div className="absolute -right-32 top-1/3 h-[400px] w-[400px] rounded-full bg-blue-700/6 blur-[100px]" />
+        <div className="absolute -left-64 top-0 h-[500px] w-[500px] rounded-full bg-violet-800/5 blur-[120px]" />
       </div>
 
       {/* Nav */}
@@ -532,7 +531,7 @@ export default function ResultadoPage() {
 
             <Link
               href="/planos"
-              className="group relative inline-flex items-center gap-3 overflow-hidden rounded-xl bg-violet-600 px-8 py-4 text-base font-bold text-white shadow-[0_0_40px_rgba(124,58,237,0.4)] transition-all hover:bg-violet-500 hover:shadow-[0_0_56px_rgba(124,58,237,0.55)] active:scale-[0.98]"
+              className="group relative inline-flex items-center gap-3 overflow-hidden rounded-xl bg-violet-600 px-8 py-4 text-base font-bold text-white shadow-[0_0_40px_rgba(30,64,175,0.4)] transition-all hover:bg-violet-500 hover:shadow-[0_0_56px_rgba(30,64,175,0.55)] active:scale-[0.98]"
             >
               <Zap className="relative z-10 h-5 w-5" />
               <span className="relative z-10">Ativar meu NEXUS agora</span>
