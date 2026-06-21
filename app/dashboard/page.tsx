@@ -481,24 +481,24 @@ export default function DashboardPage() {
     return () => clearInterval(t)
   }, [])
 
-  // Init autopilot from localStorage
+  // Init autopilot from the real flag the ai-runner cron actually reads
+  // (companies.autopilot_enabled) — not localStorage, which only reflected
+  // local UI state and never touched the backend.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setAutopilot(localStorage.getItem('nexus_autopilot') === 'true')
-    }
+    fetch('/api/autopilot/enable')
+      .then(r => r.json())
+      .then((d: { autopilot_enabled?: boolean }) => setAutopilot(d.autopilot_enabled ?? false))
+      .catch(() => {})
   }, [])
 
   function toggleAutopilot() {
     const next = !autopilot
     setAutopilot(next)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('nexus_autopilot', String(next))
-    }
-    fetch('/api/user/preferences', {
+    fetch('/api/autopilot/enable', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ autopilotEnabled: next }),
-    }).catch(() => {})
+      body:    JSON.stringify({ enabled: next }),
+    }).catch(() => setAutopilot(!next))
   }
 
   useEffect(() => { resolveCompanyId().then(setCompanyId) }, [])

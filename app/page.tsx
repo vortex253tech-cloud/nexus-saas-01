@@ -3,19 +3,37 @@
 import { motion, useScroll, useTransform, useInView } from 'framer-motion'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import VoiceOrb from '@/components/VoiceOrb'
 import {
   Zap, ArrowRight, Check,
   BarChart3, Users, MessageSquare, Bot,
-  Workflow, DollarSign, Brain,
-  Play, Sparkles, Globe,
+  Workflow, DollarSign,
+  Play, Globe,
 } from 'lucide-react'
 
 // ─── Ambient background ──────────────────────────────────────────────────────
+
+const PARTICLES = [
+  { x: 12, y: 18, d: 14 }, { x: 78, y: 12, d: 17 }, { x: 34, y: 70, d: 12 },
+  { x: 62, y: 55, d: 19 }, { x: 88, y: 75, d: 15 }, { x: 22, y: 45, d: 13 },
+  { x: 50, y: 30, d: 16 }, { x: 8,  y: 82, d: 18 },
+]
 
 function Mesh() {
   return (
     <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
       <div className="absolute inset-0 bg-[#0A0E16]" />
+
+      {/* Soft nebula — single, slow, low-opacity blue glow. Not the old
+          multi-blob neon mesh, just enough depth to not feel flat. */}
+      <motion.div
+        animate={{ x: [0, 40, 0], y: [0, -30, 0] }}
+        transition={{ duration: 26, repeat: Infinity, ease: 'easeInOut' }}
+        className="absolute -top-40 left-1/3 w-[900px] h-[700px] rounded-full opacity-[0.07]"
+        style={{ background: 'radial-gradient(ellipse, #1E40AF 0%, transparent 70%)', filter: 'blur(100px)' }}
+      />
+
+      {/* Grid */}
       <div
         className="absolute inset-0 opacity-[0.025]"
         style={{
@@ -24,6 +42,17 @@ function Mesh() {
           backgroundSize: '60px 60px',
         }}
       />
+
+      {/* Faint drifting particles */}
+      {PARTICLES.map((p, i) => (
+        <motion.span
+          key={i}
+          className="absolute w-1 h-1 rounded-full bg-blue-400"
+          style={{ left: `${p.x}%`, top: `${p.y}%`, opacity: 0.18 }}
+          animate={{ y: [0, -16, 0], opacity: [0.1, 0.28, 0.1] }}
+          transition={{ duration: p.d, repeat: Infinity, ease: 'easeInOut', delay: i * 0.6 }}
+        />
+      ))}
     </div>
   )
 }
@@ -88,90 +117,101 @@ function Hero() {
   const heroOpacity = useTransform(scrollY, [0, 380], [1, 0])
 
   return (
-    <section className="relative min-h-[100svh] flex flex-col items-center justify-center text-center px-6 pt-16 overflow-hidden">
-      <motion.div style={{ y: heroY, opacity: heroOpacity }} className="relative z-10 flex flex-col items-center gap-8 max-w-5xl w-full">
+    <section className="relative min-h-[100svh] flex flex-col items-center justify-center px-6 pt-28 pb-16 overflow-hidden">
+      <motion.div style={{ y: heroY, opacity: heroOpacity }} className="relative z-10 w-full max-w-6xl mx-auto">
 
         {/* Badge */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="inline-flex items-center gap-2.5 rounded-full border border-violet-500/25 bg-violet-500/6 px-5 py-2 text-[13px] text-violet-300"
+          className="inline-flex items-center gap-2.5 rounded-full border border-violet-500/25 bg-violet-500/6 px-5 py-2 text-[13px] text-violet-300 mb-10"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
           Nexus OS · Inteligência Operacional em Tempo Real
           <span className="text-violet-500">→</span>
         </motion.div>
 
-        {/* Headline */}
-        <motion.h1
-          initial={{ opacity: 0, y: 28 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.85, delay: 0.2, ease: [0.21, 0.45, 0.15, 1] }}
-          className="text-[clamp(40px,8vw,88px)] font-black tracking-[-0.03em] leading-[0.9] text-white"
-        >
-          <span className="block">Seu COO de IA que</span>
-          <span className="block mt-1 text-violet-400">
-            opera sua empresa
-          </span>
-          <span className="block mt-1">em tempo real.</span>
-        </motion.h1>
+        <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-14 items-center">
+          {/* Left — copy + CTA */}
+          <div className="text-center lg:text-left">
+            <motion.h1
+              initial={{ opacity: 0, y: 28 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.85, delay: 0.2, ease: [0.21, 0.45, 0.15, 1] }}
+              className="text-[clamp(38px,6.5vw,72px)] font-black tracking-[-0.03em] leading-[0.95] text-white"
+            >
+              <span className="block">Seu COO de IA que</span>
+              <span className="block mt-1 text-violet-400">opera sua empresa</span>
+              <span className="block mt-1">em tempo real.</span>
+            </motion.h1>
 
-        {/* Sub */}
-        <motion.p
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.38 }}
-          className="max-w-2xl text-[17px] md:text-xl text-zinc-400 leading-relaxed"
-        >
-          Vendas, projetos, tarefas, automações e decisões executadas por uma
-          inteligência operacional ativa 24 horas por dia.
-        </motion.p>
+            <motion.p
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.38 }}
+              className="mt-6 max-w-xl mx-auto lg:mx-0 text-[16px] md:text-lg text-zinc-400 leading-relaxed"
+            >
+              O NEXUS é um sistema operacional empresarial com IA que trabalha 24 horas por dia.
+              Ele executa tarefas, organiza projetos, responde clientes, monitora vendas,
+              automatiza processos e ajuda você a tomar decisões em tempo real.
+            </motion.p>
 
-        {/* CTAs */}
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.52 }}
-          className="flex flex-col sm:flex-row items-center gap-4"
-        >
-          <Link
-            href="/signup"
-            className="group inline-flex items-center gap-2.5 text-[15px] font-black text-white px-9 py-4 rounded-2xl transition-all duration-300 hover:scale-[1.02]"
-            style={{
-              background: '#1E40AF',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-            }}
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.52 }}
+              className="mt-8 flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-4"
+            >
+              <Link
+                href="/signup"
+                className="group inline-flex items-center gap-2.5 text-[15px] font-black text-white px-9 py-4 rounded-2xl transition-all duration-300 hover:scale-[1.02]"
+                style={{
+                  background: '#1E40AF',
+                  boxShadow: '0 0 28px rgba(30,64,175,0.35), 0 8px 24px rgba(0,0,0,0.35)',
+                }}
+              >
+                <Zap className="w-4 h-4" fill="currentColor" />
+                COMEÇAR AGORA
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </Link>
+              <a
+                href="#demo"
+                className="inline-flex items-center gap-2.5 text-[15px] font-semibold text-zinc-300 border border-zinc-700/80 hover:border-zinc-500 px-9 py-4 rounded-2xl transition-all duration-200 hover:bg-white/4"
+              >
+                <Play className="w-4 h-4" />
+                VER DEMONSTRAÇÃO
+              </a>
+            </motion.div>
+
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.7 }}
+              className="mt-5 text-[12px] text-zinc-700"
+            >
+              7 dias grátis · Sem cartão de crédito · Cancele quando quiser
+            </motion.p>
+          </div>
+
+          {/* Right — voice orb */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.3, ease: [0.21, 0.45, 0.15, 1] }}
           >
-            <Zap className="w-4 h-4" fill="currentColor" />
-            COMEÇAR AGORA
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </Link>
-          <a
-            href="#demo"
-            className="inline-flex items-center gap-2.5 text-[15px] font-semibold text-zinc-300 border border-zinc-700/80 hover:border-zinc-500 px-9 py-4 rounded-2xl transition-all duration-200 hover:bg-white/4"
-          >
-            <Play className="w-4 h-4" />
-            VER DEMONSTRAÇÃO
-          </a>
-        </motion.div>
-
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7 }}
-          className="text-[12px] text-zinc-700"
-        >
-          7 dias grátis · Sem cartão de crédito · Cancele quando quiser
-        </motion.p>
+            <VoiceOrb />
+          </motion.div>
+        </div>
       </motion.div>
 
       {/* Dashboard mockup */}
       <motion.div
         initial={{ opacity: 0, y: 70, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 1.1, delay: 0.75, ease: [0.21, 0.45, 0.15, 1] }}
-        className="relative z-10 mt-20 w-full max-w-4xl mx-auto px-4"
+        whileInView={{ opacity: 1, y: 0, scale: 1 }}
+        viewport={{ once: true, margin: '-80px' }}
+        transition={{ duration: 1.1, ease: [0.21, 0.45, 0.15, 1] }}
+        className="relative z-10 mt-24 w-full max-w-4xl mx-auto px-4"
       >
         <div
           className="relative rounded-[20px] overflow-hidden border border-white/8"
@@ -555,14 +595,12 @@ function CooVsChat() {
 // ─── OS Modules ───────────────────────────────────────────────────────────────
 
 const MODULES = [
-  { icon: Users,         label: 'CRM',         desc: 'Leads, pipeline, clientes',          color: '#3b82f6' },
-  { icon: BarChart3,     label: 'Projetos',     desc: 'Tarefas, times, entregas',           color: '#2563eb' },
-  { icon: MessageSquare, label: 'WhatsApp',     desc: 'Atendimento e cobrança com IA',      color: '#22c55e' },
-  { icon: Workflow,      label: 'Automações',   desc: 'Fluxos inteligentes 24/7',           color: '#C9A227' },
-  { icon: Bot,           label: 'Agentes',      desc: 'IA especialista por departamento',   color: '#60a5fa' },
-  { icon: DollarSign,    label: 'Financeiro',   desc: 'DRE, fluxo de caixa, receita',      color: '#0891b2' },
-  { icon: Brain,         label: 'CEO Mode',     desc: 'Dashboard executivo em tempo real',  color: '#64748b' },
-  { icon: Sparkles,      label: 'NEXUS OS',     desc: 'Voz, comandos, orquestração total', color: '#1e40af' },
+  { icon: BarChart3,     label: 'Vendas',       desc: 'IA identificando oportunidades',     color: '#3b82f6' },
+  { icon: DollarSign,    label: 'Financeiro',   desc: 'Receitas e indicadores em tempo real', color: '#0891b2' },
+  { icon: Users,         label: 'CRM',          desc: 'Clientes e pipeline organizados',    color: '#2563eb' },
+  { icon: Workflow,      label: 'Projetos',     desc: 'Execução automática de entregas',    color: '#60a5fa' },
+  { icon: MessageSquare, label: 'WhatsApp',     desc: 'Atendimento e follow-up com IA',      color: '#22c55e' },
+  { icon: Bot,           label: 'Automações',   desc: 'Fluxos inteligentes funcionando 24h', color: '#C9A227' },
 ]
 
 function OSModules() {
@@ -577,9 +615,9 @@ function OSModules() {
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           className="text-center mb-16"
         >
-          <p className="text-[11px] font-black text-violet-400 uppercase tracking-widest mb-4">Sistema Operacional</p>
-          <h2 className="text-4xl md:text-5xl font-black text-white mb-4">Um OS. Toda sua empresa.</h2>
-          <p className="text-zinc-400 text-lg">Cada módulo é um departamento inteligente.</p>
+          <p className="text-[11px] font-black text-violet-400 uppercase tracking-widest mb-4">Inteligência operacional</p>
+          <h2 className="text-4xl md:text-5xl font-black text-white mb-4">O NEXUS pensa.</h2>
+          <p className="text-zinc-400 text-lg">Cada área da sua empresa, monitorada e operada por IA.</p>
         </motion.div>
 
         <motion.div
@@ -592,14 +630,14 @@ function OSModules() {
           {/* OS bar */}
           <div className="flex items-center gap-2 px-5 py-3 border-b border-white/4" style={{ background: 'rgba(255,255,255,0.018)' }}>
             {['bg-red-500/60','bg-amber-500/60','bg-emerald-500/60'].map((c,i) => <div key={i} className={`w-2.5 h-2.5 rounded-full ${c}`} />)}
-            <span className="text-[10px] text-zinc-700 ml-3 font-mono">NEXUS OS v4.0 · 8 módulos ativos</span>
+            <span className="text-[10px] text-zinc-700 ml-3 font-mono">NEXUS OS v4.0 · 6 módulos ativos</span>
             <div className="ml-auto flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[10px] text-emerald-500">live</span>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-white/4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-white/4">
             {MODULES.map((mod, i) => (
               <motion.div
                 key={mod.label}
@@ -631,6 +669,63 @@ function OSModules() {
             ))}
           </div>
         </motion.div>
+      </div>
+    </section>
+  )
+}
+
+// ─── Timeline ─────────────────────────────────────────────────────────────────
+
+const TIMELINE = [
+  { n: '01', label: 'Captura clientes',     desc: 'Leads entram via site, quiz ou WhatsApp e já chegam qualificados.' },
+  { n: '02', label: 'Organiza pipeline',    desc: 'Cada lead é classificado por temperatura e prioridade automaticamente.' },
+  { n: '03', label: 'Executa tarefas',      desc: 'Cobranças, follow-ups e relatórios saem sem intervenção manual.' },
+  { n: '04', label: 'Automatiza processos', desc: 'Fluxos repetitivos rodam 24h, sem depender de alguém lembrar.' },
+  { n: '05', label: 'Analisa indicadores',  desc: 'Receita, custo e risco monitorados em tempo real, não no fim do mês.' },
+  { n: '06', label: 'Gera crescimento',     desc: 'Cada decisão automatizada vira mais margem e mais tempo livre.' },
+]
+
+function Timeline() {
+  const ref      = useRef<HTMLDivElement>(null)
+  const isInView = useInView(ref, { once: true, margin: '-60px' })
+
+  return (
+    <section className="py-24 px-6" ref={ref}>
+      <div className="max-w-3xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : {}}
+          className="text-center mb-16"
+        >
+          <p className="text-[11px] font-black text-violet-400 uppercase tracking-widest mb-4">Como funciona</p>
+          <h2 className="text-4xl md:text-5xl font-black text-white mb-4">Como o NEXUS trabalha</h2>
+        </motion.div>
+
+        <div className="relative">
+          <div className="absolute left-[19px] top-2 bottom-2 w-px bg-gradient-to-b from-violet-500/40 via-violet-500/15 to-transparent" />
+          <div className="space-y-8">
+            {TIMELINE.map((step, i) => (
+              <motion.div
+                key={step.n}
+                initial={{ opacity: 0, x: -16 }}
+                animate={isInView ? { opacity: 1, x: 0 } : {}}
+                transition={{ duration: 0.5, delay: i * 0.1 }}
+                className="relative flex items-start gap-5"
+              >
+                <div
+                  className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-black text-white border border-violet-500/30 z-10"
+                  style={{ background: 'rgba(30,64,175,0.18)' }}
+                >
+                  {step.n}
+                </div>
+                <div className="pt-1.5">
+                  <p className="text-[15px] font-bold text-white mb-1">{step.label}</p>
+                  <p className="text-[13px] text-zinc-500 leading-relaxed">{step.desc}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   )
@@ -856,7 +951,7 @@ function FinalCTA() {
               className="group inline-flex items-center gap-3 text-[17px] font-black text-white px-14 py-5 rounded-2xl transition-all duration-300 hover:scale-[1.02]"
               style={{
                 background: '#1E40AF',
-                boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+                boxShadow: '0 0 36px rgba(30,64,175,0.4), 0 12px 32px rgba(0,0,0,0.4)',
               }}
             >
               <Zap className="w-5 h-5" fill="currentColor" />
@@ -911,6 +1006,7 @@ export default function HomePage() {
         <EarlyAccess />
         <CooVsChat />
         <OSModules />
+        <Timeline />
         <FounderNote />
         <Pricing />
         <FinalCTA />
