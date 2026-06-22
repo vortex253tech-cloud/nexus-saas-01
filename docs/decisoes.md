@@ -14,6 +14,14 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ✅ 2026-06-22 — Revisão de consistência do `next.config` (item 11): estável, sem ação necessária
+
+**Contexto:** histórico tinha 2+ correções de build na Vercel ("modifyConfig crash") ligadas a `next.config` — verificar se o arquivo atual estava estável antes de qualquer upgrade futuro do Next.js.
+
+**Achado: estável.** Só existe `next.config.js` (CJS), criado pelas correções anteriores (`next.config.ts` → `.mjs` → `.js`, commits `9075b79`/`8cf5ed5`) — sem duplicata de formato. Conteúdo mínimo: só `serverExternalPackages` para os pacotes nativos pesados (`bullmq`, `ioredis`, `pdf-parse`, `mammoth`, `nodemailer`). `vercel.json` (`buildCommand: "next build"`, crons) e `package.json` (scripts `dev`/`build`/`start` padrão) sem nada fora do comum.
+
+**Achado fora de escopo do repositório, não corrigido por decisão do usuário:** o aviso do Next dev local ("Next.js inferred your workspace root... detected multiple lockfiles") vem de um `package-lock.json` vazio/órfão em `C:\Users\Ezequ\.claude\ide\package-lock.json` — **fora** da pasta `nexus-saas-01` (pasta pai onde o IDE clona repositórios, não faz parte do git deste projeto). É cosmético, só aparece em dev local — o build da Vercel roda num checkout limpo só do repo, sem esse arquivo. Não re-adicionei `turbopack.root` ao `next.config.js` para silenciar isso: essa opção foi removida de propósito no commit `09de0e0` durante a investigação do crash de build anterior — mesmo achando que o crash real era sobre formato de arquivo (já resolvido), preferi não reintroduzir uma variável historicamente ligada a um problema de build na Vercel só para resolver um aviso sem impacto em produção. Usuário confirmou: deixar o lockfile órfão como está.
+
 ## ✅ 2026-06-22 — Auditoria do Creative AI: módulo real e funcional, 3 ajustes de consistência
 
 **Contexto:** item 10 de `proximos-passos.md` — módulo nunca tinha sido auditado em profundidade (rotas existiam, funcionalidade real não confirmada).

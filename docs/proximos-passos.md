@@ -20,7 +20,7 @@
 ## 🟡 MÉDIO IMPACTO
 
 10. ~~Auditar Creative AI~~ — **Feito em 2026-06-22.** Módulo confirmado real e pronto para produção (sem stubs) — 6 rotas, todas chamando Claude/DALL-E de verdade com persistência e gating de plano já aplicados. 3 ajustes de consistência feitos (fallback de company_id removido em 2 rotas, check de API key ausente, typo no frontend). Detalhe em [decisoes.md](./decisoes.md).
-11. **Revisar consistência de `next.config`** — histórico mostra 2+ correções de build na Vercel por causa de configuração de Next.js (`.ts` → `.mjs`, `serverExternalPackages`). Validar que o config atual está estável antes de fazer upgrade de versão do Next.js novamente.
+11. ~~Revisar consistência de `next.config`~~ — **Verificado em 2026-06-22: estável, nenhuma ação necessária.** Só existe `next.config.js` (CJS), sem duplicata `.ts`/`.mjs` — o crash de build na Vercel já foi resolvido pelas correções anteriores de formato de arquivo. Conteúdo é mínimo (`serverExternalPackages` para os pacotes nativos pesados). `vercel.json`/`package.json` sem inconsistência. Achado fora de escopo: o aviso de "workspace root" do Next dev local vem de um `package-lock.json` órfão fora do repositório (`C:\Users\Ezequ\.claude\ide\package-lock.json`) — cosmético, sem impacto em produção; usuário optou por deixar como está em vez de tocar em arquivo fora da pasta do projeto. Detalhe em [decisoes.md](./decisoes.md).
 12. ~~Implementar reset mensal de `company_usage`~~ — **Feito em 2026-06-22.** Chave mudada para `(company_id, period_start)` — ver item 4 e [decisoes.md](./decisoes.md).
 
 ## 🟢 BAIXA PRIORIDADE
