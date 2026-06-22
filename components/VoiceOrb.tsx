@@ -5,13 +5,48 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Play, Pause, Volume2 } from 'lucide-react'
 
 const SCRIPT_LINES = [
-  'Bem-vindo ao NEXUS.',
-  'Eu sou sua inteligência operacional.',
-  'Meu trabalho é operar sua empresa em tempo real.',
-  'Vou organizar suas vendas, tarefas, clientes, projetos e automações.',
-  'Você não está entrando em um CRM.',
-  'Você está entrando em um Sistema Operacional Empresarial com Inteligência Artificial.',
-  'Vamos crescer sua empresa juntos.',
+  'Toda empresa tem o mesmo problema: vendas, financeiro e clientes pedindo atenção ao mesmo tempo.',
+  'E se sua empresa tivesse um sistema operacional próprio?',
+  'Não um aplicativo. Não um chatbot.',
+  'Um sistema que pensa, decide e executa — 24 horas por dia.',
+  'Isso é o NEXUS.',
+  'O NEXUS não responde perguntas. Ele opera sua empresa.',
+  'Um chatbot espera você perguntar. O NEXUS não espera.',
+  'Ele monitora seu negócio em tempo real e age sozinho.',
+  'Pense nele como o diretor de operações da sua empresa, baseado em IA.',
+  'Vamos pelo começo: como os clientes chegam até você.',
+  'O NEXUS organiza todo o seu funil de vendas automaticamente.',
+  'Cada lead é classificado por temperatura e prioridade na hora.',
+  'Você não perde tempo separando quem está pronto de quem só pesquisa.',
+  'E falando em WhatsApp: essa é uma das partes mais poderosas do sistema.',
+  'O NEXUS conversa com seus clientes pelo WhatsApp usando inteligência artificial.',
+  'Ele entende o contexto e atualiza o seu CRM sozinho, em tempo real.',
+  'Se precisar de um humano, ele transfere com um clique.',
+  'Atendimento ativo o tempo inteiro — mesmo às três da manhã.',
+  'Agora, o dinheiro.',
+  'O NEXUS acompanha receita, despesas e inadimplência em tempo real.',
+  'Ele identifica clientes em atraso e dispara cobranças automaticamente.',
+  'Relatórios que levariam horas, o NEXUS gera em segundos.',
+  'Aqui o NEXUS se diferencia de qualquer ferramenta que você já usou.',
+  'Você desenha um fluxo visual conectando blocos de automação.',
+  'Recuperar inadimplentes. Reativar clientes. Lançar uma campanha completa.',
+  'Você monta o fluxo uma vez. O NEXUS executa sozinho, sempre que precisar.',
+  'Quando você precisa criar conteúdo, o NEXUS também faz isso.',
+  'Mensagens em três tons diferentes, imagens, propostas e contratos.',
+  'Tudo com a identidade da sua marca, gerado em segundos.',
+  'E se você preferir simplesmente falar?',
+  'O NEXUS entende comando de voz, em tempo real.',
+  'Pergunte seu faturamento, peça um relatório, peça uma tarefa.',
+  'Ele responde e executa na hora.',
+  'No fim, a diferença é essa: ferramenta espera comando. O NEXUS age.',
+  'Enquanto você dorme, ele organiza seu pipeline.',
+  'Enquanto você está em reunião, ele responde um cliente.',
+  'O NEXUS está em fase de lançamento agora.',
+  'Onboarding direto com o time, preço de fundador, prioridade nas próximas features.',
+  'Sete dias grátis. Sem cartão. Cancele quando quiser.',
+  'Sua empresa não precisa de mais um aplicativo.',
+  'Ela precisa de um sistema que opere por você.',
+  'Esse sistema é o NEXUS.',
 ]
 
 const BAR_COUNT = 28
@@ -115,7 +150,7 @@ export default function VoiceOrb() {
       className="relative rounded-[28px] border border-white/8 p-8 overflow-hidden"
       style={{ background: 'rgba(10,14,22,0.85)', backdropFilter: 'blur(20px)' }}
     >
-      <audio ref={audioRef} src="/audio/nexus-welcome.mp3" preload="auto" />
+      <audio ref={audioRef} src="/audio/nexus-apresentacao.mp3" preload="auto" />
 
       {/* Status */}
       <div className="flex items-center justify-between mb-8">
@@ -125,7 +160,7 @@ export default function VoiceOrb() {
         </div>
         <div className="flex items-center gap-1.5 text-zinc-600">
           <Volume2 className="w-3.5 h-3.5" />
-          <span className="text-[11px]">Apresentação · 30s</span>
+          <span className="text-[11px]">Apresentação · 5min</span>
         </div>
       </div>
 
