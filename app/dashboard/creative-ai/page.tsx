@@ -705,7 +705,7 @@ function ImagensTab() {
                 onClick={handleGenerate}
                 className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:border-violet-500/50 hover:text-violet-300 transition"
               >
-                <RefreshCw size={12} /> Regerar
+                <RefreshCw size={12} /> Regenerar
               </button>
             </motion.div>
           )}

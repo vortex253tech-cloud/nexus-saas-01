@@ -196,6 +196,10 @@ export async function POST(req: NextRequest) {
     const overLimit = await denyIfAtLimit('max_ai_messages', await getAiUsage(companyId))
     if (overLimit) return overLimit
 
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json({ error: 'Geração de conteúdo indisponível no momento' }, { status: 503 })
+    }
+
     // Load identity
     const identity = await loadIdentity(db, companyId)
 

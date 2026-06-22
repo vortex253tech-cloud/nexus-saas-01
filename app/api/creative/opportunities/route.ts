@@ -39,17 +39,13 @@ interface OpportunityResponse {
 
 // ─── Resolve company ─────────────────────────────────────────────────────────
 
+// Resolve strictly from the authenticated session — never fall back to "first
+// company in the table". denyIfCannot() above already requires a session, so
+// this should never actually miss; a silent DB-wide fallback here would risk
+// surfacing another tenant's financial/business data in the analysis.
 async function resolveCompanyId(): Promise<string | null> {
-  try {
-    const ctx = await getAuthContext()
-    if (ctx?.companyId) return ctx.companyId
-  } catch { /* ok */ }
-  try {
-    const db = getSupabaseServerClient()
-    const { data } = await db.from('companies').select('id').limit(1).single()
-    if (data?.id) return data.id as string
-  } catch { /* ok */ }
-  return null
+  const ctx = await getAuthContext()
+  return ctx?.companyId ?? null
 }
 
 async function resolveCompanyName(companyId: string): Promise<string> {

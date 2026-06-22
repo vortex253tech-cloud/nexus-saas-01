@@ -14,6 +14,21 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ✅ 2026-06-22 — Auditoria do Creative AI: módulo real e funcional, 3 ajustes de consistência
+
+**Contexto:** item 10 de `proximos-passos.md` — módulo nunca tinha sido auditado em profundidade (rotas existiam, funcionalidade real não confirmada).
+
+**Resultado da auditoria: módulo está pronto para produção, sem stubs.** 6 rotas (`generate`, `generate-multi`, `image`, `opportunities`, `pdf`, `stats`), todas chamando IA real (Claude Sonnet/Haiku via Anthropic SDK, DALL-E 3 via OpenAI) com persistência real em `ai_generated_assets`/`campaign_history` e gating de plano (`denyIfCannot('nexus_ai')` + `denyIfAtLimit('max_ai_messages', ...)`) já aplicado em todas. Frontend (`app/dashboard/creative-ai/page.tsx`, 1390 linhas) tem 7 abas todas funcionais, sem wiring quebrado. `ANTHROPIC_API_KEY` e `OPENAI_API_KEY` confirmados configurados no ambiente (não reproduzo os valores aqui por segurança).
+
+**3 ajustes de consistência feitos:**
+1. `generate-multi` e `opportunities` tinham um `resolveCompanyId()` com fallback para "primeira empresa do banco" se a sessão falhasse — mesmo padrão de risco já catalogado em `bugs.md` para `ai/chat`/`ai/business-analysis` (🟢 Baixo: `denyIfCannot('nexus_ai')` já é chamado antes e já exige sessão válida via `getAuthContext()`, então esse fallback só seria alcançável numa falha transitória entre duas chamadas separadas de `getAuthContext()` — não é um endpoint aberto). Mesmo de baixo risco prático, removido o fallback para manter consistência com `creative/generate`/`creative/image`, que já derivam `company_id` estritamente da sessão sem fallback nenhum.
+2. `creative/generate` não checava `ANTHROPIC_API_KEY` antes de instanciar o client Anthropic (as outras 3 rotas que usam Claude já checavam e retornavam 503) — adicionado o mesmo check, evitando um 500 não tratado se a chave for removida/expirar.
+3. Typo "Regerar" → "Regenerar" no botão de regenerar conteúdo (`app/dashboard/creative-ai/page.tsx`).
+
+**Não corrigido, observado mas de baixa prioridade:** parsing de JSON da resposta do Claude em `creative/generate` usa regex (`/\{[\s\S]*\}/`) em vez de um parser estruturado — funciona na prática (Claude raramente devolve múltiplos blocos JSON), mas é frágil. Registrar se algum dia o parsing falhar silenciosamente em produção.
+
+`npx tsc --noEmit` limpo.
+
 ## ✅ 2026-06-22 — Configurador de nó do Flow Engine / Growth Map canvas
 
 **Contexto:** item 6 de `proximos-passos.md` — o canvas (`app/dashboard/growth-map/[id]/canvas.tsx`, `@xyflow/react`) já permitia criar/conectar/salvar/executar nós, mas `addNode()` sempre criava `config: {}` vazio e não havia nenhuma UI para editar os parâmetros depois — só era possível via edição direta do JSON no banco/API.

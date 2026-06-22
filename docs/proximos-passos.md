@@ -19,7 +19,7 @@
 
 ## 🟡 MÉDIO IMPACTO
 
-10. **Auditar Creative AI** — módulo identificado mas não auditado em profundidade nesta rodada (rotas existem, funcionalidade real não confirmada). O Marketplace já tem causa raiz conhecida do seu bug atual — ver item crítico #1.
+10. ~~Auditar Creative AI~~ — **Feito em 2026-06-22.** Módulo confirmado real e pronto para produção (sem stubs) — 6 rotas, todas chamando Claude/DALL-E de verdade com persistência e gating de plano já aplicados. 3 ajustes de consistência feitos (fallback de company_id removido em 2 rotas, check de API key ausente, typo no frontend). Detalhe em [decisoes.md](./decisoes.md).
 11. **Revisar consistência de `next.config`** — histórico mostra 2+ correções de build na Vercel por causa de configuração de Next.js (`.ts` → `.mjs`, `serverExternalPackages`). Validar que o config atual está estável antes de fazer upgrade de versão do Next.js novamente.
 12. ~~Implementar reset mensal de `company_usage`~~ — **Feito em 2026-06-22.** Chave mudada para `(company_id, period_start)` — ver item 4 e [decisoes.md](./decisoes.md).
 
