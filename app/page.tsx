@@ -983,8 +983,13 @@ function Footer() {
           <span className="text-[13px] font-black text-white tracking-tight">NEXUS OS</span>
         </Link>
         <div className="flex items-center gap-7">
-          {['Produto', 'Planos', 'API', 'Termos', 'Privacidade'].map(l => (
-            <a key={l} href="#" className="text-[12px] text-zinc-700 hover:text-zinc-400 transition-colors">{l}</a>
+          {[
+            { label: 'Produto', href: '#demo' },
+            { label: 'Planos', href: '/planos' },
+            { label: 'Termos', href: '/termos' },
+            { label: 'Privacidade', href: '/privacidade' },
+          ].map(l => (
+            <Link key={l.label} href={l.href} className="text-[12px] text-zinc-700 hover:text-zinc-400 transition-colors">{l.label}</Link>
           ))}
         </div>
         <p className="text-[11px] text-zinc-800">© 2026 Nexus OS · Feito no Brasil 🇧🇷</p>

@@ -14,6 +14,16 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ⚠️ 2026-06-22 — Páginas de Termos de Uso e Privacidade (rascunho) — checklist de pré-lançamento
+
+**Contexto:** ao montar um checklist de pré-lançamento, achei que o `Footer` da landing (`app/page.tsx`) já tinha links "Termos"/"Privacidade" — mas ambos apontavam pra `href="#"`. Não existia nenhuma página real. Para uma SaaS cobrando via Stripe e processando dados de clientes (LGPD), isso é exigido antes de abrir cadastro público de verdade.
+
+**Implementado:** `app/termos/page.tsx` e `app/privacidade/page.tsx` — rascunhos genéricos (Termos de Uso + Política de Privacidade alinhada à LGPD), cobrindo plano/cobrança/cancelamento, integrações de terceiros (Stripe, Z-API, Anthropic, OpenAI, Resend, Supabase, Vercel), direitos do titular de dados, retenção, segurança. Footer da landing corrigido para apontar pros links reais (e o link morto "API" removido, já que não existe página pública de docs de API).
+
+**⚠️ Isso é um rascunho genérico, não documento jurídico final.** Contém placeholders explícitos (`[RAZÃO SOCIAL DA EMPRESA]`, `[CNPJ]`, `[CIDADE/UF]`, `[E-MAIL DE CONTATO]`, `[E-MAIL DO DPO/PRIVACIDADE]`, `[DATA]`) que **precisam ser preenchidos e o texto revisado por um advogado antes de qualquer lançamento público real** — isso não é aconselhamento jurídico, é só uma base de estrutura para acelerar a revisão.
+
+`npx tsc --noEmit` limpo. Rotas `/termos` e `/privacidade` testadas (200, smoke test local).
+
 ## ✅ 2026-06-22 — Revisão de consistência do `next.config` (item 11): estável, sem ação necessária
 
 **Contexto:** histórico tinha 2+ correções de build na Vercel ("modifyConfig crash") ligadas a `next.config` — verificar se o arquivo atual estava estável antes de qualquer upgrade futuro do Next.js.
