@@ -9,13 +9,44 @@ export type NodeType =
   | 'result'
 
 export interface GrowthNodeConfig {
+  // ── data_analysis / opportunity ──────────────────────────────────────────
   dataSource?:   'overdue' | 'inactive' | 'financial' | 'all_clients'
-  focus?:        string
-  question?:     string
+                | 'invoices' | 'leads' | 'new_leads' | 'at_risk_clients'
+  limit?:        number
+  inactiveDays?: number
+  focus?:        string   // decorative only — not read by the analysis handler
+  question?:     string   // decorative only — not read by the decision handler
+
+  // ── decision ──────────────────────────────────────────────────────────────
+  useAI?:        boolean
+  aiPrompt?:     string
+  threshold?:    number
+  condition?:    string
+
+  // ── message_gen ───────────────────────────────────────────────────────────
   messageType?:  'recovery' | 'upsell' | 'reactivation' | 'campaign'
   channel?:      'email' | 'whatsapp'
   tone?:         string
-  segment?:      'overdue' | 'inactive' | 'all'
+
+  // ── auto_action ───────────────────────────────────────────────────────────
+  actionType?:      string
+  segment?:         'overdue' | 'inactive' | 'all'
+  subject?:         string
+  template?:        string
+  message?:         string
+  recipientField?:  string
+  phoneField?:      string
+  field?:           string
+  value?:           unknown
+  table?:           string
+  idField?:         string
+  source?:          string
+  status?:          string
+  notes?:           string
+  description?:     string
+  invoice_id?:       string
+  amount?:           number
+
   metrics?:      string[]
 }
 

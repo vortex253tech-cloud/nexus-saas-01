@@ -18,9 +18,10 @@ import {
   Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Loader2, Play, Save, Zap, X, ChevronDown, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Loader2, Play, Save, Zap, X, ChevronDown, ChevronRight, AlertCircle, CheckCircle2, Settings } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { GrowthNode, GrowthEdge, NodeResult, NodeType } from '@/lib/growth-map-types'
+import NodeConfigPanel from './node-config-panel'
 
 // ─── Node appearance config ───────────────────────────────────────────────────
 
@@ -57,7 +58,6 @@ function GrowthNodeComponent({
     config:   unknown
     result?:  NodeResult
     status?:  NodeStatus
-    onClickDetail?: (d: { label: string; result?: NodeResult; status?: NodeStatus; log?: unknown }) => void
   }
   selected?: boolean
 }) {
@@ -66,15 +66,8 @@ function GrowthNodeComponent({
   const status = data.status
   const sm     = status ? STATUS_META[status] : undefined
 
-  const handleClick = () => {
-    if (data.onClickDetail) {
-      data.onClickDetail({ label: data.label, result: res, status })
-    }
-  }
-
   return (
     <div
-      onClick={handleClick}
       style={{ borderColor: status === 'error' ? '#ef4444' : status === 'success' ? '#10b981' : meta.color }}
       className={cn(
         'rounded-2xl border-2 bg-zinc-900 min-w-[220px] max-w-[260px] overflow-hidden shadow-xl transition-all duration-300 cursor-pointer',
@@ -94,15 +87,24 @@ function GrowthNodeComponent({
           <p className="text-xs text-white font-medium truncate">{data.label}</p>
         </div>
 
-        {sm ? (
-          <span className={cn('ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap flex items-center gap-0.5', sm.badgeCls)}>
-            <span>{sm.dot}</span><span>{sm.label}</span>
-          </span>
-        ) : res ? (
-          <span className={cn('ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold', res.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')}>
-            {res.success ? '✓' : '✗'}
-          </span>
-        ) : null}
+        <div className="ml-auto flex items-center gap-1 shrink-0">
+          {sm ? (
+            <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap flex items-center gap-0.5', sm.badgeCls)}>
+              <span>{sm.dot}</span><span>{sm.label}</span>
+            </span>
+          ) : res ? (
+            <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-bold', res.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')}>
+              {res.success ? '✓' : '✗'}
+            </span>
+          ) : null}
+          <button
+            data-node-action="configure"
+            title="Configurar nó"
+            className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-700/60 transition-colors"
+          >
+            <Settings size={11} />
+          </button>
+        </div>
       </div>
 
       {/* Body */}
@@ -251,16 +253,16 @@ export default function GrowthCanvas({
   initialNodes, initialEdges, onSave, onExecute, executing, saving, results, nodeStatuses, nodeLogs,
 }: CanvasProps) {
   const [selectedDetail, setSelectedDetail] = useState<NodeDetail | null>(null)
+  const [configNodeId, setConfigNodeId]     = useState<string | null>(null)
 
   const nodesWithResults = useMemo<Node[]>(() =>
     initialNodes.map(n => ({
       ...n,
       data: {
         ...n.data,
-        type:          n.type,
-        result:        results?.[n.id] ?? n.data.result,
-        status:        nodeStatuses?.[n.id],
-        onClickDetail: (d: NodeDetail) => setSelectedDetail(d),
+        type:   n.type,
+        result: results?.[n.id] ?? n.data.result,
+        status: nodeStatuses?.[n.id],
       },
     })),
     [initialNodes, results, nodeStatuses],
@@ -300,6 +302,12 @@ export default function GrowthCanvas({
     await onSave(nodes as unknown as GrowthNode[], edges as unknown as GrowthEdge[])
   }
 
+  function handleConfigChange(nodeId: string, newConfig: Record<string, unknown>) {
+    setNodes(ns => ns.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, config: newConfig } } : n)))
+  }
+
+  const configNode = configNodeId ? nodes.find(n => n.id === configNodeId) ?? null : null
+
   const showLegend = executing || (nodeStatuses && Object.keys(nodeStatuses).length > 0)
 
   return (
@@ -310,17 +318,24 @@ export default function GrowthCanvas({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeClick={(_e, node) => {
+        onNodeClick={(e, node) => {
+          const isGearClick = !!(e.target as HTMLElement).closest('[data-node-action="configure"]')
           const d = node.data as {
             label?: string; result?: NodeResult; status?: NodeStatus
           }
-          if (d.result || d.status) {
-            setSelectedDetail({
-              label:  d.label ?? node.id,
-              result: d.result,
-              status: d.status,
-            })
+
+          if (isGearClick || !(d.result || d.status)) {
+            setSelectedDetail(null)
+            setConfigNodeId(node.id)
+            return
           }
+
+          setConfigNodeId(null)
+          setSelectedDetail({
+            label:  d.label ?? node.id,
+            result: d.result,
+            status: d.status,
+          })
         }}
         nodeTypes={nodeTypes}
         fitView
@@ -383,6 +398,17 @@ export default function GrowthCanvas({
         <NodeDetailPanel
           detail={selectedDetail}
           onClose={() => setSelectedDetail(null)}
+        />
+      )}
+
+      {/* Node config panel — shown when the gear icon (or an unrun node) is clicked */}
+      {configNode && (
+        <NodeConfigPanel
+          nodeType={(configNode.data.type as NodeType) ?? (configNode.type as NodeType)}
+          label={(configNode.data.label as string) ?? configNode.id}
+          config={(configNode.data.config as Record<string, unknown>) ?? {}}
+          onChange={cfg => handleConfigChange(configNode.id, cfg)}
+          onClose={() => setConfigNodeId(null)}
         />
       )}
     </div>

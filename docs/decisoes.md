@@ -14,6 +14,27 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ✅ 2026-06-22 — Configurador de nó do Flow Engine / Growth Map canvas
+
+**Contexto:** item 6 de `proximos-passos.md` — o canvas (`app/dashboard/growth-map/[id]/canvas.tsx`, `@xyflow/react`) já permitia criar/conectar/salvar/executar nós, mas `addNode()` sempre criava `config: {}` vazio e não havia nenhuma UI para editar os parâmetros depois — só era possível via edição direta do JSON no banco/API.
+
+**Descoberta importante antes de codificar:** os tipos de nó do canvas (`data_analysis`, `opportunity`, `decision`, `message_gen`, `auto_action`, `result`, de `lib/growth-map-types.ts`) **não são** os mesmos do Flow Engine genérico (`TRIGGER/ANALYSIS/DECISION/ACTION/RESULT`, de `lib/flow-engine/types.ts`) — são dois vocabulários diferentes para o mesmo sistema. A ponte é `FlowEngineService.normaliseType()` em `lib/flow-engine/flow-engine.service.ts`, que mapeia `data_analysis`/`opportunity` → `ANALYSIS`, `auto_action` → `ACTION`, etc. Isso significa que o formulário de configuração precisa espelhar exatamente o que os **handlers** (`lib/flow-engine/handlers/*.ts`) e **actions** (`lib/flow-engine/actions/*.ts`) leem de `node.config` — não o que `GrowthNodeConfig` documentava antes (que tinha campos puramente decorativos como `focus`/`question`, nunca lidos pelo motor de execução).
+
+**Implementado:** novo `app/dashboard/growth-map/[id]/node-config-panel.tsx` — painel lateral com formulário específico por tipo de nó:
+- `data_analysis`/`opportunity`: `dataSource` (dropdown), `limit`, `inactiveDays` (só aparece se `dataSource === 'at_risk_clients'`).
+- `decision`: toggle "Decidir com IA" → `aiPrompt` + `threshold`, ou (se desligado) `condition` (expressão livre, ex: `lastOutput.count > 500`).
+- `message_gen`: `messageType`, `channel`, `tone`.
+- `auto_action`: dropdown "Ação" (Automático pelo canal, ou um override explícito de `actionType`: `SEND_EMAIL`, `SEND_WHATSAPP`, `UPDATE_CLIENT`, `UPDATE_FINANCIAL`, `CREATE_LEAD`, `UPDATE_LEAD_STATUS`, `CREATE_PAYMENT_LINK`) — os campos secundários mudam dinamicamente conforme a ação escolhida (ex: `subject`/`template` para email, `field`/`value`/`table` para updates).
+- `result`: sem campos (mostra aviso "não tem parâmetros").
+
+**Integração no canvas:** novo botão de engrenagem no header de cada nó (`data-node-action="configure"`) + clique no corpo do nó agora abre o configurador quando o nó ainda não tem resultado de execução (antes abria um painel de detalhe vazio e inútil; depois de executado, clicar no corpo continua mostrando o resultado, a engrenagem sempre abre o configurador). Removido `onClickDetail` do `data` dos nós — era redundante com a lógica que já existia em `onNodeClick` no `<ReactFlow>`, e só funcionava para os nós iniciais (nós criados via `addNode()` nunca tinham esse callback).
+
+**Bônus, achado ao mapear o schema real:** `lib/flow-engine/validators/node-config.validator.ts` rejeitava `dataSource: 'inactive'` (`VALID_DATA_SOURCES` não incluía), mas `analysis.handler.ts` suporta esse valor e o próprio template embutido "Reativar Clientes" (`GROWTH_TEMPLATES.reactivate_clients`) o usa — ou seja, o primeiro nó desse template específico provavelmente sempre falhava a validação silenciosamente (nó pulado, não fatal) e nunca executava de fato. Corrigido adicionando `'inactive'` ao set.
+
+`lib/growth-map-types.ts`: `GrowthNodeConfig` ampliada para cobrir todos os campos reais usados pelos handlers (antes só tinha um subconjunto usado pelos 4 templates embutidos).
+
+`npx tsc --noEmit` limpo. **Testado apenas parcialmente:** sem ferramenta de automação de browser disponível nesta sessão, validei que o servidor de dev sobe sem erro e que a rota `/dashboard/growth-map/[id]` responde normalmente (redirect de auth, não crash) — não cliquei de fato no botão de engrenagem nem testei o fluxo completo de editar→salvar→executar num browser real. Recomendo testar manualmente antes de confiar 100%, especialmente: (1) os campos condicionais do `auto_action` ao trocar a `actionType`, (2) se `handleConfigChange` realmente persiste a mudança no nó certo ao clicar em "Salvar".
+
 ## ✅ 2026-06-22 — Gating de plano completo (reset mensal, Flow Engine, WhatsApp CRM) + 2 achados de segurança corrigidos no caminho
 
 **Contexto para quem abrir esta sessão sem o histórico do chat**: pedido original era "fechar o gating de plano" (item pendente desde 2026-06-18: reset mensal de `company_usage`, Flow Engine sem limite de execução, WhatsApp CRM com gate só no `send`). Durante a investigação, dois achados não previstos mudaram o escopo — registrados abaixo, ambos corrigidos com confirmação do usuário antes de codificar.

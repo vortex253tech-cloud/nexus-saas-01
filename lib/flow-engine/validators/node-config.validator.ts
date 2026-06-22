@@ -19,7 +19,7 @@ export interface ValidationResult {
 // ─── Valid value sets ─────────────────────────────────────────────────────────
 
 const VALID_DATA_SOURCES = new Set([
-  'clients', 'invoices', 'overdue', 'financial', 'all_clients',
+  'clients', 'invoices', 'overdue', 'financial', 'all_clients', 'inactive',
   'leads', 'new_leads', 'at_risk_clients',
 ])
 
