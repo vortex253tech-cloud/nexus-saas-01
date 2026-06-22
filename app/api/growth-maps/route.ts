@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext }        from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { GROWTH_TEMPLATES }      from '@/lib/growth-map-engine'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
 
 export async function GET() {
   const ctx = await getAuthContext()
@@ -22,6 +23,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('automations')
+  if (denied) return denied
+
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
@@ -31,9 +35,13 @@ export async function POST(req: NextRequest) {
   }
   if (!body.name?.trim()) return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 })
 
-  const template = body.templateKey ? GROWTH_TEMPLATES[body.templateKey] : null
-
   const db = getSupabaseServerClient()
+
+  const { count } = await db.from('growth_maps').select('*', { count: 'exact', head: true }).eq('company_id', ctx.company.id)
+  const limited = await denyIfAtLimit('max_automations', count ?? 0)
+  if (limited) return limited
+
+  const template = body.templateKey ? GROWTH_TEMPLATES[body.templateKey] : null
   const { data, error } = await db.from('growth_maps').insert({
     company_id:  ctx.company.id,
     name:        body.name.trim(),

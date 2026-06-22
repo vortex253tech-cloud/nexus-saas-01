@@ -5,12 +5,16 @@
 import { NextRequest, NextResponse }   from 'next/server'
 import { getAuthContext }              from '@/lib/auth'
 import { getSupabaseServerClient }     from '@/lib/supabase'
+import { denyIfCannot }                from '@/lib/plan-middleware'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? ''
   if (q.length < 2) return NextResponse.json({ results: [] })
+
+  const denied = await denyIfCannot('whatsapp')
+  if (denied) return denied
 
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

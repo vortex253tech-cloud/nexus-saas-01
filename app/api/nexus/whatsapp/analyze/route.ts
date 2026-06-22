@@ -5,6 +5,8 @@
 import { NextRequest, NextResponse }   from 'next/server'
 import { createClient }                from '@supabase/supabase-js'
 import { syncWhatsAppLeadToLeads }     from '@/lib/leads-sync'
+import { getAuthContext }              from '@/lib/auth'
+import { denyIfCannot }                from '@/lib/plan-middleware'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 30
@@ -17,14 +19,20 @@ function db() {
 }
 
 export async function POST(req: NextRequest) {
-  // Allow internal calls from webhook (using webhook token) OR authenticated users
+  // Allow internal calls from webhook (using webhook token) OR authenticated users.
+  // This route has no caller besides the webhook today (the "manual" path in
+  // the comment above never existed in code) — without this check, anyone
+  // could POST an arbitrary conversation_id and trigger a billed OpenAI call.
   const webhookToken = process.env.ZAPI_WEBHOOK_TOKEN
   const incomingSecret = req.headers.get('x-webhook-secret')
   const isInternal = webhookToken ? incomingSecret === webhookToken : false
 
   if (!isInternal) {
-    // Fall back to checking for any valid service-role header or skip auth for now
-    // In production, add proper auth check here
+    const denied = await denyIfCannot('whatsapp')
+    if (denied) return denied
+
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   let body: { conversation_id?: string; internal?: boolean }

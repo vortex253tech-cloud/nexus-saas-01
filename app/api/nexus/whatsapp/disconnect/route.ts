@@ -1,32 +1,27 @@
 // GET /api/nexus/whatsapp/disconnect — Disconnect Z-API instance
-// Z-API disconnect uses GET method (POST/DELETE return 405)
+// Resolves the caller's own Z-API instance (business_identity), falling back
+// to the platform-level instance only if the company hasn't configured one.
 
-import { NextResponse } from 'next/server'
+import { NextResponse }         from 'next/server'
+import { getAuthContext }       from '@/lib/auth'
+import { getCompanyZApiConfig } from '@/lib/business-identity'
+import { zapiDisconnect }       from '@/lib/zapi'
+import { denyIfCannot }         from '@/lib/plan-middleware'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 10
 
 export async function GET() {
-  const instanceId = process.env.ZAPI_INSTANCE_ID
-  const token      = process.env.ZAPI_TOKEN
-  const client     = process.env.ZAPI_CLIENT_TOKEN
+  const denied = await denyIfCannot('whatsapp')
+  if (denied) return denied
 
-  if (!instanceId || !token) {
-    return NextResponse.json({ error: 'not_configured' }, { status: 404 })
-  }
+  const ctx = await getAuthContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  try {
-    const res = await fetch(
-      `https://api.z-api.io/instances/${instanceId}/token/${token}/disconnect`,
-      {
-        headers: { 'Client-Token': client ?? '' },
-        signal:  AbortSignal.timeout(8000),
-      },
-    )
+  const config = await getCompanyZApiConfig(ctx.company.id)
+  if (!config) return NextResponse.json({ error: 'not_configured' }, { status: 404 })
 
-    const data = await res.json() as { value?: boolean }
-    return NextResponse.json({ ok: data.value === true })
-  } catch {
-    return NextResponse.json({ error: 'timeout' }, { status: 504 })
-  }
+  const result = await zapiDisconnect(config)
+  if (result.error) return NextResponse.json({ error: 'timeout' }, { status: 504 })
+  return NextResponse.json({ ok: result.ok })
 }

@@ -1,34 +1,32 @@
-// GET /api/nexus/whatsapp/status — Z-API connection check
-import { NextRequest, NextResponse } from 'next/server'
+// GET /api/nexus/whatsapp/status — Z-API connection check for the logged-in company
+// Resolves the caller's own Z-API instance (business_identity), falling back
+// to the platform-level instance only if the company hasn't configured one.
 
-export const dynamic = 'force-dynamic'
+import { NextResponse }         from 'next/server'
+import { getAuthContext }       from '@/lib/auth'
+import { getCompanyZApiConfig } from '@/lib/business-identity'
+import { zapiGetStatus }        from '@/lib/zapi'
+import { denyIfCannot }         from '@/lib/plan-middleware'
+
+export const dynamic    = 'force-dynamic'
 export const maxDuration = 10
 
-export async function GET(req: NextRequest) {
-  const companyId = req.nextUrl.searchParams.get('company_id')
-  if (!companyId) return NextResponse.json({ error: 'company_id required' }, { status: 400 })
+export async function GET() {
+  const denied = await denyIfCannot('whatsapp')
+  if (denied) return denied
 
-  const instanceId = process.env.ZAPI_INSTANCE_ID
-  const token      = process.env.ZAPI_TOKEN
-  const client     = process.env.ZAPI_CLIENT_TOKEN
+  const ctx = await getAuthContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!instanceId || !token) {
-    return NextResponse.json({ connected: false, status: 'not_configured' })
-  }
+  const config = await getCompanyZApiConfig(ctx.company.id)
+  if (!config) return NextResponse.json({ connected: false, status: 'not_configured' })
 
-  try {
-    const res = await fetch(
-      `https://api.z-api.io/instances/${instanceId}/token/${token}/status`,
-      { headers: { 'Client-Token': client ?? '' }, signal: AbortSignal.timeout(6000) },
-    )
+  const result = await zapiGetStatus(config)
+  if (result.error) return NextResponse.json({ connected: false, status: 'timeout' })
 
-    if (!res.ok) return NextResponse.json({ connected: false, status: 'error' })
-
-    const data = await res.json()
-    const connected = data?.connected === true || data?.status === 'Connected'
-
-    return NextResponse.json({ connected, status: connected ? 'connected' : 'disconnected', phone: data?.phone ?? null })
-  } catch {
-    return NextResponse.json({ connected: false, status: 'timeout' })
-  }
+  return NextResponse.json({
+    connected: result.connected,
+    status:    result.connected ? 'connected' : 'disconnected',
+    phone:     result.phone ?? null,
+  })
 }

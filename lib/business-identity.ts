@@ -4,6 +4,7 @@
 
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { decrypt } from '@/lib/payments/encryption'
+import { resolveZApiConfig, type ZApiConfig } from '@/lib/zapi'
 
 export interface BusinessIdentity {
   id: string
@@ -117,6 +118,24 @@ export async function getCompanyIdByZapiInstance(zapiInstanceId: string): Promis
     .maybeSingle()
 
   return (data?.company_id as string | undefined) ?? null
+}
+
+/**
+ * Resolves the Z-API config to use for a given company: the company's own
+ * instance (business_identity.zapi_instance_id/token) if configured, falling
+ * back to the platform-level instance from env vars otherwise. Used by every
+ * WhatsApp route that talks to Z-API on behalf of a specific company (QR
+ * pairing, setup, disconnect, status) so each tenant manages their own number
+ * instead of all of them sharing the platform instance.
+ */
+export async function getCompanyZApiConfig(companyId: string): Promise<ZApiConfig | null> {
+  const identity = await getBusinessIdentity(companyId)
+
+  return resolveZApiConfig(
+    identity?.zapiInstanceId && identity.zapiToken
+      ? { instanceId: identity.zapiInstanceId, token: identity.zapiToken, clientToken: identity.zapiClientToken ?? undefined }
+      : null,
+  )
 }
 
 /**

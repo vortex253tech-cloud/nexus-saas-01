@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseRouteClient }  from '@/lib/supabase-server'
 import { createClient }            from '@supabase/supabase-js'
+import { denyIfCannot }            from '@/lib/plan-middleware'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 10
@@ -18,6 +19,9 @@ function db() {
 export async function GET(req: NextRequest) {
   const conversationId = req.nextUrl.searchParams.get('conversation_id')
   if (!conversationId) return NextResponse.json({ lead: null }, { status: 400 })
+
+  const denied = await denyIfCannot('whatsapp')
+  if (denied) return denied
 
   // ── Auth ──────────────────────────────────────────────────────
   const supabaseAuth = await getSupabaseRouteClient()

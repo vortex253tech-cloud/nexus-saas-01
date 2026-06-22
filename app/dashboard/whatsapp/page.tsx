@@ -378,7 +378,7 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
     if (phase !== 'qr' || alreadyConnected) return
     pollRef.current = setInterval(async () => {
       try {
-        const res  = await fetch('/api/nexus/whatsapp/status?company_id=check')
+        const res  = await fetch('/api/nexus/whatsapp/status')
         const data = await res.json() as WAStatus
         if (data.connected) {
           clearInterval(pollRef.current!)
@@ -1752,7 +1752,7 @@ export default function WhatsAppPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res  = await fetch('/api/nexus/whatsapp/status?company_id=self')
+      const res  = await fetch('/api/nexus/whatsapp/status')
       const data = await res.json() as WAStatus
       setWaStatus(data)
     } catch { /* ignore */ }

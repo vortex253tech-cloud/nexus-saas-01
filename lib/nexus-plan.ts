@@ -39,6 +39,7 @@ export type PlanFeature =
 // ── Limit keys ────────────────────────────────────────────────────────────────
 export type PlanLimit =
   | 'max_users' | 'max_leads' | 'max_projects' | 'max_agents' | 'max_ai_messages' | 'max_automations'
+  | 'max_flow_executions'
 
 const UNLIMITED = -1
 
@@ -50,24 +51,26 @@ const PLAN_CONFIG: Record<Plan, {
   free: {
     features: ['nexus_ai'],
     limits: {
-      max_users:        1,
-      max_leads:        10,
-      max_projects:     1,
-      max_agents:       0,
-      max_ai_messages:  50,
-      max_automations:  0,
+      max_users:            1,
+      max_leads:            10,
+      max_projects:         1,
+      max_agents:           0,
+      max_ai_messages:      50,
+      max_automations:      0,
+      max_flow_executions:  0,
     },
   },
 
   starter: {
     features: ['crm', 'leads', 'pipeline', 'tasks', 'nexus_ai', 'projects', 'financial_dashboard'],
     limits: {
-      max_users:        1,
-      max_leads:        100,
-      max_projects:     3,
-      max_agents:       1,
-      max_ai_messages:  500,
-      max_automations:  0,
+      max_users:            1,
+      max_leads:            100,
+      max_projects:         3,
+      max_agents:           1,
+      max_ai_messages:      500,
+      max_automations:      0,
+      max_flow_executions:  0,
     },
   },
 
@@ -77,12 +80,13 @@ const PLAN_CONFIG: Record<Plan, {
       'whatsapp', 'automations', 'revenue_engine', 'export_reports', 'advanced_analytics',
     ],
     limits: {
-      max_users:        5,
-      max_leads:        1000,
-      max_projects:     20,
-      max_agents:       5,
-      max_ai_messages:  5000,
-      max_automations:  50,
+      max_users:            5,
+      max_leads:            1000,
+      max_projects:         20,
+      max_agents:           5,
+      max_ai_messages:      5000,
+      max_automations:      50,
+      max_flow_executions:  500,
     },
   },
 
@@ -93,12 +97,13 @@ const PLAN_CONFIG: Record<Plan, {
       'multi_users', 'agents_advanced', 'nexus_coo', 'executive_ai', 'api_access', 'dashboard_advanced',
     ],
     limits: {
-      max_users:        20,
-      max_leads:        UNLIMITED,
-      max_projects:     UNLIMITED,
-      max_agents:       20,
-      max_ai_messages:  UNLIMITED,
-      max_automations:  UNLIMITED,
+      max_users:            20,
+      max_leads:            UNLIMITED,
+      max_projects:         UNLIMITED,
+      max_agents:           20,
+      max_ai_messages:      UNLIMITED,
+      max_automations:      UNLIMITED,
+      max_flow_executions:  UNLIMITED,
     },
   },
 
@@ -110,12 +115,13 @@ const PLAN_CONFIG: Record<Plan, {
       'white_label', 'multi_company', 'api_advanced',
     ],
     limits: {
-      max_users:        UNLIMITED,
-      max_leads:        UNLIMITED,
-      max_projects:     UNLIMITED,
-      max_agents:       UNLIMITED,
-      max_ai_messages:  UNLIMITED,
-      max_automations:  UNLIMITED,
+      max_users:            UNLIMITED,
+      max_leads:            UNLIMITED,
+      max_projects:         UNLIMITED,
+      max_agents:           UNLIMITED,
+      max_ai_messages:      UNLIMITED,
+      max_automations:      UNLIMITED,
+      max_flow_executions:  UNLIMITED,
     },
   },
 }

@@ -5,7 +5,7 @@ import { NextRequest, NextResponse }  from 'next/server'
 import { getAuthContext }             from '@/lib/auth'
 import { getSupabaseServerClient }    from '@/lib/supabase'
 import { getString, isRecord }        from '@/lib/unknown'
-import { denyIfCannot }               from '@/lib/plan-middleware'
+import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
 
 export async function GET() {
   const denied = await denyIfCannot('automations')
@@ -37,6 +37,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('automations')
+  if (denied) return denied
+
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
@@ -51,6 +54,10 @@ export async function POST(req: NextRequest) {
   if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
 
   const db = getSupabaseServerClient()
+
+  const { count } = await db.from('automations').select('*', { count: 'exact', head: true }).eq('company_id', ctx.company.id)
+  const limited = await denyIfAtLimit('max_automations', count ?? 0)
+  if (limited) return limited
 
   const { data: auto, error } = await db
     .from('automations')

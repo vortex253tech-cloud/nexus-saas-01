@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext }          from '@/lib/auth'
 import { createClient }            from '@supabase/supabase-js'
+import { denyIfCannot }            from '@/lib/plan-middleware'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 15
@@ -17,6 +18,9 @@ function db() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await denyIfCannot('whatsapp')
+  if (denied) return denied
+
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const companyId = ctx.companyId

@@ -141,3 +141,76 @@ export async function zapiGetStatus(config: ZApiConfig): Promise<{
     return { connected: false, error: err instanceof Error ? err.message : 'Z-API error' }
   }
 }
+
+// ─── QR code (pairing) ──────────────────────────────────────────
+
+export interface ZApiQrResult {
+  status:        'qr' | 'already_connected' | 'unavailable' | 'error'
+  pngBuffer?:    Buffer
+  error?:        string
+}
+
+export async function zapiGetQrCode(config: ZApiConfig): Promise<ZApiQrResult> {
+  const { instanceId, token, clientToken } = config
+  const url = `${ZAPI_BASE}/instances/${instanceId}/token/${token}/qr-code/image`
+
+  try {
+    const res = await fetch(url, {
+      headers: { 'Client-Token': clientToken ?? '' },
+      signal:  AbortSignal.timeout(10000),
+    })
+    if (!res.ok) return { status: 'error', error: `HTTP ${res.status}` }
+
+    // Z-API always returns JSON regardless of Content-Type header
+    const json = await res.json() as { value?: string; connected?: boolean }
+
+    if (json.connected === true) return { status: 'already_connected' }
+    if (!json.value) return { status: 'unavailable' }
+
+    const b64 = json.value.includes(',') ? json.value.split(',')[1] : json.value
+    return { status: 'qr', pngBuffer: Buffer.from(b64, 'base64') }
+  } catch (err) {
+    return { status: 'error', error: err instanceof Error ? err.message : 'timeout' }
+  }
+}
+
+// ─── Disconnect instance ────────────────────────────────────────
+// Z-API disconnect uses GET, not POST/DELETE (returns 405 otherwise).
+
+export async function zapiDisconnect(config: ZApiConfig): Promise<{ ok: boolean; error?: string }> {
+  const { instanceId, token, clientToken } = config
+  const url = `${ZAPI_BASE}/instances/${instanceId}/token/${token}/disconnect`
+
+  try {
+    const res = await fetch(url, {
+      headers: { 'Client-Token': clientToken ?? '' },
+      signal:  AbortSignal.timeout(8000),
+    })
+    const json = await res.json() as { value?: boolean }
+    return { ok: json.value === true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'timeout' }
+  }
+}
+
+// ─── Configure webhooks ──────────────────────────────────────────
+// Called once after a successful QR scan so this instance's webhook points
+// at our receiver. Failures are non-fatal (best-effort, logged by caller).
+
+export async function zapiSetupWebhooks(config: ZApiConfig, webhookUrl: string): Promise<PromiseSettledResult<Response>[]> {
+  const { instanceId, token, clientToken } = config
+  const base    = `${ZAPI_BASE}/instances/${instanceId}/token/${token}`
+  const headers = { 'Content-Type': 'application/json', 'Client-Token': clientToken ?? '' }
+
+  return Promise.allSettled([
+    fetch(`${base}/update-webhook`, {
+      method: 'PUT', headers, body: JSON.stringify({ value: webhookUrl }), signal: AbortSignal.timeout(8000),
+    }),
+    fetch(`${base}/update-webhook-delivery`, {
+      method: 'PUT', headers, body: JSON.stringify({ value: webhookUrl }), signal: AbortSignal.timeout(8000),
+    }),
+    fetch(`${base}/update-history-sync`, {
+      method: 'PUT', headers, body: JSON.stringify({ value: true }), signal: AbortSignal.timeout(8000),
+    }),
+  ])
+}
