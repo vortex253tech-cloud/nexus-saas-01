@@ -29,6 +29,15 @@
 14. Revisar se a rota `/v1` (legada) ainda é necessária.
 15. Consolidar os ~20 arquivos `supabase-migration-*.sql` legados na raiz num único lugar de arquivo morto (`supabase/legacy/` por exemplo), depois de confirmar o item crítico #1.
 
+## 🚀 Checklist de pré-lançamento (2026-06-22)
+
+16. ~~Termos de Uso / Política de Privacidade~~ — **Rascunho criado em 2026-06-22** (`app/termos`, `app/privacidade`). ⚠️ Tem placeholders (`[RAZÃO SOCIAL]`, `[CNPJ]`, e-mails de contato) que precisam ser preenchidos e revisados por um advogado antes do lançamento público real. Ver [decisoes.md](./decisoes.md).
+17. ~~SEO básico (robots.txt, sitemap, imagem Open Graph)~~ — **Feito em 2026-06-22.** Ver [decisoes.md](./decisoes.md).
+18. **Confirmar manualmente no painel do Stripe** que as URLs de webhook corretas estão cadastradas para cada evento (item já antigo, item 2, nunca confirmado por você).
+19. **Testar o Marketplace ponta a ponta** na UI (`/dashboard/marketplace`) — item 1, migrations já confirmadas, falta só o teste manual.
+20. **Confirmar domínio verificado no Resend** — sem isso, e-mails transacionais (boas-vindas, sequência de waitlist, recuperação de senha) podem cair em spam ou nem serem entregues.
+21. **Confirmar variáveis de ambiente na Vercel** (produção) — todo este projeto foi auditado contra `.env.local`, mas isso não garante que o mesmo conjunto de chaves está cadastrado no painel da Vercel para o deploy de produção.
+
 ## Regra de execução
 
 Nenhum destes itens deve ser executado sem validação do usuário primeiro — esta lista é diagnóstico, não autorização para agir. Em particular, qualquer mudança em schema (#1, #15) ou remoção de webhooks (#3) é uma operação de alto risco em banco/integrações compartilhadas e exige confirmação explícita antes de qualquer DROP/ALTER/delete de arquivo.

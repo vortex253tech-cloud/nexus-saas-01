@@ -14,6 +14,12 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ✅ 2026-06-22 — SEO de pré-lançamento: robots.txt, sitemap.xml, imagem de Open Graph
+
+**Contexto:** continuação do checklist de pré-lançamento. Não existia `robots.txt` (rotas privadas como `/dashboard`, `/admin`, `/api` eram crawlable por qualquer buscador), não existia `sitemap.xml`, e o `openGraph` do `layout.tsx` não tinha imagem — qualquer link do NEXUS compartilhado no WhatsApp ou redes sociais aparecia só como texto, sem preview visual.
+
+**Implementado, só com código (sem precisar de designer):** `app/robots.ts` (bloqueia rotas privadas, referencia o sitemap), `app/sitemap.ts` (lista as páginas públicas de marketing) e `app/opengraph-image.tsx` (imagem 1200×630 gerada via `next/og`, convenção automática do Next — aplica em qualquer página que não sobrescrever a própria). Confirmado via `next build`: as 3 rotas (`/robots.txt`, `/sitemap.xml`, `/opengraph-image`) buildam como estático sem erro.
+
 ## ⚠️ 2026-06-22 — Páginas de Termos de Uso e Privacidade (rascunho) — checklist de pré-lançamento
 
 **Contexto:** ao montar um checklist de pré-lançamento, achei que o `Footer` da landing (`app/page.tsx`) já tinha links "Termos"/"Privacidade" — mas ambos apontavam pra `href="#"`. Não existia nenhuma página real. Para uma SaaS cobrando via Stripe e processando dados de clientes (LGPD), isso é exigido antes de abrir cadastro público de verdade.
