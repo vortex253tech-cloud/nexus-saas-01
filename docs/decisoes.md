@@ -26,6 +26,12 @@
 
 **Testado:** primeiro post real publicado com sucesso em 24/06/2026 — https://www.instagram.com/p/DZ-wYNlD-_Y/. `tsc`/`next build` limpos.
 
+**Atualização no mesmo dia — título/subtítulo na imagem + carrossel:** pedido do usuário para que as imagens tragam título/subtítulo chamativos sobrepostos (não confiar na IA pra escrever texto direto na imagem — sai borrado/errado) e para suportar posts em carrossel. Implementado `lib/image-text-overlay.ts` (overlay via SVG + `sharp`, renderizado por código, garantidamente legível) e formato `carousel` no `Angle` (`publishCarouselToInstagram`, fluxo de 3 passos da API do Instagram). Novo ângulo `como_funciona_carrossel` (6 slides) publicado com sucesso: https://www.instagram.com/p/DZ-1_hRkhXP/.
+
+Dois bugs reais encontrados e corrigidos no processo:
+1. **Corrupção de buffer só em produção:** imagens com overlay chegavam corrompidas no Instagram ("formato de imagem não suportado"), apesar do buffer estar correto bytes antes do upload (confirmado via debug). Causa provável: `sharp().toBuffer()` retornando uma view sobre um ArrayBuffer maior/pooled; algo no caminho do upload provavelmente lia `.buffer` direto em vez de respeitar `byteOffset`/`length`. Fix: cópia defensiva com `Buffer.from(composited)` antes de qualquer upload.
+2. **Timeout no carrossel:** gerar 6 imagens sequencialmente excedeu o limite de 60s da function. Fix: `Promise.all` paralelizando a geração dos 6 slides + `maxDuration` elevado para 300s.
+
 ## ✅ 2026-06-24 — Creative AI quebrado em produção: `dall-e-3` foi descontinuado pela OpenAI
 
 **Achado enquanto gerava criativos pra campanha de lançamento** (fora do app, direto via API da OpenAI): `dall-e-3` não existe mais (`"The model 'dall-e-3' does not exist"`). Isso não é regressão nossa — a OpenAI removeu o modelo. `app/api/creative/image/route.ts` (o gerador de imagem do Creative AI, recurso real cobrado dos clientes) estava 100% quebrado em produção.
