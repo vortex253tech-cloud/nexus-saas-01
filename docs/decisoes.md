@@ -14,6 +14,16 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ⚠️ 2026-06-24 — Webhook de Stripe faltante + env vars ausentes na Vercel (achados durante "execução dos próximos passos do lançamento")
+
+**Webhook de cobrança de tenant nunca cadastrado.** `/api/webhooks/stripe` (billing da plataforma) e `/api/webhook/stripe` (cobrança de tenant — marca fatura como paga, atualiza `clients`/`collection_logs`/`revenue_events` quando um cliente da NEXUS recebe pagamento via Stripe Checkout) sempre existiram no código, mas só o primeiro estava registrado como destino no painel do Stripe. O segundo nunca recebeu um evento — o recurso de recuperação de receita nunca funcionou de ponta a ponta em produção, apesar do código estar correto. Corrigido: endpoint criado via API do Stripe (`checkout.session.completed`, `payment_intent.payment_failed`), novo `STRIPE_WEBHOOK_SECRET_TENANT` (cada endpoint tem signing secret próprio — não dá pra reusar o outro) adicionado na Vercel e no `.env.local`, `app/api/webhook/stripe/route.ts` atualizado para ler dele.
+
+**Achado lateral importante:** o domínio de produção (`nexusaas.com.br`) é servido pelo projeto Vercel **"nexus-saas"**, não "nexus-saas-01" — esse último existe como projeto separado, com **zero env vars configuradas**, não serve tráfego real. Causou confusão ao decidir onde aplicar a env var nova; resolvido conferindo `GET /v9/projects/{id}/domains` em ambos antes de agir.
+
+**Duas env vars faltando na Vercel (produção), achadas via diff `.env.local` vs painel:** `NEXT_PUBLIC_APP_URL` e `ELEVENLABS_API_KEY`. A falta da primeira é mais grave do que parece — por ser `NEXT_PUBLIC_*`, o Next.js a inlina em tempo de build; sem ela configurada, todo código que monta uma URL a partir dela (cliente E servidor) compila com fallback `''`. **Consequência real comprovada:** o e-mail de acesso liberado da waitlist (ver entrada acima) foi disparado *antes* dessa correção e saiu com o link do CTA relativo (`/signup?email=...`, sem `https://nexusaas.com.br`) — quebrado em qualquer cliente de e-mail. Corrigido: ambas as env vars adicionadas no projeto certo (`nexus-saas`), redeploy disparado via API e confirmado `READY`.
+
+**Lição:** "está no `.env.local`" não significa "está em produção" — só um diff direto contra a Vercel revelou a lacuna, e essa lacuna já tinha causado um problema real horas antes de ser notada.
+
 ## ✅ 2026-06-24 — Domínio do Resend verificado (e-mails transacionais voltaram a funcionar)
 
 **Contexto:** o usuário viu no painel do Resend que `nexusaas.com.br` estava com status `failed` e perguntou se podia usar `nexusaas.ai@gmail.com` como remetente.
