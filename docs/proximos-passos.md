@@ -31,13 +31,14 @@
 
 ## 🚀 Checklist de pré-lançamento (2026-06-22)
 
-16. ~~Termos de Uso / Política de Privacidade~~ — **Rascunho criado em 2026-06-22** (`app/termos`, `app/privacidade`). ⚠️ Tem placeholders (`[RAZÃO SOCIAL]`, `[CNPJ]`, e-mails de contato) que precisam ser preenchidos e revisados por um advogado antes do lançamento público real. Ver [decisoes.md](./decisoes.md).
+16. ~~Termos de Uso / Política de Privacidade~~ — **Rascunho criado em 2026-06-22** (`app/termos`, `app/privacidade`). ⚠️ Placeholders `[RAZÃO SOCIAL]`/`[CNPJ]` **deliberadamente pendentes** — usuário confirmou em 2026-06-24 que ainda não tem CNPJ aberto, decidiu deixar como pendência conhecida por enquanto. Revisão por advogado ainda recomendada antes do lançamento público em maior escala. Ver [decisoes.md](./decisoes.md).
 17. ~~SEO básico (robots.txt, sitemap, imagem Open Graph)~~ — **Feito em 2026-06-22.** Ver [decisoes.md](./decisoes.md).
 18. ~~Confirmar manualmente no painel do Stripe que as URLs de webhook corretas estão cadastradas~~ — **Feito em 2026-06-24, ver item 2 acima.** Faltava o segundo webhook por completo, não era só conferir.
-19. **Testar o Marketplace ponta a ponta** na UI (`/dashboard/marketplace`) — item 1, migrations já confirmadas, falta só o teste manual.
+19. ~~Testar o Marketplace ponta a ponta~~ — **Backend verificado por código em 2026-06-24** (rotas corretas, 4 templates válidos no banco). Sem Playwright/Puppeteer disponível, o clique real na UI (`/dashboard/marketplace`) continua pendente — só o usuário pode fazer.
 20. ~~Confirmar domínio verificado no Resend~~ — **Feito em 2026-06-24.** Estava `failed`: faltavam os registros DKIM, SPF (TXT+MX) no DNS (hospedado na Vercel). Criados via API da Vercel (token fornecido pelo usuário) e reverificados via API do Resend — domínio agora `verified`. E-mail de teste real enviado e entregue com sucesso. Ver [decisoes.md](./decisoes.md).
 21. ~~Confirmar variáveis de ambiente na Vercel (produção)~~ — **Feito em 2026-06-24.** Diff entre `.env.local` (32 chaves) e o painel da Vercel (31 chaves) via API: faltavam `NEXT_PUBLIC_APP_URL` e `ELEVENLABS_API_KEY`. A primeira é grave — por ser `NEXT_PUBLIC_*`, é inlinada no build; sem ela, todo link gerado a partir dela (inclusive o e-mail de acesso da waitlist, ver item 22) saía **relativo, sem domínio, quebrado**. Ambas adicionadas no projeto certo (`nexus-saas`) e redeploy disparado e confirmado `READY`. Ver [decisoes.md](./decisoes.md).
-22. ~~Disparar o e-mail de acesso liberado (waitlist)~~ — **Feito em 2026-06-24, mas o primeiro envio saiu com o link quebrado** (ver item 21 — `NEXT_PUBLIC_APP_URL` ainda não existia na Vercel nesse momento). Corrigido e pronto para reenvio. Ver [decisoes.md](./decisoes.md).
+22. ~~Disparar o e-mail de acesso liberado (waitlist)~~ — **Feito em 2026-06-24, mas o primeiro envio saiu com o link quebrado** (ver item 21 — `NEXT_PUBLIC_APP_URL` ainda não existia na Vercel nesse momento). Corrigido e reenviado com sucesso. Ver [decisoes.md](./decisoes.md).
+23. ~~Auditar os Price IDs do Stripe contra o que está anunciado em `/planos`~~ — **Feito em 2026-06-24.** Todos os 6 Price IDs ativos; Enterprise/Scale divergia em R$100/mês entre o anunciado (897) e o cobrado (797). Corrigido o texto da página para bater com o Stripe. Ver [decisoes.md](./decisoes.md).
 
 ## Regra de execução
 
