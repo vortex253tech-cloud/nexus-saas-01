@@ -423,16 +423,19 @@ export async function runDailyInstagramPost(forceAngleId?: string): Promise<{
       if (!angle.slides?.length) throw new Error(`Ângulo ${angle.id} é carrossel mas não tem slides`)
 
       const copy = await generatePostCopy(angle, recentCaptions)
-      const imagePaths: string[] = []
-      const imageUrls: string[] = []
 
-      for (const slide of angle.slides) {
-        const buffer = await generateImageWithOverlay(slide.imagePrompt, slide.title, slide.subtitle)
-        const upload = await uploadFile(buffer, `ig-carousel-${Date.now()}-${imagePaths.length}.png`, 'image/png', 'platform-instagram')
-        if ('error' in upload) throw new Error(upload.error)
-        imagePaths.push(upload.path)
-        imageUrls.push(upload.url)
-      }
+      // Generate all slides concurrently — sequential generation of 6
+      // gpt-image-1 calls blew past the function's time limit.
+      const slideResults = await Promise.all(
+        angle.slides.map(async (slide, i) => {
+          const buffer = await generateImageWithOverlay(slide.imagePrompt, slide.title, slide.subtitle)
+          const upload = await uploadFile(buffer, `ig-carousel-${Date.now()}-${i}.png`, 'image/png', 'platform-instagram')
+          if ('error' in upload) throw new Error(upload.error)
+          return upload
+        }),
+      )
+      const imagePaths = slideResults.map(u => u.path)
+      const imageUrls  = slideResults.map(u => u.url)
 
       const { data: inserted } = await db
         .from('instagram_posts_log')

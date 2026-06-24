@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { runDailyInstagramPost } from '@/lib/instagram-content-machine'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 300
 
 async function handler(req: NextRequest) {
   const auth   = req.headers.get('authorization') ?? req.headers.get('x-cron-secret')
