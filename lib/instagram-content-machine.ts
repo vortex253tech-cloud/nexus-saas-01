@@ -10,16 +10,25 @@
 
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { uploadFile } from '@/lib/storage/upload'
+import { overlayTitleSubtitle } from '@/lib/image-text-overlay'
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 
 // ─── Content angles ───────────────────────────────────────────────────────────
 
+export interface CarouselSlide {
+  imagePrompt: string
+  title: string
+  subtitle: string
+}
+
 export interface Angle {
   id: string
   name: string
-  imagePrompt: string
+  format?: 'single' | 'carousel'   // default 'single'
+  imagePrompt: string              // unused when format === 'carousel'
   captionBrief: string
+  slides?: CarouselSlide[]         // required when format === 'carousel'
 }
 
 export const ANGLES: Angle[] = [
@@ -87,6 +96,52 @@ export const ANGLES: Angle[] = [
     captionBrief:
       'Ângulo: pergunta direta para gerar comentários. Liste 2-3 problemas operacionais comuns (ex: responder clientes, cobrar inadimplentes, organizar dados) e pergunte qual mais atrapalha o dia do leitor — convide a responder nos comentários.',
   },
+  {
+    id: 'como_funciona_carrossel',
+    name: 'Como o NEXUS funciona por dentro (carrossel)',
+    format: 'carousel',
+    imagePrompt: '',
+    captionBrief:
+      'Carrossel educativo detalhando como o NEXUS funciona internamente, passo a passo, em tom de bastidores/transparência.',
+    slides: [
+      {
+        imagePrompt:
+          'Abstract glowing brain made of navy blue and gold light particles and neural connections, floating in deep dark space, premium tech aesthetic, no text, no words, no letters',
+        title: 'Como o NEXUS funciona por dentro',
+        subtitle: 'O Sistema Operacional Empresarial com IA, em 5 passos',
+      },
+      {
+        imagePrompt:
+          'Glowing navy blue and gold chat bubble icons with checkmarks floating in dark space, representing automated customer messaging, premium tech aesthetic, no text, no words, no letters',
+        title: '1. Atendimento automático',
+        subtitle: 'A IA responde clientes no WhatsApp 24h, sem perder uma mensagem',
+      },
+      {
+        imagePrompt:
+          'Glowing navy blue and gold invoice and coin icon with a checkmark, floating in dark space, representing automated billing and collections, premium tech aesthetic, no text, no words, no letters',
+        title: '2. Cobrança inteligente',
+        subtitle: 'Identifica inadimplentes e cobra automaticamente, sem constrangimento',
+      },
+      {
+        imagePrompt:
+          'Glowing navy blue and gold magnifying glass over an abstract financial chart, floating in dark space, representing financial diagnostics, premium tech aesthetic, no text, no words, no letters',
+        title: '3. Diagnóstico financeiro',
+        subtitle: 'Analisa seus dados e mostra onde você está perdendo dinheiro',
+      },
+      {
+        imagePrompt:
+          'Glowing navy blue and gold bell icon with radiating alert waves, floating in dark space, representing real-time business alerts, premium tech aesthetic, no text, no words, no letters',
+        title: '4. Decisões em tempo real',
+        subtitle: 'Alertas e recomendações no momento certo, antes do problema crescer',
+      },
+      {
+        imagePrompt:
+          'Glowing navy blue and gold upward growth arrow path, ascending through abstract light particles, dark space background, premium tech aesthetic, no text, no words, no letters',
+        title: 'Pronto para automatizar?',
+        subtitle: 'Diagnóstico gratuito: diagnostico.nexusaas.com.br',
+      },
+    ],
+  },
 ]
 
 // ─── Pick least-recently-used angle ───────────────────────────────────────────
@@ -113,29 +168,17 @@ export async function pickNextAngle(): Promise<Angle> {
   return scored[0].angle
 }
 
-// ─── Caption generation (Claude) ──────────────────────────────────────────────
+// ─── Caption + title/subtitle generation (Claude) ─────────────────────────────
 
-export async function generateCaption(angle: Angle, recentCaptions: string[]): Promise<string> {
+export interface PostCopy {
+  title:    string  // punchy headline baked into the image, max ~6 words
+  subtitle: string  // supporting line baked into the image, max ~12 words
+  caption:  string  // full Instagram caption
+}
+
+async function callClaude(systemPrompt: string, userPrompt: string, maxTokens: number): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada')
-
-  const avoidBlock = recentCaptions.length
-    ? `\n\nLegendas dos últimos posts (NÃO repita a estrutura, abertura ou frases destas):\n${recentCaptions.map((c, i) => `${i + 1}. ${c}`).join('\n')}`
-    : ''
-
-  const systemPrompt = `Você escreve legendas de Instagram para @nexus.saas.ia, conta da NEXUS — um Sistema Operacional Empresarial com IA (CRM, automação de WhatsApp, cobrança, diagnóstico financeiro). Público: donos de pequenas e médias empresas, agências, consultorias, clínicas no Brasil.
-
-Regras obrigatórias:
-- Português do Brasil, tom direto e confiante, sem ser sensacionalista.
-- Entre 40 e 90 palavras.
-- NÃO use fórmula de medo/ameaça repetitiva ("você vai ficar para trás", "enquanto isso seu concorrente...").
-- Varie a frase de abertura — nunca comece com "Enquanto você..." ou "Sua empresa...".
-- Termine com uma chamada clara para o diagnóstico gratuito em diagnostico.nexusaas.com.br (pode variar a frase do CTA).
-- No máximo 4 hashtags relevantes ao final, nunca uma parede de hashtags.
-- Não invente números/estatísticas citando fontes externas falsas.
-- Retorne APENAS o texto da legenda, sem aspas, sem comentário extra.`
-
-  const userPrompt = `Ângulo de hoje: ${angle.name}\n${angle.captionBrief}${avoidBlock}`
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -146,7 +189,7 @@ Regras obrigatórias:
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-5',
-      max_tokens: 400,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     }),
@@ -155,13 +198,54 @@ Regras obrigatórias:
   if (!res.ok) throw new Error(`Claude API error: ${res.status} ${await res.text()}`)
   const json = await res.json()
   const text = json.content?.[0]?.text?.trim()
-  if (!text) throw new Error('Claude não retornou legenda')
+  if (!text) throw new Error('Claude não retornou texto')
   return text
+}
+
+export async function generatePostCopy(angle: Angle, recentCaptions: string[]): Promise<PostCopy> {
+  const avoidBlock = recentCaptions.length
+    ? `\n\nLegendas dos últimos posts (NÃO repita a estrutura, abertura ou frases destas):\n${recentCaptions.map((c, i) => `${i + 1}. ${c}`).join('\n')}`
+    : ''
+
+  const systemPrompt = `Você escreve posts de Instagram para @nexus.saas.ia, conta da NEXUS — um Sistema Operacional Empresarial com IA (CRM, automação de WhatsApp, cobrança, diagnóstico financeiro). Público: donos de pequenas e médias empresas, agências, consultorias, clínicas no Brasil.
+
+Cada post tem 3 partes:
+1. "title": frase curta e impactante (até 6 palavras) que vai aparecer GRANDE, sobreposta na própria imagem — precisa chamar atenção e fazer sentido sozinha, sem o resto do texto.
+2. "subtitle": linha de apoio (até 12 palavras), também sobreposta na imagem, complementando o título.
+3. "caption": a legenda completa do post.
+
+Regras obrigatórias para a "caption":
+- Português do Brasil, tom direto e confiante, sem ser sensacionalista.
+- Entre 40 e 90 palavras.
+- NÃO use fórmula de medo/ameaça repetitiva ("você vai ficar para trás", "enquanto isso seu concorrente...").
+- Varie a frase de abertura — nunca comece com "Enquanto você..." ou "Sua empresa...".
+- Termine com uma chamada clara para o diagnóstico gratuito em diagnostico.nexusaas.com.br (pode variar a frase do CTA).
+- No máximo 4 hashtags relevantes ao final, nunca uma parede de hashtags.
+- Não invente números/estatísticas citando fontes externas falsas.
+
+Responda APENAS com um JSON válido, sem markdown, sem comentário, no formato exato:
+{"title": "...", "subtitle": "...", "caption": "..."}`
+
+  const userPrompt = `Ângulo de hoje: ${angle.name}\n${angle.captionBrief}${avoidBlock}`
+
+  const text = await callClaude(systemPrompt, userPrompt, 500)
+
+  try {
+    const cleaned = text.replace(/^```json\s*|\s*```$/g, '')
+    const parsed = JSON.parse(cleaned) as PostCopy
+    if (!parsed.title || !parsed.caption) throw new Error('campos faltando')
+    return { title: parsed.title, subtitle: parsed.subtitle ?? '', caption: parsed.caption }
+  } catch {
+    // Fallback: Claude didn't return clean JSON — derive a basic title from
+    // the caption's first line rather than failing the whole post.
+    const firstLine = text.split('\n')[0].slice(0, 60)
+    return { title: firstLine, subtitle: '', caption: text }
+  }
 }
 
 // ─── Image generation (gpt-image-1) ───────────────────────────────────────────
 
-export async function generateImageBuffer(angle: Angle): Promise<Buffer> {
+export async function generateImageBuffer(prompt: string): Promise<Buffer> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) throw new Error('OPENAI_API_KEY não configurada')
 
@@ -173,7 +257,7 @@ export async function generateImageBuffer(angle: Angle): Promise<Buffer> {
     },
     body: JSON.stringify({
       model: 'gpt-image-1',
-      prompt: angle.imagePrompt,
+      prompt,
       size: '1024x1024',
       quality: 'high',
       n: 1,
@@ -185,6 +269,17 @@ export async function generateImageBuffer(angle: Angle): Promise<Buffer> {
   const b64 = json.data?.[0]?.b64_json
   if (!b64) throw new Error('gpt-image-1 não retornou imagem')
   return Buffer.from(b64, 'base64')
+}
+
+// Generates a background then overlays a title/subtitle text block on top —
+// used for both single posts and each carousel slide.
+export async function generateImageWithOverlay(
+  prompt: string,
+  title: string,
+  subtitle: string,
+): Promise<Buffer> {
+  const background = await generateImageBuffer(prompt)
+  return overlayTitleSubtitle(background, { title, subtitle, position: 'bottom' })
 }
 
 // ─── Publish to Instagram ──────────────────────────────────────────────────────
@@ -234,6 +329,71 @@ export async function publishToInstagram(imageUrl: string, caption: string): Pro
   return { mediaId: publishJson.id, permalink }
 }
 
+export async function publishCarouselToInstagram(imageUrls: string[], caption: string): Promise<PublishResult> {
+  const token  = process.env.INSTAGRAM_ACCESS_TOKEN
+  const igUser = process.env.IG_BUSINESS_ACCOUNT_ID
+  if (!token || !igUser) throw new Error('INSTAGRAM_ACCESS_TOKEN ou IG_BUSINESS_ACCOUNT_ID não configurados')
+  if (igUser !== '17841456954840976') {
+    throw new Error(`IG_BUSINESS_ACCOUNT_ID inesperado (${igUser}) — abortando para não postar na conta errada`)
+  }
+  if (imageUrls.length < 2 || imageUrls.length > 10) {
+    throw new Error(`Carrossel precisa de 2 a 10 imagens, recebeu ${imageUrls.length}`)
+  }
+
+  // Step 1: one item container per slide (no caption on items, just the image)
+  const childIds: string[] = []
+  for (const imageUrl of imageUrls) {
+    const itemRes = await fetch(`${GRAPH}/${igUser}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: imageUrl, is_carousel_item: true, access_token: token }),
+    })
+    const itemJson = await itemRes.json()
+    if (!itemRes.ok || !itemJson.id) {
+      throw new Error(`Falha ao criar item do carrossel: ${JSON.stringify(itemJson)}`)
+    }
+    childIds.push(itemJson.id)
+  }
+
+  // Step 2: carousel container referencing all item containers
+  const carouselRes = await fetch(`${GRAPH}/${igUser}/media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      media_type: 'CAROUSEL',
+      children: childIds,
+      caption,
+      access_token: token,
+    }),
+  })
+  const carouselJson = await carouselRes.json()
+  if (!carouselRes.ok || !carouselJson.id) {
+    throw new Error(`Falha ao criar container do carrossel: ${JSON.stringify(carouselJson)}`)
+  }
+
+  // Step 3: publish
+  const publishRes = await fetch(`${GRAPH}/${igUser}/media_publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ creation_id: carouselJson.id, access_token: token }),
+  })
+  const publishJson = await publishRes.json()
+  if (!publishRes.ok || !publishJson.id) {
+    throw new Error(`Falha ao publicar carrossel: ${JSON.stringify(publishJson)}`)
+  }
+
+  let permalink: string | null = null
+  try {
+    const permRes = await fetch(`${GRAPH}/${publishJson.id}?fields=permalink&access_token=${token}`)
+    const permJson = await permRes.json()
+    permalink = permJson.permalink ?? null
+  } catch {
+    // non-critical
+  }
+
+  return { mediaId: publishJson.id, permalink }
+}
+
 // ─── Orchestrator ──────────────────────────────────────────────────────────────
 
 export async function runDailyInstagramPost(): Promise<{
@@ -257,20 +417,54 @@ export async function runDailyInstagramPost(): Promise<{
 
   let logId: string | null = null
   try {
-    const caption = await generateCaption(angle, recentCaptions)
-    const imageBuffer = await generateImageBuffer(angle)
+    if (angle.format === 'carousel') {
+      if (!angle.slides?.length) throw new Error(`Ângulo ${angle.id} é carrossel mas não tem slides`)
+
+      const copy = await generatePostCopy(angle, recentCaptions)
+      const imagePaths: string[] = []
+      const imageUrls: string[] = []
+
+      for (const slide of angle.slides) {
+        const buffer = await generateImageWithOverlay(slide.imagePrompt, slide.title, slide.subtitle)
+        const upload = await uploadFile(buffer, `ig-carousel-${Date.now()}-${imagePaths.length}.png`, 'image/png', 'platform-instagram')
+        if ('error' in upload) throw new Error(upload.error)
+        imagePaths.push(upload.path)
+        imageUrls.push(upload.url)
+      }
+
+      const { data: inserted } = await db
+        .from('instagram_posts_log')
+        .insert({ angle_id: angle.id, caption: copy.caption, image_path: JSON.stringify(imagePaths), status: 'pending' })
+        .select('id')
+        .single()
+      logId = inserted?.id ?? null
+
+      const { mediaId, permalink } = await publishCarouselToInstagram(imageUrls, copy.caption)
+
+      if (logId) {
+        await db.from('instagram_posts_log')
+          .update({ ig_media_id: mediaId, permalink, status: 'published' })
+          .eq('id', logId)
+      }
+
+      return { angleId: angle.id, caption: copy.caption, mediaId, permalink }
+    }
+
+    // ── Single-image post ──────────────────────────────────────────────────
+    const copy = await generatePostCopy(angle, recentCaptions)
+    const imageBuffer = await generateImageWithOverlay(angle.imagePrompt, copy.title, copy.subtitle)
 
     const upload = await uploadFile(imageBuffer, `ig-post-${Date.now()}.png`, 'image/png', 'platform-instagram')
     if ('error' in upload) throw new Error(upload.error)
 
     const { data: inserted } = await db
       .from('instagram_posts_log')
-      .insert({ angle_id: angle.id, caption, image_path: upload.path, status: 'pending' })
+      .insert({ angle_id: angle.id, caption: copy.caption, image_path: upload.path, status: 'pending' })
       .select('id')
       .single()
     logId = inserted?.id ?? null
 
-    const { mediaId, permalink } = await publishToInstagram(upload.url, caption)
+    const { mediaId, permalink } = await publishToInstagram(upload.url, copy.caption)
 
     if (logId) {
       await db.from('instagram_posts_log')
@@ -278,7 +472,7 @@ export async function runDailyInstagramPost(): Promise<{
         .eq('id', logId)
     }
 
-    return { angleId: angle.id, caption, mediaId, permalink }
+    return { angleId: angle.id, caption: copy.caption, mediaId, permalink }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (logId) {

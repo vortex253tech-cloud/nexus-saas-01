@@ -9,6 +9,7 @@ const nextConfig = {
     'pdf-parse',
     'mammoth',
     'nodemailer',
+    'sharp',
   ],
 }
 
