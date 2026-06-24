@@ -4,14 +4,17 @@ import { getSupabaseServerClient } from '@/lib/supabase'
 import { getAuthContext } from '@/lib/auth'
 import { denyIfCannot, denyIfAtLimit } from '@/lib/plan-middleware'
 import { getAiUsage, incrementAiUsage } from '@/lib/usage'
+import { uploadFile } from '@/lib/storage/upload'
 
-// ─── DALL-E size mapping ──────────────────────────────────────────────────────
+// ─── gpt-image-1 size mapping ─────────────────────────────────────────────────
+// OpenAI retired dall-e-3 — gpt-image-1 only supports these 3 sizes (no
+// portrait/landscape distinction beyond tall vs wide).
 
-const RATIO_SIZE: Record<string, '1024x1024' | '1024x1792' | '1792x1024'> = {
+const RATIO_SIZE: Record<string, '1024x1024' | '1024x1536' | '1536x1024'> = {
   square:    '1024x1024',
-  portrait:  '1024x1792',
-  landscape: '1792x1024',
-  banner:    '1792x1024',
+  portrait:  '1024x1536',
+  landscape: '1536x1024',
+  banner:    '1536x1024',
 }
 
 // ─── Load company identity ────────────────────────────────────────────────────
@@ -123,18 +126,24 @@ export async function POST(req: NextRequest) {
     const client = new OpenAI({ apiKey })
 
     const response = await client.images.generate({
-      model:   'dall-e-3',
+      model:   'gpt-image-1',
       prompt,
       n:       1,
       size,
-      quality: 'standard',
-      style:   style === 'minimal' || style === 'corporate' ? 'natural' : 'vivid',
+      quality: 'high',
     })
 
-    const items        = response.data ?? []
-    const imageUrl     = items[0]?.url
-    const revisedPrompt = items[0]?.revised_prompt ?? null
-    if (!imageUrl) throw new Error('DALL-E não retornou imagem')
+    const items   = response.data ?? []
+    const b64     = items[0]?.b64_json
+    if (!b64) throw new Error('gpt-image-1 não retornou imagem')
+
+    // gpt-image-1 returns base64 instead of a hosted URL (dall-e-3's old
+    // behavior) — upload to the private ai-images bucket and hand back a
+    // signed URL, same pattern as every other AI-generated asset.
+    const buffer = Buffer.from(b64, 'base64')
+    const upload = await uploadFile(buffer, `creative-${Date.now()}.png`, 'image/png', companyId)
+    if ('error' in upload) throw new Error(upload.error)
+    const imageUrl = upload.url
 
     const generationMs = Date.now() - t0
 
@@ -145,17 +154,16 @@ export async function POST(req: NextRequest) {
       subtype:       ratio,
       prompt:        description,
       image_url:     imageUrl,
-      model_used:    'dall-e-3',
+      model_used:    'gpt-image-1',
       generation_ms: generationMs,
-      metadata:      { style, objective, size, revised_prompt: revisedPrompt },
+      metadata:      { style, objective, size, storage_path: upload.path, storage_bucket: upload.bucket },
     })
 
     void incrementAiUsage(companyId)
     return NextResponse.json({
-      url:            imageUrl,
-      revised_prompt: revisedPrompt,
-      generation_ms:  generationMs,
-      company_name:   companyName,
+      url:           imageUrl,
+      generation_ms: generationMs,
+      company_name:  companyName,
       size,
     })
   } catch (err) {
