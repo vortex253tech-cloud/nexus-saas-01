@@ -1,9 +1,15 @@
 // POST /api/webhook/stripe
 // Receives Stripe webhook events and updates invoice/payment records.
 //
+// This is a separate Stripe webhook endpoint from /api/webhooks/stripe (platform
+// subscription billing) — it covers tenant-side invoicing (a NEXUS customer
+// collecting payment from their own client via Stripe Checkout). Each Stripe
+// webhook endpoint gets its own signing secret, so this can't share
+// STRIPE_WEBHOOK_SECRET with the other route.
+//
 // Required env vars:
-//   STRIPE_SECRET_KEY        — Stripe secret
-//   STRIPE_WEBHOOK_SECRET    — From Stripe dashboard → Webhooks → Signing secret
+//   STRIPE_SECRET_KEY              — Stripe secret
+//   STRIPE_WEBHOOK_SECRET_TENANT   — From Stripe dashboard → Webhooks → this endpoint's signing secret
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getStripe } from '@/lib/payments/stripe'
@@ -20,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
 
   const sig    = req.headers.get('stripe-signature')
-  const secret = process.env.STRIPE_WEBHOOK_SECRET
+  const secret = process.env.STRIPE_WEBHOOK_SECRET_TENANT
 
   if (!sig || !secret) {
     return NextResponse.json({ error: 'Missing signature or webhook secret' }, { status: 400 })
