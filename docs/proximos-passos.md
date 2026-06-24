@@ -35,7 +35,7 @@
 17. ~~SEO básico (robots.txt, sitemap, imagem Open Graph)~~ — **Feito em 2026-06-22.** Ver [decisoes.md](./decisoes.md).
 18. **Confirmar manualmente no painel do Stripe** que as URLs de webhook corretas estão cadastradas para cada evento (item já antigo, item 2, nunca confirmado por você).
 19. **Testar o Marketplace ponta a ponta** na UI (`/dashboard/marketplace`) — item 1, migrations já confirmadas, falta só o teste manual.
-20. **Confirmar domínio verificado no Resend** — sem isso, e-mails transacionais (boas-vindas, sequência de waitlist, recuperação de senha) podem cair em spam ou nem serem entregues.
+20. ~~Confirmar domínio verificado no Resend~~ — **Feito em 2026-06-24.** Estava `failed`: faltavam os registros DKIM, SPF (TXT+MX) no DNS (hospedado na Vercel). Criados via API da Vercel (token fornecido pelo usuário) e reverificados via API do Resend — domínio agora `verified`. E-mail de teste real enviado e entregue com sucesso. Ver [decisoes.md](./decisoes.md).
 21. **Confirmar variáveis de ambiente na Vercel** (produção) — todo este projeto foi auditado contra `.env.local`, mas isso não garante que o mesmo conjunto de chaves está cadastrado no painel da Vercel para o deploy de produção.
 
 ## Regra de execução

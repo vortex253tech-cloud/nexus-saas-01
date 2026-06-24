@@ -14,6 +14,18 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ✅ 2026-06-24 — Domínio do Resend verificado (e-mails transacionais voltaram a funcionar)
+
+**Contexto:** o usuário viu no painel do Resend que `nexusaas.com.br` estava com status `failed` e perguntou se podia usar `nexusaas.ai@gmail.com` como remetente.
+
+**Esclarecido:** não — nenhum provedor de envio transacional permite enviar "como" um domínio que você não comprova ser dono (SPF/DKIM de gmail.com nunca vai autorizar servidores do Resend, então cairia como spoofing/spam). Gmail só pode servir como "responder para", não como remetente.
+
+**Causa raiz encontrada via API do Resend** (`GET /domains/{id}`): os 3 registros DNS exigidos (DKIM TXT, SPF TXT, SPF MX) nunca tinham sido criados no DNS — não eram "incorretos", simplesmente não existiam. Confirmado por lookup direto (`nslookup`) antes da correção.
+
+**Corrigido:** usuário forneceu um token de acesso pessoal da Vercel (DNS do domínio é hospedado em `ns1/ns2.vercel-dns.com`, domínio pertence ao team `team_pSNfE2185NTCPGJ1n1qkMFcO`). Criados via `POST https://api.vercel.com/v4/domains/{domain}/records`: TXT `resend._domainkey` (DKIM), MX `send` → `feedback-smtp.sa-east-1.amazonses.com` (prioridade 10), TXT `send` → `v=spf1 include:amazonses.com ~all`, e CNAME `ia` → `links1.resend-dns.com` (tracking de cliques). Acionada reverificação via `POST /domains/{id}/verify` no Resend — passou de `failed` → `pending` → `partially_verified` → **`verified`** em ~75s. Confirmado com um e-mail de teste real enviado e entregue.
+
+**Nota de segurança:** o token da Vercel foi usado só nesta sessão (via variável de ambiente shell, nunca escrito em arquivo do repo) e os JSONs temporários com os payloads foram apagados ao final. Não está persistido em nenhum lugar do projeto.
+
 ## ✅ 2026-06-22 — SEO de pré-lançamento: robots.txt, sitemap.xml, imagem de Open Graph
 
 **Contexto:** continuação do checklist de pré-lançamento. Não existia `robots.txt` (rotas privadas como `/dashboard`, `/admin`, `/api` eram crawlable por qualquer buscador), não existia `sitemap.xml`, e o `openGraph` do `layout.tsx` não tinha imagem — qualquer link do NEXUS compartilhado no WhatsApp ou redes sociais aparecia só como texto, sem preview visual.
