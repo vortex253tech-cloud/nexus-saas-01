@@ -47,7 +47,7 @@ const PLANOS = [
     id: 'enterprise',
     nome: 'Enterprise',
     desc: 'Para grupos e operações com múltiplas unidades.',
-    preco: { mensal: 897, anual: 697 },
+    preco: { mensal: 797, anual: 597 },
     destaque: false,
     badge: null,
     features: [
