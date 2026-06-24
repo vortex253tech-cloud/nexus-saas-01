@@ -396,15 +396,16 @@ export async function publishCarouselToInstagram(imageUrls: string[], caption: s
 
 // ─── Orchestrator ──────────────────────────────────────────────────────────────
 
-export async function runDailyInstagramPost(): Promise<{
+export async function runDailyInstagramPost(forceAngleId?: string): Promise<{
   angleId: string
   caption: string
   mediaId?: string
   permalink?: string | null
   error?: string
+  debug?: string
 }> {
   const db = getSupabaseServerClient()
-  const angle = await pickNextAngle()
+  const angle = forceAngleId ? ANGLES.find(a => a.id === forceAngleId) ?? await pickNextAngle() : await pickNextAngle()
 
   const { data: recent } = await db
     .from('instagram_posts_log')
@@ -416,6 +417,7 @@ export async function runDailyInstagramPost(): Promise<{
   const recentCaptions = (recent ?? []).map(r => r.caption as string)
 
   let logId: string | null = null
+  let debugHex = ''
   try {
     if (angle.format === 'carousel') {
       if (!angle.slides?.length) throw new Error(`Ângulo ${angle.id} é carrossel mas não tem slides`)
@@ -453,6 +455,8 @@ export async function runDailyInstagramPost(): Promise<{
     // ── Single-image post ──────────────────────────────────────────────────
     const copy = await generatePostCopy(angle, recentCaptions)
     const imageBuffer = await generateImageWithOverlay(angle.imagePrompt, copy.title, copy.subtitle)
+    debugHex = `${imageBuffer.subarray(0, 8).toString('hex')} len=${imageBuffer.length}`
+    console.log(`[instagram-daily-post] imageBuffer first bytes: ${debugHex}`)
 
     const upload = await uploadFile(imageBuffer, `ig-post-${Date.now()}.png`, 'image/png', 'platform-instagram')
     if ('error' in upload) throw new Error(upload.error)
@@ -472,12 +476,12 @@ export async function runDailyInstagramPost(): Promise<{
         .eq('id', logId)
     }
 
-    return { angleId: angle.id, caption: copy.caption, mediaId, permalink }
+    return { angleId: angle.id, caption: copy.caption, mediaId, permalink, debug: debugHex }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (logId) {
       await db.from('instagram_posts_log').update({ status: 'failed', error: message }).eq('id', logId)
     }
-    return { angleId: angle.id, caption: '', error: message }
+    return { angleId: angle.id, caption: '', error: message, debug: debugHex }
   }
 }

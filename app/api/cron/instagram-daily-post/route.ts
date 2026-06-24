@@ -14,7 +14,8 @@ async function handler(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const result = await runDailyInstagramPost()
+  const forceAngleId = req.nextUrl.searchParams.get('angle') ?? undefined
+  const result = await runDailyInstagramPost(forceAngleId)
 
   if (result.error) {
     console.error('[instagram-daily-post] failed:', result.error)
