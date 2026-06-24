@@ -296,18 +296,18 @@ export interface AccessEmailData {
 
 export function buildAccessEmail(data: AccessEmailData): string {
   const firstName = data.name.split(' ')[0]
-  const loginUrl  = data.login_url ?? `${BASE_URL}/login`
+  const signupUrl = data.login_url ?? `${BASE_URL}/signup?email=${encodeURIComponent(data.email)}`
 
   return layout(`
     ${badge('🎉 Acesso liberado')}
     <div style="height:16px;"></div>
     ${h1(`${firstName}, seu acesso ao NEXUS está pronto.`)}
-    ${p(`Você está entre os primeiros a ter acesso ao Sistema Operacional Empresarial com IA. Seu ambiente está configurado e pronto para uso.`)}
+    ${p(`Você está entre os primeiros a ter acesso ao Sistema Operacional Empresarial com IA. Já reservamos sua posição — falta só criar sua conta.`)}
 
     <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:12px;margin:8px 0 24px;overflow:hidden;">
       <tr><td style="padding:24px;">
         ${[
-          ['01', 'Entre com seu email', 'O mesmo que você usou na waitlist'],
+          ['01', 'Crie sua conta', 'Use o mesmo email que você usou na waitlist'],
           ['02', 'Complete o onboarding', 'Leva menos de 5 minutos'],
           ['03', 'Crie seu primeiro flow', 'Veja a IA agir na sua empresa'],
         ].map(([n, title, desc]) => `
@@ -326,7 +326,7 @@ export function buildAccessEmail(data: AccessEmailData): string {
     </table>
 
     <div style="text-align:center;">
-      ${btn('Acessar o NEXUS agora', loginUrl, '#059669')}
+      ${btn('Criar minha conta agora', signupUrl, '#059669')}
     </div>
 
     ${divider()}

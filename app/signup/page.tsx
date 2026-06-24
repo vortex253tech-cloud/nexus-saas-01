@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Activity, Mail, CheckCircle2, RefreshCw, Loader2, ArrowLeft, AlertTriangle } from 'lucide-react'
@@ -96,10 +96,19 @@ function CheckEmailScreen({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupForm />
+    </Suspense>
+  )
+}
+
+function SignupForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [name,      setName]      = useState('')
-  const [email,     setEmail]     = useState('')
+  const [email,     setEmail]     = useState(() => searchParams.get('email') ?? '')
   const [password,  setPassword]  = useState('')
   const [empresa,   setEmpresa]   = useState('')
   const [loading,   setLoading]   = useState(false)

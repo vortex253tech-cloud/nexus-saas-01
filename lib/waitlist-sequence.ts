@@ -94,7 +94,7 @@ export async function runWaitlistSequenceStep(params: SequenceParams): Promise<S
         result = await sendAccessEmail({
           name:      user.name,
           email:     user.email,
-          login_url: login_url ?? `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/login`,
+          login_url: login_url ?? `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/signup?email=${encodeURIComponent(user.email)}`,
         })
       }
 
