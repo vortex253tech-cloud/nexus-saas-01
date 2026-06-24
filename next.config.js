@@ -10,7 +10,14 @@ const nextConfig = {
     'mammoth',
     'nodemailer',
     'sharp',
+    '@napi-rs/canvas',
   ],
+  // Next's file tracer can't see fs.readFileSync('assets/fonts/...') calls
+  // statically — without this, the font files used to render Instagram
+  // post overlays wouldn't ship in the deployed serverless function.
+  outputFileTracingIncludes: {
+    '/api/cron/instagram-daily-post': ['./assets/fonts/*.ttf'],
+  },
 }
 
 module.exports = nextConfig

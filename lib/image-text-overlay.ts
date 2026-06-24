@@ -1,8 +1,15 @@
 // ─── Branded title/subtitle overlay for social images ────────────────────────
-// AI image models render baked-in text unreliably (garbled letters, typos).
-// This renders the whole text/brand layer as real SVG (via sharp) and
-// composites it onto the generated background — guaranteed legible,
-// correctly spelled, on-brand every time.
+// AI image models render baked-in text unreliably (garbled letters, typos),
+// so the title/subtitle/logo layer is drawn here instead, with @napi-rs/canvas.
+//
+// Why canvas instead of SVG+sharp: SVG <text> rendering in sharp depends on
+// the OS having fontconfig + actual font files installed. Vercel's
+// serverless runtime has none — every <text> element silently rendered as
+// invisible while shapes (rects, gradients) still worked, which is exactly
+// what happened in production (confirmed via a real published post with a
+// blank logo square and no headline at all). @napi-rs/canvas bundles its
+// own Skia text renderer and lets us register specific font FILES directly,
+// with zero dependency on the host OS having any fonts at all.
 //
 // Layout matches the brand's existing manual-post template: left-aligned
 // bold headline + parenthetical subtitle in the upper-middle area, a dark
@@ -10,13 +17,25 @@
 // and a logo + handle lockup bottom-left (plus a "deslize →" + slide
 // counter bottom-right for carousels).
 
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
 import sharp from 'sharp'
+import path from 'path'
 
 export const CANVAS_WIDTH  = 1080
 export const CANVAS_HEIGHT = 1350 // 4:5 — Instagram's standard feed/carousel ratio
 
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const FONT_BOLD    = 'NEXUS Inter Bold'
+const FONT_MEDIUM  = 'NEXUS Inter Medium'
+const FONT_REGULAR = 'NEXUS Inter Regular'
+
+let fontsRegistered = false
+function ensureFontsRegistered() {
+  if (fontsRegistered) return
+  const fontsDir = path.join(process.cwd(), 'assets', 'fonts')
+  GlobalFonts.registerFromPath(path.join(fontsDir, 'Inter-ExtraBold.ttf'), FONT_BOLD)
+  GlobalFonts.registerFromPath(path.join(fontsDir, 'Inter-Medium.ttf'), FONT_MEDIUM)
+  GlobalFonts.registerFromPath(path.join(fontsDir, 'Inter-Regular.ttf'), FONT_REGULAR)
+  fontsRegistered = true
 }
 
 // Naive word-wrap by estimated character width — good enough for short
@@ -51,93 +70,111 @@ export async function overlayTitleSubtitle(
   background: Buffer,
   { title, subtitle, slideIndex, slideTotal }: OverlayOptions,
 ): Promise<Buffer> {
+  ensureFontsRegistered()
+
   const W = CANVAS_WIDTH
   const H = CANVAS_HEIGHT
   const marginX = 64
 
+  const canvas = createCanvas(W, H)
+  const ctx = canvas.getContext('2d')
+
+  // ── Vignette: strong at the left/top where text sits, fading toward the
+  // right so the photo subject stays visible — plus a flat dark strip at
+  // the very bottom so the brand lockup is always legible.
+  const vignette = ctx.createLinearGradient(0, 0, W, H * 0.6)
+  vignette.addColorStop(0,    'rgba(6,10,18,0.92)')
+  vignette.addColorStop(0.55, 'rgba(6,10,18,0.55)')
+  vignette.addColorStop(1,    'rgba(6,10,18,0)')
+  ctx.fillStyle = vignette
+  ctx.fillRect(0, 0, W, H * 0.78)
+
+  const bottomFade = ctx.createLinearGradient(0, H * 0.78, 0, H)
+  bottomFade.addColorStop(0, 'rgba(6,10,18,0)')
+  bottomFade.addColorStop(1, 'rgba(6,10,18,0.85)')
+  ctx.fillStyle = bottomFade
+  ctx.fillRect(0, H * 0.78, W, H * 0.22)
+
+  // ── Headline + subtitle (upper-middle, left-aligned)
+  const titleFontSize    = 58
+  const titleLineHeight  = titleFontSize * 1.18
+  const subtitleFontSize = 30
+  const subtitleLineHeight = subtitleFontSize * 1.35
+
   const titleLines    = wrapLines(title, 16)
   const subtitleLines = subtitle ? wrapLines(`(${subtitle})`, 34) : []
 
-  const titleFontSize      = 58
-  const titleLineHeight    = titleFontSize * 1.18
-  const subtitleFontSize   = 30
-  const subtitleLineHeight = subtitleFontSize * 1.35
-
-  // Headline block starts in the upper-middle area, like the reference template.
   let cursorY = H * 0.34
 
-  const titleTspans = titleLines.map((line, i) => {
-    const y = cursorY + i * titleLineHeight
-    return `<text x="${marginX}" y="${y}" font-family="Arial, 'Helvetica Neue', sans-serif" font-weight="800" font-size="${titleFontSize}" fill="#FFFFFF">${escapeXml(line)}</text>`
-  }).join('\n')
-
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = '#FFFFFF'
+  ctx.font = `${titleFontSize}px "${FONT_BOLD}"`
+  titleLines.forEach((line, i) => {
+    ctx.fillText(line, marginX, cursorY + i * titleLineHeight)
+  })
   cursorY += titleLines.length * titleLineHeight + 28
 
-  const subtitleTspans = subtitleLines.map((line, i) => {
-    const y = cursorY + i * subtitleLineHeight
-    return `<text x="${marginX}" y="${y}" font-family="Arial, 'Helvetica Neue', sans-serif" font-weight="500" font-size="${subtitleFontSize}" fill="#C7CDD6">${escapeXml(line)}</text>`
-  }).join('\n')
+  ctx.fillStyle = '#C7CDD6'
+  ctx.font = `${subtitleFontSize}px "${FONT_MEDIUM}"`
+  subtitleLines.forEach((line, i) => {
+    ctx.fillText(line, marginX, cursorY + i * subtitleLineHeight)
+  })
 
-  // Brand lockup, bottom-left: small gradient "N" mark + NEXUS + handle
+  // ── Brand lockup, bottom-left: gradient "N" mark + NEXUS + handle
   const logoX = marginX
   const logoY = H - 96
   const logoSize = 44
 
-  const brandLockup = `
-    <defs>
-      <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#3B82F6"/>
-        <stop offset="100%" stop-color="#7C3AED"/>
-      </linearGradient>
-    </defs>
-    <rect x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" rx="10" fill="url(#logoGrad)"/>
-    <text x="${logoX + logoSize / 2}" y="${logoY + logoSize / 2 + 8}" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-size="26" fill="#FFFFFF">N</text>
-    <text x="${logoX + logoSize + 14}" y="${logoY + 18}" font-family="Arial, sans-serif" font-weight="800" font-size="22" letter-spacing="1" fill="#FFFFFF">NEXUS</text>
-    <text x="${logoX + logoSize + 14}" y="${logoY + 38}" font-family="Arial, sans-serif" font-weight="400" font-size="16" fill="#9AA4B2">@nexus.saas.ia</text>
-  `
+  const logoGrad = ctx.createLinearGradient(logoX, logoY, logoX + logoSize, logoY + logoSize)
+  logoGrad.addColorStop(0, '#3B82F6')
+  logoGrad.addColorStop(1, '#7C3AED')
+  ctx.fillStyle = logoGrad
+  const r = 10
+  ctx.beginPath()
+  ctx.moveTo(logoX + r, logoY)
+  ctx.arcTo(logoX + logoSize, logoY, logoX + logoSize, logoY + logoSize, r)
+  ctx.arcTo(logoX + logoSize, logoY + logoSize, logoX, logoY + logoSize, r)
+  ctx.arcTo(logoX, logoY + logoSize, logoX, logoY, r)
+  ctx.arcTo(logoX, logoY, logoX + logoSize, logoY, r)
+  ctx.closePath()
+  ctx.fill()
 
-  // Bottom-right: carousel swipe affordance + slide counter (single posts: omitted)
-  const slideLabel = slideTotal
-    ? `${String(slideIndex).padStart(2, '0')}/${String(slideTotal).padStart(2, '0')}`
-    : String(slideIndex).padStart(2, '0')
+  ctx.fillStyle = '#FFFFFF'
+  ctx.font = `26px "${FONT_BOLD}"`
+  ctx.textAlign = 'center'
+  ctx.fillText('N', logoX + logoSize / 2, logoY + logoSize / 2 + 9)
+  ctx.textAlign = 'left'
 
-  const carouselHint = slideIndex
-    ? `
-      <text x="${W - marginX}" y="${H - 118}" text-anchor="end" font-family="Arial, sans-serif" font-weight="500" font-size="20" fill="#C7CDD6">deslize →</text>
-      <text x="${W - marginX}" y="${H - 78}" text-anchor="end" font-family="Arial, sans-serif" font-weight="800" font-size="30" fill="#FFFFFF">${slideLabel}</text>
-    `
-    : ''
+  ctx.fillStyle = '#FFFFFF'
+  ctx.font = `22px "${FONT_BOLD}"`
+  ctx.fillText('NEXUS', logoX + logoSize + 14, logoY + 18)
 
-  // Dark vignette: strongest at the left/top where text sits, fading toward
-  // the right/bottom so the photo subject stays visible — plus a flat dark
-  // strip at the very bottom so the brand lockup is always legible.
-  const svg = `
-    <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="vignette" x1="0" y1="0" x2="1" y2="0.6">
-          <stop offset="0%" stop-color="#060A12" stop-opacity="0.92"/>
-          <stop offset="55%" stop-color="#060A12" stop-opacity="0.55"/>
-          <stop offset="100%" stop-color="#060A12" stop-opacity="0"/>
-        </linearGradient>
-        <linearGradient id="bottomFade" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#060A12" stop-opacity="0"/>
-          <stop offset="100%" stop-color="#060A12" stop-opacity="0.85"/>
-        </linearGradient>
-      </defs>
-      <rect x="0" y="0" width="${W}" height="${H * 0.78}" fill="url(#vignette)"/>
-      <rect x="0" y="${H * 0.78}" width="${W}" height="${H * 0.22}" fill="url(#bottomFade)"/>
-      ${titleTspans}
-      ${subtitleTspans}
-      ${brandLockup}
-      ${carouselHint}
-    </svg>
-  `
+  ctx.fillStyle = '#9AA4B2'
+  ctx.font = `16px "${FONT_REGULAR}"`
+  ctx.fillText('@nexus.saas.ia', logoX + logoSize + 14, logoY + 38)
 
-  const svgBuffer = Buffer.from(svg)
+  // ── Bottom-right: carousel swipe affordance + slide counter
+  if (slideIndex) {
+    const slideLabel = slideTotal
+      ? `${String(slideIndex).padStart(2, '0')}/${String(slideTotal).padStart(2, '0')}`
+      : String(slideIndex).padStart(2, '0')
+
+    ctx.textAlign = 'right'
+    ctx.fillStyle = '#C7CDD6'
+    ctx.font = `20px "${FONT_MEDIUM}"`
+    ctx.fillText('deslize >', W - marginX, H - 118)
+
+    ctx.fillStyle = '#FFFFFF'
+    ctx.font = `30px "${FONT_BOLD}"`
+    ctx.fillText(slideLabel, W - marginX, H - 78)
+    ctx.textAlign = 'left'
+  }
+
+  const overlayBuffer = canvas.toBuffer('image/png')
 
   const composited = await sharp(background)
     .resize(W, H, { fit: 'cover' })
-    .composite([{ input: svgBuffer, top: 0, left: 0 }])
+    .composite([{ input: overlayBuffer, top: 0, left: 0 }])
     .png()
     .toBuffer()
 
