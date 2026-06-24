@@ -14,6 +14,18 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ✅ 2026-06-24 — Máquina diária de posts orgânicos no Instagram (@nexus.saas.ia)
+
+**Contexto:** os 17 posts manuais publicados desde 27/04 seguiam todos a mesma fórmula (medo/dor + parede de hashtags) e tinham engajamento quase zero (maioria 0 curtidas). Pedido explícito do usuário: gerar e postar criativos novos automaticamente, todo dia, sem precisar de gatilho manual.
+
+**Implementado:** novo cron `/api/cron/instagram-daily-post` (diário, 15:00 UTC / 12:00 BRT) + `lib/instagram-content-machine.ts`. 8 ângulos de conteúdo diferentes (números/dados, antes-depois, curiosidade, valor direto, "um dia do NEXUS", 2 ângulos por vertical — agências e clínicas —, pergunta de engajamento), escolhidos por "menos usado recentemente" via nova tabela `instagram_posts_log` (migration `20260625_instagram_content_machine.sql`). Legenda gerada a cada execução pelo Claude (`claude-sonnet-4-5`), com as últimas 3 legendas publicadas passadas como "não repita essa estrutura", limite de 4 hashtags, proibição explícita da fórmula de medo. Imagem gerada pelo `gpt-image-1`, upload pro bucket privado `ai-images`, publicação via fluxo padrão de 2 passos da API do Instagram (`/media` → `/media_publish`).
+
+**Token de acesso:** trocado um token de curta duração (Graph API Explorer) por um de **longa duração (~60 dias)** via `FACEBOOK_APP_ID`/`FACEBOOK_APP_SECRET` do app "NEXUS-APP" — expira por volta de **23/08/2026**, precisa renovação manual antes disso (sem auto-refresh implementado ainda).
+
+**Achado de segurança importante:** o mesmo app/token também tem acesso a uma conta de Instagram completamente alheia (`17841459603297145`, "Dra. Luiza Campos" — outro negócio, sem relação com a NEXUS). `publishToInstagram()` tem um guard explícito que recusa rodar se `IG_BUSINESS_ACCOUNT_ID` não for exatamente `17841456954840976`.
+
+**Testado:** primeiro post real publicado com sucesso em 24/06/2026 — https://www.instagram.com/p/DZ-wYNlD-_Y/. `tsc`/`next build` limpos.
+
 ## ✅ 2026-06-24 — Creative AI quebrado em produção: `dall-e-3` foi descontinuado pela OpenAI
 
 **Achado enquanto gerava criativos pra campanha de lançamento** (fora do app, direto via API da OpenAI): `dall-e-3` não existe mais (`"The model 'dall-e-3' does not exist"`). Isso não é regressão nossa — a OpenAI removeu o modelo. `app/api/creative/image/route.ts` (o gerador de imagem do Creative AI, recurso real cobrado dos clientes) estava 100% quebrado em produção.
