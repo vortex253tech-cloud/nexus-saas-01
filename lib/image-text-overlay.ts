@@ -91,9 +91,16 @@ export async function overlayTitleSubtitle(
 
   const svgBuffer = Buffer.from(svg)
 
-  return sharp(background)
+  const composited = await sharp(background)
     .resize(CANVAS, CANVAS)
     .composite([{ input: svgBuffer, top: 0, left: 0 }])
     .png()
     .toBuffer()
+
+  // Defensive copy: some Buffer producers return a view into a larger,
+  // pooled ArrayBuffer. Anything downstream that reads `.buffer` directly
+  // instead of respecting byteOffset/length would then read garbage before
+  // the real data. Buffer.from() here always allocates a tightly-sized,
+  // standalone copy, so there's no ambiguity for callers.
+  return Buffer.from(composited)
 }
