@@ -40,6 +40,10 @@
     {
       "path": "/api/cron/insights-generate",
       "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/cron/instagram-daily-post",
+      "schedule": "0 15 * * *"
     }
   ]
 }
