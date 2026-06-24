@@ -14,6 +14,12 @@
 | Credenciais de WhatsApp/SMTP por tenant são criptografadas e armazenadas em `business_identity` | `lib/payments/encryption.ts`, `lib/business-identity.ts` | Permite white-label real (cada empresa com seu próprio número/remetente) sem expor segredos em texto puro no banco |
 | BullMQ/Redis é opcional com fallback síncrono | `lib/flow-engine/queue-connection.ts` retorna `null` se `REDIS_URL` ausente | Permite rodar em ambientes sem Redis configurado (ex: dev local, ou Vercel sem add-on) sem quebrar o Flow Engine |
 
+## ✅ 2026-06-24 — Creative AI quebrado em produção: `dall-e-3` foi descontinuado pela OpenAI
+
+**Achado enquanto gerava criativos pra campanha de lançamento** (fora do app, direto via API da OpenAI): `dall-e-3` não existe mais (`"The model 'dall-e-3' does not exist"`). Isso não é regressão nossa — a OpenAI removeu o modelo. `app/api/creative/image/route.ts` (o gerador de imagem do Creative AI, recurso real cobrado dos clientes) estava 100% quebrado em produção.
+
+`gpt-image-1` não é drop-in: retorna base64 (`b64_json`) em vez de URL hospedada, não tem parâmetro `style` (natural/vivid), e só aceita 3 tamanhos (1024x1024/1024x1536/1536x1024, sem o 1024x1792/1792x1024 antigo). Corrigido: decodifica o base64 e sobe pro bucket privado `ai-images` via `lib/storage/upload.ts` (mesmo padrão de todo outro asset gerado por IA no app), retorna URL assinada de 24h em vez da URL da OpenAI. Testado: `tsc`/`next build` limpos, e o caminho novo de upload+URL assinada testado direto contra o bucket real (upload → URL → limpeza, tudo ok).
+
 ## ✅ 2026-06-24 — Marketplace (backend verificado) e preço do plano Enterprise corrigido
 
 **Marketplace:** sem Playwright/Puppeteer no projeto, não dava pra clicar na UI de verdade. Verifiquei o que era possível por código: as rotas `GET /api/flow-templates` e `POST /api/flow-templates/[id]/import` exigem auth real e estão corretas; os 4 templates no banco existem, são `is_public: true`, com `nodes`/`edges` válidos (3 free + 1 premium). Backend sólido — o teste visual/clique em si ficou pendente, só o usuário pode fazer.
