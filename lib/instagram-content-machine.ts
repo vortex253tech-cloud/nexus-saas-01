@@ -31,12 +31,20 @@ export interface Angle {
   slides?: CarouselSlide[]         // required when format === 'carousel'
 }
 
+// Shared photographic style for every prompt below — matches the brand's
+// existing manual-post template: a real, confident business professional,
+// dark moody office setting, cinematic editorial lighting, subject
+// positioned toward the right side of the frame (the left side stays
+// visually quiet so the text overlay has room to sit over it).
+const PHOTO_STYLE =
+  'photorealistic editorial photography, a confident Brazilian business professional in dark business attire, positioned on the right side of the frame, dark moody office or studio background, cinematic low-key lighting, shallow depth of field, shot on a full-frame camera, high-end corporate advertising photography, no text, no words, no letters, no logos'
+
 export const ANGLES: Angle[] = [
   {
     id: 'numeros_crescimento',
     name: 'Números e crescimento',
     imagePrompt:
-      'A sleek dark navy blue dashboard interface floating in dark space, glowing gold and blue data charts and metrics rising upward, abstract financial growth visualization, premium SaaS product aesthetic, deep navy background, gold accent glow, minimalist, professional, no text, no words, no letters, no numbers',
+      `${PHOTO_STYLE}, the professional looking at a laptop screen with a subtle confident expression, soft blue glow from the screen on their face, modern minimalist office`,
     captionBrief:
       'Ângulo: prova por números/dados. Fale sobre quanto dinheiro/tempo uma empresa sem automação perde, ou quanto pode recuperar, de forma concreta (pode usar uma estimativa percentual plausível, sem inventar estatística de fonte externa). Tom consultivo, não alarmista.',
   },
@@ -44,7 +52,7 @@ export const ANGLES: Angle[] = [
     id: 'antes_depois',
     name: 'Antes e depois',
     imagePrompt:
-      'Split composition advertising image, left half shows a chaotic cluttered desk with papers flying, red notification dots, stressed dim red lighting, right half shows the same desk completely clean and minimal with a single calm glowing navy blue and gold holographic dashboard floating above it, dark background, premium tech advertising photography, cinematic lighting, no text, no words, no letters',
+      `${PHOTO_STYLE}, the professional standing arms crossed with a calm relieved expression, clean organized desk barely visible in the dark background, sense of relief and control`,
     captionBrief:
       'Ângulo: transformação antes/depois. Contraste a operação manual e caótica de hoje com a operação automatizada com o NEXUS. Foco na sensação de alívio/clareza, não em medo.',
   },
@@ -52,7 +60,7 @@ export const ANGLES: Angle[] = [
     id: 'curiosidade',
     name: 'Curiosidade',
     imagePrompt:
-      'Minimalist premium advertising image, a single glowing gold question mark made of light particles floating in deep navy blue dark space, abstract data points and subtle grid lines in the background, mysterious and intriguing mood, high-end SaaS brand aesthetic, no text, no words, no letters',
+      `${PHOTO_STYLE}, the professional with a thoughtful intrigued half-smile, slightly tilted head, looking just off-camera, dramatic side lighting`,
     captionBrief:
       'Ângulo: gatilho de curiosidade. Abra com uma pergunta genuinamente intrigante sobre a operação da empresa do leitor (não óbvia, não clichê de "você sabia que..."). Convide a descobrir a resposta no diagnóstico gratuito.',
   },
@@ -60,7 +68,7 @@ export const ANGLES: Angle[] = [
     id: 'valor_direto',
     name: 'Valor direto',
     imagePrompt:
-      'A modern smartphone floating in dark navy space displaying a clean futuristic business dashboard app interface with gold and blue accents, chat bubbles and checkmarks subtly glowing around it representing automated customer responses, premium product advertising photography, soft cinematic lighting, no readable text, no words, no letters',
+      `${PHOTO_STYLE}, the professional holding a smartphone, looking directly at camera with a confident reassuring expression, hands clasped, minimal background`,
     captionBrief:
       'Ângulo: valor direto, sem medo nem dor. Descreva objetivamente o que o NEXUS faz (responde clientes, cobra inadimplentes, identifica perdas) em tom confiante e direto, sem fórmula de "você vai ficar para trás".',
   },
@@ -68,7 +76,7 @@ export const ANGLES: Angle[] = [
     id: 'bastidores_ia',
     name: 'Bastidores da IA',
     imagePrompt:
-      'Atmospheric night scene, a glowing navy blue and gold holographic AI orb working silently on a desk in a dark empty office at night, city lights blurred through a window in the background, sense of quiet continuous activity, premium cinematic tech photography, no text, no words, no letters',
+      `${PHOTO_STYLE}, late at night in an empty office with city lights blurred through a window behind, the professional looking relaxed and unburdened, warm desk lamp light`,
     captionBrief:
       'Ângulo: "um dia (ou uma madrugada) na vida do NEXUS". Narre, de forma simples e concreta, o que a IA está fazendo enquanto o dono da empresa não está olhando (respondendo cliente, cobrando, organizando dados). Tom mais pessoal e narrativo.',
   },
@@ -76,7 +84,7 @@ export const ANGLES: Angle[] = [
     id: 'vertical_agencias',
     name: 'Específico: agências',
     imagePrompt:
-      'Abstract premium image representing a creative marketing agency workflow, glowing navy blue and gold geometric shapes forming a pipeline or flow diagram, clean dark background, sophisticated tech aesthetic, no text, no words, no letters',
+      `${PHOTO_STYLE}, creative agency studio setting in the soft-focus background, the professional in smart-casual attire, relaxed confident posture`,
     captionBrief:
       'Ângulo: específico para agências de marketing/publicidade. Fale de uma dor real e específica desse nicho (relatório pro cliente, follow-up de proposta, organização de múltiplos clientes) e como o NEXUS resolve.',
   },
@@ -84,7 +92,7 @@ export const ANGLES: Angle[] = [
     id: 'vertical_clinicas',
     name: 'Específico: clínicas/consultórios',
     imagePrompt:
-      'Abstract premium image representing a modern healthcare clinic management system, glowing navy blue and gold calendar and checkmark icons softly floating, clean dark minimalist background, sophisticated tech aesthetic, no text, no words, no letters',
+      `${PHOTO_STYLE}, the professional dressed as a clinic/healthcare business owner (no medical coat, just smart business attire), soft clinical-modern background blur, warm trustworthy expression`,
     captionBrief:
       'Ângulo: específico para clínicas e consultórios. Fale de uma dor real desse nicho (confirmação de agenda, falta em consulta, cobrança de pacientes) e como o NEXUS resolve.',
   },
@@ -92,7 +100,7 @@ export const ANGLES: Angle[] = [
     id: 'pergunta_engajamento',
     name: 'Pergunta para engajar',
     imagePrompt:
-      'Minimalist premium advertising image, three glowing gold abstract icons representing different business problems (a clock, a chat bubble, a falling arrow) floating in dark navy space, clean composition, sophisticated tech aesthetic, no text, no words, no letters',
+      `${PHOTO_STYLE}, the professional with hands slightly open in a questioning gesture, eyebrows raised, engaging direct eye contact with camera`,
     captionBrief:
       'Ângulo: pergunta direta para gerar comentários. Liste 2-3 problemas operacionais comuns (ex: responder clientes, cobrar inadimplentes, organizar dados) e pergunte qual mais atrapalha o dia do leitor — convide a responder nos comentários.',
   },
@@ -105,38 +113,32 @@ export const ANGLES: Angle[] = [
       'Carrossel educativo detalhando como o NEXUS funciona internamente, passo a passo, em tom de bastidores/transparência.',
     slides: [
       {
-        imagePrompt:
-          'Abstract glowing brain made of navy blue and gold light particles and neural connections, floating in deep dark space, premium tech aesthetic, no text, no words, no letters',
+        imagePrompt: `${PHOTO_STYLE}, the professional standing confidently with arms crossed, direct eye contact, cover-slide energy`,
         title: 'Como o NEXUS funciona por dentro',
         subtitle: 'O Sistema Operacional Empresarial com IA, em 5 passos',
       },
       {
-        imagePrompt:
-          'Glowing navy blue and gold chat bubble icons with checkmarks floating in dark space, representing automated customer messaging, premium tech aesthetic, no text, no words, no letters',
+        imagePrompt: `${PHOTO_STYLE}, the professional looking at their phone with a satisfied expression, as if reading an automatic notification`,
         title: '1. Atendimento automático',
         subtitle: 'A IA responde clientes no WhatsApp 24h, sem perder uma mensagem',
       },
       {
-        imagePrompt:
-          'Glowing navy blue and gold invoice and coin icon with a checkmark, floating in dark space, representing automated billing and collections, premium tech aesthetic, no text, no words, no letters',
+        imagePrompt: `${PHOTO_STYLE}, the professional reviewing a tablet with a calm reassured expression, as if checking finances effortlessly`,
         title: '2. Cobrança inteligente',
         subtitle: 'Identifica inadimplentes e cobra automaticamente, sem constrangimento',
       },
       {
-        imagePrompt:
-          'Glowing navy blue and gold magnifying glass over an abstract financial chart, floating in dark space, representing financial diagnostics, premium tech aesthetic, no text, no words, no letters',
+        imagePrompt: `${PHOTO_STYLE}, the professional looking at a laptop screen with an analytical focused expression`,
         title: '3. Diagnóstico financeiro',
         subtitle: 'Analisa seus dados e mostra onde você está perdendo dinheiro',
       },
       {
-        imagePrompt:
-          'Glowing navy blue and gold bell icon with radiating alert waves, floating in dark space, representing real-time business alerts, premium tech aesthetic, no text, no words, no letters',
+        imagePrompt: `${PHOTO_STYLE}, the professional glancing at their phone with an alert attentive expression, as if just received a timely notification`,
         title: '4. Decisões em tempo real',
         subtitle: 'Alertas e recomendações no momento certo, antes do problema crescer',
       },
       {
-        imagePrompt:
-          'Glowing navy blue and gold upward growth arrow path, ascending through abstract light particles, dark space background, premium tech aesthetic, no text, no words, no letters',
+        imagePrompt: `${PHOTO_STYLE}, the professional smiling confidently, arms relaxed, inviting and approachable, closing-slide energy`,
         title: 'Pronto para automatizar?',
         subtitle: 'Diagnóstico gratuito: diagnostico.nexusaas.com.br',
       },
@@ -258,7 +260,7 @@ export async function generateImageBuffer(prompt: string): Promise<Buffer> {
     body: JSON.stringify({
       model: 'gpt-image-1',
       prompt,
-      size: '1024x1024',
+      size: '1024x1536', // closest available ratio to the 4:5 final canvas; cropped to fit in overlayTitleSubtitle
       quality: 'high',
       n: 1,
     }),
@@ -271,15 +273,18 @@ export async function generateImageBuffer(prompt: string): Promise<Buffer> {
   return Buffer.from(b64, 'base64')
 }
 
-// Generates a background then overlays a title/subtitle text block on top —
-// used for both single posts and each carousel slide.
+// Generates a background then overlays the branded title/subtitle/logo
+// layer on top — used for both single posts and each carousel slide.
+// slideIndex/slideTotal are omitted for single-image posts.
 export async function generateImageWithOverlay(
   prompt: string,
   title: string,
   subtitle: string,
+  slideIndex?: number,
+  slideTotal?: number,
 ): Promise<Buffer> {
   const background = await generateImageBuffer(prompt)
-  return overlayTitleSubtitle(background, { title, subtitle, position: 'bottom' })
+  return overlayTitleSubtitle(background, { title, subtitle, slideIndex, slideTotal })
 }
 
 // ─── Publish to Instagram ──────────────────────────────────────────────────────
@@ -426,9 +431,10 @@ export async function runDailyInstagramPost(forceAngleId?: string): Promise<{
 
       // Generate all slides concurrently — sequential generation of 6
       // gpt-image-1 calls blew past the function's time limit.
+      const slideTotal = angle.slides.length
       const slideResults = await Promise.all(
         angle.slides.map(async (slide, i) => {
-          const buffer = await generateImageWithOverlay(slide.imagePrompt, slide.title, slide.subtitle)
+          const buffer = await generateImageWithOverlay(slide.imagePrompt, slide.title, slide.subtitle, i + 1, slideTotal)
           const upload = await uploadFile(buffer, `ig-carousel-${Date.now()}-${i}.png`, 'image/png', 'platform-instagram')
           if ('error' in upload) throw new Error(upload.error)
           return upload
