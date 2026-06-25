@@ -11,7 +11,8 @@
 // own Skia text renderer and lets us register specific font FILES directly,
 // with zero dependency on the host OS having any fonts at all.
 //
-// Two layouts:
+// Two layouts, three formats — the reusable template library:
+// Layouts:
 // - 'photo' (default): left-aligned bold headline + parenthetical subtitle
 //   in the upper-middle area, dark left-to-right vignette over a full-bleed
 //   photo background. Matches the brand's existing manual-post template.
@@ -19,15 +20,33 @@
 //   fitted (never cropped) inside a framed card on a solid brand
 //   background, with a compact headline above instead of a heavy vignette
 //   that would otherwise cover the actual interface.
-// Both end with the same logo + handle lockup bottom-left, and a
+// Formats (canvas dimensions, all positions scale to whichever is picked):
+// - 'feed' (default): 1080x1350 (4:5) — Instagram feed/carousel.
+// - 'story': 1080x1920 (9:16) — Instagram/Facebook Stories.
+// - 'ad_square': 1080x1080 (1:1) — safest aspect ratio across Meta Ads
+//   placements (Feed, Marketplace, right column).
+// Optional pieces, composable with either layout/format:
+// - badge: small pill tag near the top (e.g. "NOVIDADE") for launch posts.
+// - ctaLabel: a baked-in CTA button bar above the logo lockup, for paid ads
+//   where the creative itself should carry an explicit call to action.
+// All end with the same logo + handle lockup bottom-left, and a
 // "deslize >" + slide counter bottom-right for carousels.
 
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
 import sharp from 'sharp'
 import path from 'path'
 
+// Kept for backward compatibility with existing callers/imports.
 export const CANVAS_WIDTH  = 1080
-export const CANVAS_HEIGHT = 1350 // 4:5 — Instagram's standard feed/carousel ratio
+export const CANVAS_HEIGHT = 1350
+
+export type CreativeFormat = 'feed' | 'story' | 'ad_square'
+
+export const FORMAT_DIMENSIONS: Record<CreativeFormat, { width: number; height: number }> = {
+  feed:      { width: 1080, height: 1350 }, // 4:5
+  story:     { width: 1080, height: 1920 }, // 9:16
+  ad_square: { width: 1080, height: 1080 }, // 1:1
+}
 
 const BRAND_BG = { r: 10, g: 14, b: 22 } // #0A0E16
 
@@ -44,6 +63,8 @@ function ensureFontsRegistered() {
   GlobalFonts.registerFromPath(path.join(fontsDir, 'Inter-Regular.ttf'), FONT_REGULAR)
   fontsRegistered = true
 }
+
+type Ctx2D = ReturnType<ReturnType<typeof createCanvas>['getContext']>
 
 // Naive word-wrap by estimated character width — good enough for short
 // marketing headlines, not a general-purpose text layout engine.
@@ -65,7 +86,17 @@ function wrapLines(text: string, maxCharsPerLine: number): string[] {
   return lines
 }
 
-function drawLogoLockup(ctx: ReturnType<ReturnType<typeof createCanvas>['getContext']>, marginX: number, H: number) {
+function roundedRectPath(ctx: Ctx2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+function drawLogoLockup(ctx: Ctx2D, marginX: number, H: number) {
   const logoX = marginX
   const logoY = H - 96
   const logoSize = 44
@@ -74,14 +105,7 @@ function drawLogoLockup(ctx: ReturnType<ReturnType<typeof createCanvas>['getCont
   logoGrad.addColorStop(0, '#3B82F6')
   logoGrad.addColorStop(1, '#7C3AED')
   ctx.fillStyle = logoGrad
-  const r = 10
-  ctx.beginPath()
-  ctx.moveTo(logoX + r, logoY)
-  ctx.arcTo(logoX + logoSize, logoY, logoX + logoSize, logoY + logoSize, r)
-  ctx.arcTo(logoX + logoSize, logoY + logoSize, logoX, logoY + logoSize, r)
-  ctx.arcTo(logoX, logoY + logoSize, logoX, logoY, r)
-  ctx.arcTo(logoX, logoY, logoX + logoSize, logoY, r)
-  ctx.closePath()
+  roundedRectPath(ctx, logoX, logoY, logoSize, logoSize, 10)
   ctx.fill()
 
   ctx.fillStyle = '#FFFFFF'
@@ -99,10 +123,7 @@ function drawLogoLockup(ctx: ReturnType<ReturnType<typeof createCanvas>['getCont
   ctx.fillText('@nexus.saas.ia', logoX + logoSize + 14, logoY + 38)
 }
 
-function drawSlideCounter(
-  ctx: ReturnType<ReturnType<typeof createCanvas>['getContext']>,
-  W: number, H: number, marginX: number, slideIndex: number, slideTotal?: number,
-) {
+function drawSlideCounter(ctx: Ctx2D, W: number, H: number, marginX: number, slideIndex: number, slideTotal?: number) {
   const slideLabel = slideTotal
     ? `${String(slideIndex).padStart(2, '0')}/${String(slideTotal).padStart(2, '0')}`
     : String(slideIndex).padStart(2, '0')
@@ -118,6 +139,55 @@ function drawSlideCounter(
   ctx.textAlign = 'left'
 }
 
+// Small pill tag (e.g. "NOVIDADE") — used for posts de lançamento. Returns
+// the y-coordinate immediately below the badge, so callers can stack the
+// headline under it without overlap.
+function drawBadge(ctx: Ctx2D, marginX: number, top: number, label: string): number {
+  ctx.font = `20px "${FONT_BOLD}"`
+  const textWidth = ctx.measureText(label.toUpperCase()).width
+  const paddingX = 18
+  const height = 38
+  const width = textWidth + paddingX * 2
+
+  const grad = ctx.createLinearGradient(marginX, top, marginX + width, top + height)
+  grad.addColorStop(0, '#3B82F6')
+  grad.addColorStop(1, '#7C3AED')
+  ctx.fillStyle = grad
+  roundedRectPath(ctx, marginX, top, width, height, height / 2)
+  ctx.fill()
+
+  ctx.fillStyle = '#FFFFFF'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(label.toUpperCase(), marginX + paddingX, top + height / 2 + 1)
+  ctx.textBaseline = 'alphabetic'
+
+  return top + height
+}
+
+// Baked-in CTA button bar — used for paid-ad creatives, where the call to
+// action should be visible in the asset itself, not just the caption.
+// Drawn full-width, sitting directly above the logo lockup.
+function drawCtaBar(ctx: Ctx2D, W: number, H: number, marginX: number, label: string): number {
+  const height = 76
+  const bottom = H - 96 - 30 // 30px gap above the logo lockup
+  const top = bottom - height
+  const width = W - marginX * 2
+
+  ctx.fillStyle = '#3B82F6'
+  roundedRectPath(ctx, marginX, top, width, height, 14)
+  ctx.fill()
+
+  ctx.fillStyle = '#FFFFFF'
+  ctx.font = `26px "${FONT_BOLD}"`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(label, marginX + width / 2, top + height / 2 + 2)
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+
+  return top
+}
+
 export interface OverlayOptions {
   title: string
   subtitle?: string
@@ -126,27 +196,29 @@ export interface OverlayOptions {
   slideTotal?: number
   /** 'photo' (default): full-bleed background + vignette. 'screenshot': real UI framed and never cropped. */
   layout?: 'photo' | 'screenshot'
+  /** Canvas aspect ratio / use case. Defaults to 'feed' (4:5). */
+  format?: CreativeFormat
+  /** Small pill tag near the top, e.g. "NOVIDADE" — for posts de lançamento. */
+  badge?: string
+  /** Baked-in CTA button bar above the logo lockup — for paid-ad creatives. */
+  ctaLabel?: string
 }
 
-export async function overlayTitleSubtitle(
-  background: Buffer,
-  { title, subtitle, slideIndex, slideTotal, layout = 'photo' }: OverlayOptions,
-): Promise<Buffer> {
+export async function overlayTitleSubtitle(background: Buffer, opts: OverlayOptions): Promise<Buffer> {
   ensureFontsRegistered()
 
-  const W = CANVAS_WIDTH
-  const H = CANVAS_HEIGHT
+  const { width: W, height: H } = FORMAT_DIMENSIONS[opts.format ?? 'feed']
   const marginX = 64
 
-  if (layout === 'screenshot') return renderScreenshotLayout(background, { title, subtitle, slideIndex, slideTotal }, W, H, marginX)
-  return renderPhotoLayout(background, { title, subtitle, slideIndex, slideTotal }, W, H, marginX)
+  if (opts.layout === 'screenshot') return renderScreenshotLayout(background, opts, W, H, marginX)
+  return renderPhotoLayout(background, opts, W, H, marginX)
 }
 
 // ─── Photo layout: full-bleed background, vignette, upper-middle headline ──
 
 async function renderPhotoLayout(
   background: Buffer,
-  { title, subtitle, slideIndex, slideTotal }: Omit<OverlayOptions, 'layout'>,
+  { title, subtitle, slideIndex, slideTotal, badge, ctaLabel }: OverlayOptions,
   W: number, H: number, marginX: number,
 ): Promise<Buffer> {
   const canvas = createCanvas(W, H)
@@ -174,6 +246,7 @@ async function renderPhotoLayout(
   const subtitleLines = subtitle ? wrapLines(`(${subtitle})`, 34) : []
 
   let cursorY = H * 0.34
+  if (badge) cursorY = drawBadge(ctx, marginX, H * 0.34 - 70, badge) + 56
 
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = '#FFFFFF'
@@ -185,6 +258,7 @@ async function renderPhotoLayout(
   ctx.font = `${subtitleFontSize}px "${FONT_MEDIUM}"`
   subtitleLines.forEach((line, i) => ctx.fillText(line, marginX, cursorY + i * subtitleLineHeight))
 
+  if (ctaLabel) drawCtaBar(ctx, W, H, marginX, ctaLabel)
   drawLogoLockup(ctx, marginX, H)
   if (slideIndex) drawSlideCounter(ctx, W, H, marginX, slideIndex, slideTotal)
 
@@ -202,16 +276,20 @@ async function renderPhotoLayout(
 
 async function renderScreenshotLayout(
   background: Buffer,
-  { title, subtitle, slideIndex, slideTotal }: Omit<OverlayOptions, 'layout'>,
+  { title, subtitle, slideIndex, slideTotal, badge, ctaLabel }: OverlayOptions,
   W: number, H: number, marginX: number,
 ): Promise<Buffer> {
   // Frame the screenshot inside a card: padded, rounded corners, subtle
   // border — sized to leave room for a compact headline above and the
-  // brand lockup below, without ever cropping the real interface.
+  // brand lockup (plus CTA bar, if any) below, without ever cropping the
+  // real interface. All offsets scale with H so this works across formats.
+  const headerHeight = badge ? 340 : 280
+  const footerHeight = ctaLabel ? 270 : 170
+
   const cardX = marginX
-  const cardTop = 280
+  const cardTop = headerHeight
   const cardWidth = W - marginX * 2
-  const cardBottom = H - 170
+  const cardBottom = H - footerHeight
   const cardHeight = cardBottom - cardTop
 
   const framedScreenshot = await sharp(background)
@@ -234,19 +312,12 @@ async function renderScreenshotLayout(
   ctx.fillRect(0, 0, W, H)
 
   // Card border
-  const r = 20
   ctx.strokeStyle = 'rgba(255,255,255,0.10)'
   ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.moveTo(cardX + r, cardTop)
-  ctx.arcTo(cardX + cardWidth, cardTop, cardX + cardWidth, cardTop + cardHeight, r)
-  ctx.arcTo(cardX + cardWidth, cardTop + cardHeight, cardX, cardTop + cardHeight, r)
-  ctx.arcTo(cardX, cardTop + cardHeight, cardX, cardTop, r)
-  ctx.arcTo(cardX, cardTop, cardX + cardWidth, cardTop, r)
-  ctx.closePath()
+  roundedRectPath(ctx, cardX, cardTop, cardWidth, cardHeight, 20)
   ctx.stroke()
 
-  // Compact headline + subtitle above the card
+  // Compact headline + subtitle above the card (badge first, if present)
   const titleFontSize    = 46
   const titleLineHeight  = titleFontSize * 1.18
   const subtitleFontSize = 26
@@ -256,6 +327,8 @@ async function renderScreenshotLayout(
   const subtitleLines = subtitle ? wrapLines(subtitle, 40) : []
 
   let cursorY = 100
+  if (badge) cursorY = drawBadge(ctx, marginX, 40, badge) + 60
+
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = '#FFFFFF'
   ctx.font = `${titleFontSize}px "${FONT_BOLD}"`
@@ -266,6 +339,7 @@ async function renderScreenshotLayout(
   ctx.font = `${subtitleFontSize}px "${FONT_MEDIUM}"`
   subtitleLines.forEach((line, i) => ctx.fillText(line, marginX, cursorY + i * subtitleLineHeight))
 
+  if (ctaLabel) drawCtaBar(ctx, W, H, marginX, ctaLabel)
   drawLogoLockup(ctx, marginX, H)
   if (slideIndex) drawSlideCounter(ctx, W, H, marginX, slideIndex, slideTotal)
 

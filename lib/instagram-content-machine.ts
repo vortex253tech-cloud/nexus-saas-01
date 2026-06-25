@@ -12,7 +12,7 @@ import { readFile } from 'fs/promises'
 import path from 'path'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { uploadFile } from '@/lib/storage/upload'
-import { overlayTitleSubtitle } from '@/lib/image-text-overlay'
+import { overlayTitleSubtitle, type CreativeFormat } from '@/lib/image-text-overlay'
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 
@@ -40,6 +40,8 @@ export interface Angle {
   screenshotPath?: string          // real product screenshot instead of AI generation
   captionBrief: string
   slides?: CarouselSlide[]         // required when format === 'carousel'
+  /** Small pill tag baked into the image, e.g. "NOVIDADE" — for posts de lançamento. */
+  launchBadge?: string
 }
 
 // Shared photographic style — matches the brand's existing manual-post
@@ -195,6 +197,7 @@ export const ANGLES: Angle[] = [
     name: 'Lançamento: WhatsApp com IA treinada',
     category: 'lancamento',
     imagePrompt: MOCKUP_STYLE,
+    launchBadge: 'Novidade',
     captionBrief:
       'Ângulo: novidade real — o WhatsApp oficial do NEXUS agora responde com uma IA treinada no produto (planos, preços, diagnóstico gratuito), em vez de respostas genéricas. Anuncie em tom de atualização de produto, convidando quem tem dúvida a mandar mensagem no WhatsApp do NEXUS pra testar.',
   },
@@ -349,6 +352,9 @@ export async function generateImageWithOverlay(opts: {
   subtitle:        string
   slideIndex?:     number
   slideTotal?:     number
+  format?:         CreativeFormat
+  badge?:          string
+  ctaLabel?:       string
 }): Promise<Buffer> {
   const background = opts.screenshotPath
     ? await loadScreenshotBuffer(opts.screenshotPath)
@@ -356,6 +362,7 @@ export async function generateImageWithOverlay(opts: {
   return overlayTitleSubtitle(background, {
     title: opts.title, subtitle: opts.subtitle, slideIndex: opts.slideIndex, slideTotal: opts.slideTotal,
     layout: opts.screenshotPath ? 'screenshot' : 'photo',
+    format: opts.format, badge: opts.badge, ctaLabel: opts.ctaLabel,
   })
 }
 
@@ -404,6 +411,39 @@ export async function publishToInstagram(imageUrl: string, caption: string): Pro
   }
 
   return { mediaId: publishJson.id, permalink }
+}
+
+// Stories use a one-shot container (media_type: STORIES) — no caption field
+// (Instagram Stories don't support a text caption the way feed posts do).
+export async function publishStoryToInstagram(imageUrl: string): Promise<PublishResult> {
+  const token  = process.env.INSTAGRAM_ACCESS_TOKEN
+  const igUser = process.env.IG_BUSINESS_ACCOUNT_ID
+  if (!token || !igUser) throw new Error('INSTAGRAM_ACCESS_TOKEN ou IG_BUSINESS_ACCOUNT_ID não configurados')
+  if (igUser !== '17841456954840976') {
+    throw new Error(`IG_BUSINESS_ACCOUNT_ID inesperado (${igUser}) — abortando para não postar na conta errada`)
+  }
+
+  const containerRes = await fetch(`${GRAPH}/${igUser}/media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_url: imageUrl, media_type: 'STORIES', access_token: token }),
+  })
+  const containerJson = await containerRes.json()
+  if (!containerRes.ok || !containerJson.id) {
+    throw new Error(`Falha ao criar container de story: ${JSON.stringify(containerJson)}`)
+  }
+
+  const publishRes = await fetch(`${GRAPH}/${igUser}/media_publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ creation_id: containerJson.id, access_token: token }),
+  })
+  const publishJson = await publishRes.json()
+  if (!publishRes.ok || !publishJson.id) {
+    throw new Error(`Falha ao publicar story: ${JSON.stringify(publishJson)}`)
+  }
+
+  return { mediaId: publishJson.id, permalink: null }
 }
 
 export async function publishCarouselToInstagram(imageUrls: string[], caption: string): Promise<PublishResult> {
@@ -540,6 +580,7 @@ export async function runDailyInstagramPost(forceAngleId?: string): Promise<{
     const copy = await generatePostCopy(angle, recentCaptions)
     const imageBuffer = await generateImageWithOverlay({
       prompt: angle.imagePrompt, screenshotPath: angle.screenshotPath, title: copy.title, subtitle: copy.subtitle,
+      badge: angle.launchBadge,
     })
     debugHex = `${imageBuffer.subarray(0, 8).toString('hex')} len=${imageBuffer.length}`
     console.log(`[instagram-daily-post] imageBuffer first bytes: ${debugHex}`)
