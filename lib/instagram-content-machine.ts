@@ -246,7 +246,16 @@ export interface PostCopy {
   caption:  string  // full Instagram caption
 }
 
-async function callClaude(systemPrompt: string, userPrompt: string, maxTokens: number): Promise<string> {
+// Forces the response through a tool call with a fixed input schema —
+// Claude's tool-use output is constrained-decoded against the schema, so it
+// is ALWAYS valid JSON with the right shape. This replaced asking for "raw
+// JSON" in prose: that approach broke in two different ways in production
+// (a markdown fence with a trailing newline the cleanup regex didn't
+// anticipate, and — separately — Claude writing literal unescaped quotes
+// around quoted phrases inside a Portuguese caption, e.g. "viu minha
+// mensagem?", which is invalid inside a JSON string no matter how the
+// fence is stripped). Tool-use sidesteps both failure modes entirely.
+async function callClaudeForPostCopy(systemPrompt: string, userPrompt: string, maxTokens: number): Promise<PostCopy> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada')
 
@@ -262,14 +271,29 @@ async function callClaude(systemPrompt: string, userPrompt: string, maxTokens: n
       max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
+      tools: [{
+        name: 'submit_post_copy',
+        description: 'Envia o título, subtítulo e legenda do post.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            title:    { type: 'string', description: 'Frase curta e impactante, até 6 palavras' },
+            subtitle: { type: 'string', description: 'Linha de apoio, até 12 palavras' },
+            caption:  { type: 'string', description: 'Legenda completa do post' },
+          },
+          required: ['title', 'subtitle', 'caption'],
+        },
+      }],
+      tool_choice: { type: 'tool', name: 'submit_post_copy' },
     }),
   })
 
   if (!res.ok) throw new Error(`Claude API error: ${res.status} ${await res.text()}`)
   const json = await res.json()
-  const text = json.content?.[0]?.text?.trim()
-  if (!text) throw new Error('Claude não retornou texto')
-  return text
+  const toolUse = json.content?.find((c: { type: string }) => c.type === 'tool_use')
+  const input = toolUse?.input as Partial<PostCopy> | undefined
+  if (!input?.title || !input?.caption) throw new Error(`Claude não retornou o tool call esperado: ${JSON.stringify(json.content)}`)
+  return { title: input.title, subtitle: input.subtitle ?? '', caption: input.caption }
 }
 
 export async function generatePostCopy(angle: Angle, recentCaptions: string[]): Promise<PostCopy> {
@@ -292,35 +316,11 @@ Regras obrigatórias para a "caption":
 - Termine com uma chamada clara para o diagnóstico gratuito em diagnostico.nexusaas.com.br (pode variar a frase do CTA).
 - No máximo 4 hashtags relevantes ao final, nunca uma parede de hashtags.
 - Não invente números/estatísticas citando fontes externas falsas.
-
-Responda APENAS com um JSON válido, sem markdown, sem comentário, no formato exato:
-{"title": "...", "subtitle": "...", "caption": "..."}`
+- Se citar uma fala ou pergunta entre aspas dentro da legenda, use aspas tipográficas (" ") em vez de aspas retas, para nunca quebrar formatação.`
 
   const userPrompt = `Ângulo de hoje: ${angle.name}\n${angle.captionBrief}${avoidBlock}`
 
-  const text = await callClaude(systemPrompt, userPrompt, 500)
-
-  try {
-    // Strip a ```json ... ``` or ``` ... ``` fence regardless of trailing
-    // whitespace/newlines after the closing fence (a bare `$` anchor only
-    // matches the absolute end of the string, which broke whenever Claude
-    // added a trailing newline — silently corrupting the post into raw
-    // markdown dumped as the caption).
-    let cleaned = text.trim().replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim()
-    if (!cleaned.startsWith('{')) {
-      const start = cleaned.indexOf('{')
-      const end = cleaned.lastIndexOf('}')
-      if (start !== -1 && end !== -1) cleaned = cleaned.slice(start, end + 1)
-    }
-    const parsed = JSON.parse(cleaned) as PostCopy
-    if (!parsed.title || !parsed.caption) throw new Error('campos faltando')
-    return { title: parsed.title, subtitle: parsed.subtitle ?? '', caption: parsed.caption }
-  } catch {
-    // Fallback: Claude didn't return clean JSON — derive a basic title from
-    // the caption's first line rather than failing the whole post.
-    const firstLine = text.split('\n')[0].slice(0, 60)
-    return { title: firstLine, subtitle: '', caption: text }
-  }
+  return callClaudeForPostCopy(systemPrompt, userPrompt, 500)
 }
 
 // ─── Image generation (gpt-image-1) ───────────────────────────────────────────
