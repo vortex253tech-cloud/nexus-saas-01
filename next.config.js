@@ -16,7 +16,7 @@ const nextConfig = {
   // statically — without this, the font files used to render Instagram
   // post overlays wouldn't ship in the deployed serverless function.
   outputFileTracingIncludes: {
-    '/api/cron/instagram-daily-post': ['./assets/fonts/*.ttf'],
+    '/api/cron/instagram-daily-post': ['./assets/fonts/*.ttf', './assets/product-screenshots/*.png'],
   },
 }
 

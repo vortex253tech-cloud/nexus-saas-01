@@ -8,6 +8,8 @@
 // The same Meta app (NEXUS-APP) also has access to an unrelated account
 // (Dra. Luiza Campos, 17841459603297145) — that ID must never appear here.
 
+import { readFile } from 'fs/promises'
+import path from 'path'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { uploadFile } from '@/lib/storage/upload'
 import { overlayTitleSubtitle } from '@/lib/image-text-overlay'
@@ -16,8 +18,15 @@ const GRAPH = 'https://graph.facebook.com/v21.0'
 
 // ─── Content angles ───────────────────────────────────────────────────────────
 
+// Mirrors respond.io's content pillars (analyzed for structure only — no
+// copying of their visuals/copy): produto shows the real interface,
+// educativo follows a problem→solução template, lançamento covers real
+// product news (never invented features), autoridade is vision/philosophy.
+export type AngleCategory = 'produto' | 'educativo' | 'lancamento' | 'autoridade'
+
 export interface CarouselSlide {
-  imagePrompt: string
+  imagePrompt?:    string   // used when screenshotPath is absent
+  screenshotPath?: string   // real product screenshot, relative to assets/product-screenshots/
   title: string
   subtitle: string
 }
@@ -25,24 +34,41 @@ export interface CarouselSlide {
 export interface Angle {
   id: string
   name: string
+  category: AngleCategory
   format?: 'single' | 'carousel'   // default 'single'
-  imagePrompt: string              // unused when format === 'carousel'
+  imagePrompt?:    string          // unused when format === 'carousel' or screenshotPath is set
+  screenshotPath?: string          // real product screenshot instead of AI generation
   captionBrief: string
   slides?: CarouselSlide[]         // required when format === 'carousel'
 }
 
-// Shared photographic style for every prompt below — matches the brand's
-// existing manual-post template: a real, confident business professional,
-// dark moody office setting, cinematic editorial lighting, subject
-// positioned toward the right side of the frame (the left side stays
-// visually quiet so the text overlay has room to sit over it).
+// Shared photographic style — matches the brand's existing manual-post
+// template: a real, confident business professional, dark moody office
+// setting, cinematic editorial lighting, subject positioned toward the
+// right side of the frame (the left side stays visually quiet so the text
+// overlay has room to sit over it). Used for "autoridade" (vision/leadership)
+// content, where a person's presence is appropriate.
 const PHOTO_STYLE =
   'photorealistic editorial photography, a confident Brazilian business professional in dark business attire, positioned on the right side of the frame, dark moody office or studio background, cinematic low-key lighting, shallow depth of field, shot on a full-frame camera, high-end corporate advertising photography, no text, no words, no letters, no logos'
 
+// Shared style for AI-generated UI/dashboard mockups — used for "educativo"
+// and "lancamento" content where no real product screenshot fits the
+// specific point being made. Aims for "premium global SaaS company" rather
+// than generic stock-photo tech imagery.
+const MOCKUP_STYLE =
+  'premium product photography of a sleek laptop and smartphone on a minimalist dark desk, both screens displaying a clean modern dark-mode SaaS dashboard UI with glowing teal and violet accent charts and data cards, shallow depth of field, soft cinematic studio lighting, Silicon Valley startup aesthetic, no readable text, no words, no letters, no logos'
+
+async function loadScreenshotBuffer(relativePath: string): Promise<Buffer> {
+  const fullPath = path.join(process.cwd(), 'assets', 'product-screenshots', relativePath)
+  return readFile(fullPath)
+}
+
 export const ANGLES: Angle[] = [
+  // ── EDUCATIVO ────────────────────────────────────────────────────────────
   {
     id: 'numeros_crescimento',
     name: 'Números e crescimento',
+    category: 'educativo',
     imagePrompt:
       `${PHOTO_STYLE}, the professional looking at a laptop screen with a subtle confident expression, soft blue glow from the screen on their face, modern minimalist office`,
     captionBrief:
@@ -51,6 +77,7 @@ export const ANGLES: Angle[] = [
   {
     id: 'antes_depois',
     name: 'Antes e depois',
+    category: 'educativo',
     imagePrompt:
       `${PHOTO_STYLE}, the professional standing arms crossed with a calm relieved expression, clean organized desk barely visible in the dark background, sense of relief and control`,
     captionBrief:
@@ -59,30 +86,16 @@ export const ANGLES: Angle[] = [
   {
     id: 'curiosidade',
     name: 'Curiosidade',
+    category: 'educativo',
     imagePrompt:
       `${PHOTO_STYLE}, the professional with a thoughtful intrigued half-smile, slightly tilted head, looking just off-camera, dramatic side lighting`,
     captionBrief:
       'Ângulo: gatilho de curiosidade. Abra com uma pergunta genuinamente intrigante sobre a operação da empresa do leitor (não óbvia, não clichê de "você sabia que..."). Convide a descobrir a resposta no diagnóstico gratuito.',
   },
   {
-    id: 'valor_direto',
-    name: 'Valor direto',
-    imagePrompt:
-      `${PHOTO_STYLE}, the professional holding a smartphone, looking directly at camera with a confident reassuring expression, hands clasped, minimal background`,
-    captionBrief:
-      'Ângulo: valor direto, sem medo nem dor. Descreva objetivamente o que o NEXUS faz (responde clientes, cobra inadimplentes, identifica perdas) em tom confiante e direto, sem fórmula de "você vai ficar para trás".',
-  },
-  {
-    id: 'bastidores_ia',
-    name: 'Bastidores da IA',
-    imagePrompt:
-      `${PHOTO_STYLE}, late at night in an empty office with city lights blurred through a window behind, the professional looking relaxed and unburdened, warm desk lamp light`,
-    captionBrief:
-      'Ângulo: "um dia (ou uma madrugada) na vida do NEXUS". Narre, de forma simples e concreta, o que a IA está fazendo enquanto o dono da empresa não está olhando (respondendo cliente, cobrando, organizando dados). Tom mais pessoal e narrativo.',
-  },
-  {
     id: 'vertical_agencias',
     name: 'Específico: agências',
+    category: 'educativo',
     imagePrompt:
       `${PHOTO_STYLE}, creative agency studio setting in the soft-focus background, the professional in smart-casual attire, relaxed confident posture`,
     captionBrief:
@@ -91,6 +104,7 @@ export const ANGLES: Angle[] = [
   {
     id: 'vertical_clinicas',
     name: 'Específico: clínicas/consultórios',
+    category: 'educativo',
     imagePrompt:
       `${PHOTO_STYLE}, the professional dressed as a clinic/healthcare business owner (no medical coat, just smart business attire), soft clinical-modern background blur, warm trustworthy expression`,
     captionBrief:
@@ -99,18 +113,48 @@ export const ANGLES: Angle[] = [
   {
     id: 'pergunta_engajamento',
     name: 'Pergunta para engajar',
+    category: 'educativo',
     imagePrompt:
       `${PHOTO_STYLE}, the professional with hands slightly open in a questioning gesture, eyebrows raised, engaging direct eye contact with camera`,
     captionBrief:
       'Ângulo: pergunta direta para gerar comentários. Liste 2-3 problemas operacionais comuns (ex: responder clientes, cobrar inadimplentes, organizar dados) e pergunte qual mais atrapalha o dia do leitor — convide a responder nos comentários.',
   },
   {
+    id: 'educativo_problema_solucao',
+    name: 'Problema → Solução',
+    category: 'educativo',
+    imagePrompt: MOCKUP_STYLE,
+    captionBrief:
+      'Ângulo: formato rígido "Problema → Solução". A legenda PRECISA seguir essa estrutura literal: uma linha "Problema: " descrevendo uma dor operacional real e específica (ex: tarefas repetitivas, mensagens perdidas, cobrança manual), seguida de uma linha "Solução: " explicando objetivamente como o NEXUS resolve. Escolha uma dor diferente da dos últimos posts.',
+  },
+
+  // ── PRODUTO (protagonismo do produto real) ────────────────────────────────
+  {
+    id: 'produto_cobranca_recuperada',
+    name: 'Produto: cobrança recuperada (screenshot real)',
+    category: 'produto',
+    screenshotPath: 'automation-recovered.png',
+    imagePrompt: '',
+    captionBrief:
+      'Ângulo: mostrar o produto de verdade. A imagem é um print real do NEXUS recuperando uma fatura em atraso automaticamente (R$2.500, zero intervenção manual). Fale sobre como a cobrança automática funciona de ponta a ponta, sem o dono da empresa precisar cobrar ninguém pessoalmente.',
+  },
+  {
+    id: 'produto_rastreamento_vivo',
+    name: 'Produto: rastreamento em tempo real (screenshot real)',
+    category: 'produto',
+    screenshotPath: 'automation-live.png',
+    imagePrompt: '',
+    captionBrief:
+      'Ângulo: mostrar o produto de verdade. A imagem é um print real do NEXUS rastreando em tempo real o momento em que um cliente inadimplente abre o link de cobrança (dispositivo, localização, horário). Fale sobre a visibilidade em tempo real que isso dá pro dono da empresa, sem precisar perguntar nada ao cliente.',
+  },
+  {
     id: 'como_funciona_carrossel',
     name: 'Como o NEXUS funciona por dentro (carrossel)',
+    category: 'produto',
     format: 'carousel',
     imagePrompt: '',
     captionBrief:
-      'Carrossel educativo detalhando como o NEXUS funciona internamente, passo a passo, em tom de bastidores/transparência.',
+      'Carrossel mostrando o produto real por dentro, passo a passo, em tom de bastidores/transparência.',
     slides: [
       {
         imagePrompt: `${PHOTO_STYLE}, the professional standing confidently with arms crossed, direct eye contact, cover-slide energy`,
@@ -123,14 +167,14 @@ export const ANGLES: Angle[] = [
         subtitle: 'A IA responde clientes no WhatsApp 24h, sem perder uma mensagem',
       },
       {
-        imagePrompt: `${PHOTO_STYLE}, the professional reviewing a tablet with a calm reassured expression, as if checking finances effortlessly`,
-        title: '2. Cobrança inteligente',
-        subtitle: 'Identifica inadimplentes e cobra automaticamente, sem constrangimento',
+        screenshotPath: 'automation-live.png',
+        title: '2. Cobrança em tempo real',
+        subtitle: 'Você vê o exato momento em que o cliente abre o link de pagamento',
       },
       {
-        imagePrompt: `${PHOTO_STYLE}, the professional looking at a laptop screen with an analytical focused expression`,
-        title: '3. Diagnóstico financeiro',
-        subtitle: 'Analisa seus dados e mostra onde você está perdendo dinheiro',
+        screenshotPath: 'automation-recovered.png',
+        title: '3. Receita recuperada',
+        subtitle: 'R$2.500 cobrados e confirmados, zero intervenção manual',
       },
       {
         imagePrompt: `${PHOTO_STYLE}, the professional glancing at their phone with an alert attentive expression, as if just received a timely notification`,
@@ -143,6 +187,27 @@ export const ANGLES: Angle[] = [
         subtitle: 'Diagnóstico gratuito: diagnostico.nexusaas.com.br',
       },
     ],
+  },
+
+  // ── LANÇAMENTO (sempre sobre novidades reais, nunca inventadas) ──────────
+  {
+    id: 'lancamento_whatsapp_ia',
+    name: 'Lançamento: WhatsApp com IA treinada',
+    category: 'lancamento',
+    imagePrompt: MOCKUP_STYLE,
+    captionBrief:
+      'Ângulo: novidade real — o WhatsApp oficial do NEXUS agora responde com uma IA treinada no produto (planos, preços, diagnóstico gratuito), em vez de respostas genéricas. Anuncie em tom de atualização de produto, convidando quem tem dúvida a mandar mensagem no WhatsApp do NEXUS pra testar.',
+  },
+
+  // ── AUTORIDADE (visão/filosofia, honesto, sem prova social inventada) ────
+  {
+    id: 'autoridade_visao',
+    name: 'Autoridade: visão e filosofia',
+    category: 'autoridade',
+    imagePrompt:
+      `${PHOTO_STYLE}, late at night in an empty office with city lights blurred through a window behind, the professional looking relaxed and unburdened, warm desk lamp light`,
+    captionBrief:
+      'Ângulo: visão/filosofia do NEXUS, tom de fundador. Fale sobre POR QUE o NEXUS existe — a crença de que pequenas empresas não devem precisar de uma equipe grande pra ter a mesma inteligência operacional de uma empresa grande. NÃO use estatísticas de clientes, números de usuários ou depoimentos — o NEXUS ainda está em fase inicial e isso deve ser tratado com honestidade, nunca inventado.',
   },
 ]
 
@@ -273,18 +338,25 @@ export async function generateImageBuffer(prompt: string): Promise<Buffer> {
   return Buffer.from(b64, 'base64')
 }
 
-// Generates a background then overlays the branded title/subtitle/logo
-// layer on top — used for both single posts and each carousel slide.
-// slideIndex/slideTotal are omitted for single-image posts.
-export async function generateImageWithOverlay(
-  prompt: string,
-  title: string,
-  subtitle: string,
-  slideIndex?: number,
-  slideTotal?: number,
-): Promise<Buffer> {
-  const background = await generateImageBuffer(prompt)
-  return overlayTitleSubtitle(background, { title, subtitle, slideIndex, slideTotal })
+// Generates (or loads, for real product screenshots) a background then
+// overlays the branded title/subtitle/logo layer on top — used for both
+// single posts and each carousel slide. slideIndex/slideTotal are omitted
+// for single-image posts.
+export async function generateImageWithOverlay(opts: {
+  prompt?:         string
+  screenshotPath?: string
+  title:           string
+  subtitle:        string
+  slideIndex?:     number
+  slideTotal?:     number
+}): Promise<Buffer> {
+  const background = opts.screenshotPath
+    ? await loadScreenshotBuffer(opts.screenshotPath)
+    : await generateImageBuffer(opts.prompt ?? '')
+  return overlayTitleSubtitle(background, {
+    title: opts.title, subtitle: opts.subtitle, slideIndex: opts.slideIndex, slideTotal: opts.slideTotal,
+    layout: opts.screenshotPath ? 'screenshot' : 'photo',
+  })
 }
 
 // ─── Publish to Instagram ──────────────────────────────────────────────────────
@@ -434,7 +506,10 @@ export async function runDailyInstagramPost(forceAngleId?: string): Promise<{
       const slideTotal = angle.slides.length
       const slideResults = await Promise.all(
         angle.slides.map(async (slide, i) => {
-          const buffer = await generateImageWithOverlay(slide.imagePrompt, slide.title, slide.subtitle, i + 1, slideTotal)
+          const buffer = await generateImageWithOverlay({
+            prompt: slide.imagePrompt, screenshotPath: slide.screenshotPath,
+            title: slide.title, subtitle: slide.subtitle, slideIndex: i + 1, slideTotal,
+          })
           const upload = await uploadFile(buffer, `ig-carousel-${Date.now()}-${i}.png`, 'image/png', 'platform-instagram')
           if ('error' in upload) throw new Error(upload.error)
           return upload
@@ -463,7 +538,9 @@ export async function runDailyInstagramPost(forceAngleId?: string): Promise<{
 
     // ── Single-image post ──────────────────────────────────────────────────
     const copy = await generatePostCopy(angle, recentCaptions)
-    const imageBuffer = await generateImageWithOverlay(angle.imagePrompt, copy.title, copy.subtitle)
+    const imageBuffer = await generateImageWithOverlay({
+      prompt: angle.imagePrompt, screenshotPath: angle.screenshotPath, title: copy.title, subtitle: copy.subtitle,
+    })
     debugHex = `${imageBuffer.subarray(0, 8).toString('hex')} len=${imageBuffer.length}`
     console.log(`[instagram-daily-post] imageBuffer first bytes: ${debugHex}`)
 
