@@ -59,6 +59,39 @@ function extractMediaUrl(p: ZAPIPayload): string | null {
   return p.image?.imageUrl ?? p.audio?.audioUrl ?? p.video?.videoUrl ?? p.document?.documentUrl ?? null
 }
 
+// ── NEXUS product knowledge (kept in sync with app/planos/page.tsx — do
+// not let the AI invent prices/features beyond what's listed here) ─────
+
+const NEXUS_KNOWLEDGE = `
+Sobre o NEXUS:
+NEXUS é um Sistema Operacional Empresarial com IA. Ele resolve 3 problemas centrais de pequenas e médias empresas:
+1. Atendimento — responde clientes no WhatsApp 24h, sem perder mensagem.
+2. Cobrança — identifica inadimplentes e cobra automaticamente.
+3. Diagnóstico financeiro — analisa os dados da empresa e mostra exatamente onde ela está perdendo dinheiro (gargalos ocultos, anomalias, previsão de fluxo de caixa).
+Conexão de dados: via planilha, API ou importação manual — não precisa de acesso bancário direto.
+
+Planos (preços mensais; valor anual entre parênteses é o equivalente mensal cobrado anualmente):
+- Starter — R$197/mês (R$147 no plano anual). Dashboard financeiro completo, alertas automáticos de anomalias, diagnóstico mensal com IA, benchmarking do setor, 1 empresa conectada, suporte por e-mail. 7 dias grátis.
+- Pro — R$397/mês (R$297 no plano anual). Tudo do Starter + previsão de fluxo de caixa, recomendações semanais de IA, alertas em tempo real no WhatsApp, relatório executivo automatizado, até 3 empresas conectadas, suporte prioritário, onboarding com especialista. É o plano mais popular. 7 dias grátis.
+- Enterprise — R$797/mês (R$597 no plano anual). Tudo do Pro + empresas ilimitadas, IA customizada por segmento, integração com ERP/CRM via API, relatórios white-label, SLA garantido, Customer Success dedicado. Esse plano é vendido por um especialista, não por trial automático.
+
+Diagnóstico gratuito: quem ainda não decidiu pode fazer um diagnóstico operacional gratuito (2 minutos) em diagnostico.nexusaas.com.br — a IA estima quanto a empresa da pessoa está perdendo por operar manualmente.
+`.trim()
+
+const SYSTEM_PROMPT_BASE = `
+Você é a IA de atendimento e vendas do NEXUS, respondendo no WhatsApp oficial da empresa. Você representa o NEXUS de verdade — não é um assistente genérico.
+
+${NEXUS_KNOWLEDGE}
+
+Regras obrigatórias:
+- Responda SEMPRE em português brasileiro, direto e humano, no máximo 2-3 linhas por mensagem.
+- NUNCA invente preço, plano ou funcionalidade que não esteja listado acima. Se não souber algo específico, diga que vai confirmar com a equipe e ofereça conectar com um humano.
+- Mantenha SEMPRE a conversa dentro do contexto do NEXUS: planos, diagnóstico gratuito, automação de atendimento/cobrança, ou qualificação do negócio do lead (segmento, tamanho, principal dor).
+- Se o lead perguntar algo totalmente fora desse contexto (curiosidades, outros assuntos, perguntas pessoais sobre a IA, política, etc.), recuse educadamente em 1 frase e traga de volta para o NEXUS — nunca responda a pergunta fora de contexto, nem como piada.
+- Não use linguagem corporativa/robótica. Use no máximo 1 emoji por mensagem.
+- Se o lead demonstrar intenção clara de comprar ou pedir para falar com um humano, diga que vai conectar com a equipe e pare de tentar vender por conta própria.
+`.trim()
+
 // ── Auto-reply via OpenAI + Z-API ─────────────────────────────────
 
 async function autoReply(
@@ -67,6 +100,7 @@ async function autoReply(
   companyId:   string,
   phone:       string,
   contactName: string | null,
+  isFirstMessage: boolean,
 ) {
   const identity   = await getBusinessIdentity(companyId)
   const zapiConfig = resolveZApiConfig(
@@ -75,6 +109,23 @@ async function autoReply(
       : null,
   )
   if (!zapiConfig) return
+
+  // First message of a brand-new conversation: send a fixed, scripted
+  // greeting + numbered menu instead of a freeform LLM reply. This is the
+  // single highest-stakes message (first impression) and the one place a
+  // TIM/Vivo-style bot is most rigidly scripted — no LLM variance here.
+  if (isFirstMessage) {
+    const greeting =
+      `Oi${contactName ? `, ${contactName.split(' ')[0]}` : ''}! 👋 Eu sou a IA do *NEXUS*, o Sistema Operacional Empresarial com IA.\n\n` +
+      `Posso te ajudar com:\n` +
+      `1️⃣ Conhecer os planos e preços\n` +
+      `2️⃣ Fazer um diagnóstico gratuito da sua empresa (2 min)\n` +
+      `3️⃣ Falar com um especialista\n\n` +
+      `Me diz o número ou pode perguntar direto o que quiser!`
+    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig, greeting)
+    return
+  }
+
   if (!process.env.OPENAI_API_KEY) return
 
   // Fetch last 12 messages
@@ -97,11 +148,7 @@ async function autoReply(
     .maybeSingle()
 
   // Build system prompt
-  let systemPrompt =
-    'Você é um assistente de vendas especializado operando via WhatsApp.\n' +
-    'Objetivo: qualificar leads, gerar valor e avançar a venda de forma natural.\n' +
-    'Regras: responda SEMPRE em português brasileiro, máximo 2-3 linhas, seja direto e humano.\n' +
-    'Não use linguagem corporativa. Use emojis com moderação (1 no máximo).'
+  let systemPrompt = SYSTEM_PROMPT_BASE
 
   if (ctx) {
     const parts: string[] = []
@@ -134,10 +181,10 @@ async function autoReply(
         messages:    [
           { role: 'system', content: systemPrompt },
           ...chatHistory,
-          { role: 'user', content: 'Gere a melhor resposta para avançar esta conversa de vendas.' },
+          { role: 'user', content: 'Gere a melhor resposta para avançar esta conversa, seguindo rigorosamente as regras do sistema.' },
         ],
         max_tokens:  180,
-        temperature: 0.75,
+        temperature: 0.6,
       }),
       signal: AbortSignal.timeout(18000),
     })
@@ -150,6 +197,19 @@ async function autoReply(
   }
 
   if (!replyText) return
+  await sendAndPersist(supabase, convId, companyId, phone, zapiConfig, replyText)
+}
+
+// ── Send a WhatsApp message via Z-API and persist it ──────────────
+
+async function sendAndPersist(
+  supabase:  ReturnType<typeof db>,
+  convId:    string,
+  companyId: string,
+  phone:     string,
+  zapiConfig: NonNullable<ReturnType<typeof resolveZApiConfig>>,
+  replyText: string,
+) {
 
   // Send via the company's own Z-API instance (resolved above)
   const { instanceId, token, clientToken } = zapiConfig
@@ -392,7 +452,7 @@ export async function POST(req: NextRequest) {
   const aiEnabled = existingConv?.ai_enabled ?? true // new convs default to AI on
 
   if (aiEnabled) {
-    await autoReply(supabase, convId, companyId, phone, senderName)
+    await autoReply(supabase, convId, companyId, phone, senderName, !existingConv)
   }
 
   // ── Trigger lead analysis (non-blocking, best effort) ─────────────
