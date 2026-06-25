@@ -383,6 +383,23 @@ export interface PublishResult {
   permalink: string | null
 }
 
+// Instagram processes an uploaded media container asynchronously — calling
+// media_publish before it reaches status_code "FINISHED" fails with
+// "Media ID is not available" (OAuthException 9007/2207027), confirmed live
+// when testing Stories. Feed/carousel posts hadn't visibly hit this before
+// only because generating+overlaying the image already took long enough to
+// cover the gap — not because they were actually safe from the race.
+async function waitForContainerReady(containerId: string, token: string): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const res = await fetch(`${GRAPH}/${containerId}?fields=status_code&access_token=${token}`)
+    const json = await res.json()
+    if (json.status_code === 'FINISHED') return
+    if (json.status_code === 'ERROR') throw new Error(`Container de mídia falhou ao processar: ${JSON.stringify(json)}`)
+    await new Promise(resolve => setTimeout(resolve, 2000))
+  }
+  throw new Error(`Container ${containerId} não ficou pronto a tempo`)
+}
+
 export async function publishToInstagram(imageUrl: string, caption: string): Promise<PublishResult> {
   const token   = process.env.INSTAGRAM_ACCESS_TOKEN
   const igUser  = process.env.IG_BUSINESS_ACCOUNT_ID
@@ -400,6 +417,7 @@ export async function publishToInstagram(imageUrl: string, caption: string): Pro
   if (!containerRes.ok || !containerJson.id) {
     throw new Error(`Falha ao criar container: ${JSON.stringify(containerJson)}`)
   }
+  await waitForContainerReady(containerJson.id, token)
 
   const publishRes = await fetch(`${GRAPH}/${igUser}/media_publish`, {
     method: 'POST',
@@ -442,6 +460,7 @@ export async function publishStoryToInstagram(imageUrl: string): Promise<Publish
   if (!containerRes.ok || !containerJson.id) {
     throw new Error(`Falha ao criar container de story: ${JSON.stringify(containerJson)}`)
   }
+  await waitForContainerReady(containerJson.id, token)
 
   const publishRes = await fetch(`${GRAPH}/${igUser}/media_publish`, {
     method: 'POST',
@@ -479,6 +498,7 @@ export async function publishCarouselToInstagram(imageUrls: string[], caption: s
     if (!itemRes.ok || !itemJson.id) {
       throw new Error(`Falha ao criar item do carrossel: ${JSON.stringify(itemJson)}`)
     }
+    await waitForContainerReady(itemJson.id, token)
     childIds.push(itemJson.id)
   }
 
@@ -497,6 +517,7 @@ export async function publishCarouselToInstagram(imageUrls: string[], caption: s
   if (!carouselRes.ok || !carouselJson.id) {
     throw new Error(`Falha ao criar container do carrossel: ${JSON.stringify(carouselJson)}`)
   }
+  await waitForContainerReady(carouselJson.id, token)
 
   // Step 3: publish
   const publishRes = await fetch(`${GRAPH}/${igUser}/media_publish`, {
