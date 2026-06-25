@@ -301,7 +301,17 @@ Responda APENAS com um JSON válido, sem markdown, sem comentário, no formato e
   const text = await callClaude(systemPrompt, userPrompt, 500)
 
   try {
-    const cleaned = text.replace(/^```json\s*|\s*```$/g, '')
+    // Strip a ```json ... ``` or ``` ... ``` fence regardless of trailing
+    // whitespace/newlines after the closing fence (a bare `$` anchor only
+    // matches the absolute end of the string, which broke whenever Claude
+    // added a trailing newline — silently corrupting the post into raw
+    // markdown dumped as the caption).
+    let cleaned = text.trim().replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim()
+    if (!cleaned.startsWith('{')) {
+      const start = cleaned.indexOf('{')
+      const end = cleaned.lastIndexOf('}')
+      if (start !== -1 && end !== -1) cleaned = cleaned.slice(start, end + 1)
+    }
     const parsed = JSON.parse(cleaned) as PostCopy
     if (!parsed.title || !parsed.caption) throw new Error('campos faltando')
     return { title: parsed.title, subtitle: parsed.subtitle ?? '', caption: parsed.caption }
