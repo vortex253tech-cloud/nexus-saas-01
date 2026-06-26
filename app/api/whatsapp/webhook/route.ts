@@ -59,7 +59,8 @@ function shouldSkip(body: Record<string, unknown>): string | null {
 
 function extractText(body: Record<string, unknown>): string {
   const t = body.text as Record<string, string> | undefined
-  return (t?.message ?? (body.message as string) ?? '').trim()
+  const buttonReply = body.buttonsResponseMessage as Record<string, string> | undefined
+  return (t?.message ?? (body.message as string) ?? buttonReply?.message ?? '').trim()
 }
 
 function extractPhone(body: Record<string, unknown>): string {
@@ -73,19 +74,20 @@ async function loadMemory(phone: string, companyId: string): Promise<{
   history:        Message[]
   lead:           LeadContext
   isNew:          boolean
+  flowStep:       string | null
 }> {
   const supabase = db()
 
   // 1. Find conversation
   const { data: conv } = await supabase
     .from('whatsapp_conversations')
-    .select('id, contact_name')
+    .select('id, contact_name, metadata')
     .eq('company_id', companyId)
     .eq('phone', phone)
     .maybeSingle()
 
   if (!conv) {
-    return { conversationId: null, history: [], lead: {}, isNew: true }
+    return { conversationId: null, history: [], lead: {}, isNew: true, flowStep: null }
   }
 
   // 2. Load last 20 messages
@@ -115,7 +117,119 @@ async function loadMemory(phone: string, companyId: string): Promise<{
     history,
     lead: lead ?? {},
     isNew: false,
+    flowStep: (conv.metadata as Record<string, unknown> | null)?.flow_step as string ?? null,
   }
+}
+
+// ── Structured questionnaire (TIM-style quick-reply buttons) ──────
+// Cold paid traffic responds better to tap-to-answer questions than to an
+// open "type anything" prompt — this mirrors the flow in the TIM Brasil
+// screenshots the client asked to copy: greeting → 1-2 button questions →
+// final link-button CTA, falling back to the free-form AI engine the
+// moment the lead types free text instead of tapping a button, or once
+// qualification is done.
+
+const FLOW_STEPS = ['intent', 'size', 'pain'] as const
+type FlowStep = typeof FLOW_STEPS[number] | 'ai_handoff'
+
+async function setFlowStep(companyId: string, phone: string, contactName: string, step: FlowStep) {
+  const supabase = db()
+  await supabase.from('whatsapp_conversations').upsert(
+    {
+      company_id:   companyId,
+      phone,
+      contact_name: contactName || null,
+      last_message_at: new Date().toISOString(),
+      updated_at:   new Date().toISOString(),
+      metadata:     { flow_step: step },
+    },
+    { onConflict: 'company_id,phone', ignoreDuplicates: false }
+  )
+}
+
+async function upsertLeadFields(conversationId: string | null, companyId: string, phone: string, fields: Partial<LeadContext>) {
+  if (!conversationId) return
+  const supabase = db()
+  await supabase.from('lead_context').upsert(
+    { conversation_id: conversationId, company_id: companyId, phone, ...fields, updated_at: new Date().toISOString() },
+    { onConflict: 'conversation_id', ignoreDuplicates: false }
+  )
+}
+
+const DIAGNOSTIC_URL = 'https://diagnostico.nexusaas.com.br/'
+
+// Returns { handled: true, outgoingText } if the questionnaire fully owns this
+// turn (already replied via Z-API — caller just needs to log it), or
+// { handled: false } to fall through to the free-form AI engine.
+async function runQuestionnaire(params: {
+  phone: string
+  companyId: string
+  conversationId: string | null
+  senderName: string
+  flowStep: string | null
+  buttonId: string | undefined
+  isNew: boolean
+}): Promise<{ handled: boolean; outgoingText?: string }> {
+  const { phone, companyId, conversationId, senderName, flowStep, buttonId, isNew } = params
+
+  // Brand new contact, no flow started yet → open with the intent question.
+  if (isNew && !flowStep) {
+    const message = 'Olá! 👋 Eu sou a IA do NEXUS — cuido de vendas, cobrança e atendimento da sua empresa 24h, sem você precisar fazer nada.\n\nPra te mostrar exatamente como funciona pro seu negócio, me diz:'
+    const buttons = [
+      { id: '1', label: 'Quero o diagnóstico grátis' },
+      { id: '2', label: 'Já sou cliente NEXUS' },
+    ]
+    await sendButtonList(phone, message, buttons)
+    await setFlowStep(companyId, phone, senderName, 'intent')
+    return { handled: true, outgoingText: `${message}\n${buttons.map(b => `[${b.id}] ${b.label}`).join('\n')}` }
+  }
+
+  // No button tapped — either free text mid-flow (let the AI take over) or
+  // already past the questionnaire.
+  if (!buttonId) return { handled: false }
+
+  if (flowStep === 'intent') {
+    if (buttonId === '2') {
+      // Existing customer asking for support — hand straight to the AI.
+      await setFlowStep(companyId, phone, senderName, 'ai_handoff')
+      return { handled: false }
+    }
+    const message = 'Perfeito! Qual o tamanho da sua empresa hoje?'
+    const buttons = [
+      { id: '1', label: 'Só eu / autônomo' },
+      { id: '2', label: '2 a 5 funcionários' },
+      { id: '3', label: 'Mais de 5 funcionários' },
+    ]
+    await sendButtonList(phone, message, buttons)
+    await setFlowStep(companyId, phone, senderName, 'size')
+    return { handled: true, outgoingText: `${message}\n${buttons.map(b => `[${b.id}] ${b.label}`).join('\n')}` }
+  }
+
+  if (flowStep === 'size') {
+    const sizeLabel = { '1': 'Só eu / autônomo', '2': '2 a 5 funcionários', '3': 'Mais de 5 funcionários' }[buttonId] ?? ''
+    await upsertLeadFields(conversationId, companyId, phone, { funcionarios: sizeLabel })
+    const message = 'Entendido. E hoje, qual desses problemas mais te incomoda?'
+    const buttons = [
+      { id: '1', label: 'Perco vendas no WhatsApp' },
+      { id: '2', label: 'Cobrança / inadimplência' },
+      { id: '3', label: 'Falta de automação' },
+    ]
+    await sendButtonList(phone, message, buttons)
+    await setFlowStep(companyId, phone, senderName, 'pain')
+    return { handled: true, outgoingText: `${message}\n${buttons.map(b => `[${b.id}] ${b.label}`).join('\n')}` }
+  }
+
+  if (flowStep === 'pain') {
+    const painLabel = { '1': 'Perde vendas no WhatsApp', '2': 'Cobrança / inadimplência', '3': 'Falta de automação' }[buttonId] ?? ''
+    await upsertLeadFields(conversationId, companyId, phone, { dores: painLabel ? [painLabel] : [], estagio: 'qualificado' })
+    const message = 'Show! Com base nisso, já consigo te mostrar um diagnóstico real da sua empresa — gratuito, em 3 minutos. Ou me conta mais aqui mesmo que eu já te ajudo 🤖'
+    const ctaLabel = 'Fazer diagnóstico gratuito'
+    await sendButtonActions(phone, message, ctaLabel, DIAGNOSTIC_URL)
+    await setFlowStep(companyId, phone, senderName, 'ai_handoff')
+    return { handled: true, outgoingText: `${message}\n[${ctaLabel}] ${DIAGNOSTIC_URL}` }
+  }
+
+  return { handled: false }
 }
 
 // ── Build enriched system prompt ──────────────────────────────────
@@ -424,7 +538,7 @@ function humanDelay(): Promise<void> {
 
 // ── Z-API send ────────────────────────────────────────────────────
 
-async function sendZapi(phone: string, text: string) {
+async function zapiPost(path: string, body: Record<string, unknown>) {
   const instanceId  = process.env.ZAPI_INSTANCE_ID
   const token       = process.env.ZAPI_TOKEN
   const clientToken = process.env.ZAPI_CLIENT_TOKEN
@@ -434,16 +548,15 @@ async function sendZapi(phone: string, text: string) {
     return { error: 'not_configured' }
   }
 
-  // Simulate human typing delay to reduce ban risk
   await humanDelay()
 
   try {
     const res = await fetch(
-      `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`,
+      `https://api.z-api.io/instances/${instanceId}/token/${token}/${path}`,
       {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'Client-Token': clientToken ?? '' },
-        body:    JSON.stringify({ phone, message: text }),
+        body:    JSON.stringify(body),
       }
     )
     return await res.json().catch(() => ({ status: res.status }))
@@ -451,6 +564,23 @@ async function sendZapi(phone: string, text: string) {
     console.error('ZAPI ERROR:', String(err))
     return { error: String(err) }
   }
+}
+
+async function sendZapi(phone: string, text: string) {
+  return zapiPost('send-text', { phone, message: text })
+}
+
+// Quick-reply buttons (max 3 — WhatsApp's own native limit for this message type).
+async function sendButtonList(phone: string, message: string, buttons: { id: string; label: string }[]) {
+  return zapiPost('send-button-list', { phone, message, buttonList: { buttons } })
+}
+
+// Action button that opens a URL (e.g. the diagnostic page) instead of a reply.
+async function sendButtonActions(phone: string, message: string, label: string, url: string) {
+  return zapiPost('send-button-actions', {
+    phone, message,
+    buttonActions: [{ id: '1', type: 'URL', url, label }],
+  })
 }
 
 // ── GET: health check ─────────────────────────────────────────────
@@ -487,10 +617,11 @@ export async function POST(req: NextRequest) {
   const phone      = extractPhone(body)
   const msgId      = String(body.messageId ?? '')
   const senderName = String(body.senderName ?? body.chatName ?? '')
+  const buttonId   = (body.buttonsResponseMessage as Record<string, unknown> | undefined)?.buttonId as string | undefined
 
-  console.log('MESSAGE:', message, '| PHONE:', phone)
+  console.log('MESSAGE:', message, '| PHONE:', phone, '| BUTTON:', buttonId)
 
-  if (!message || !phone) {
+  if ((!message && !buttonId) || !phone) {
     console.log('SKIPPED: empty message or phone')
     return NextResponse.json({ skipped: 'empty' })
   }
@@ -509,10 +640,10 @@ export async function POST(req: NextRequest) {
   try {
     memory = companyId
       ? await loadMemory(phone, companyId)
-      : { conversationId: null, history: [], lead: {}, isNew: true }
+      : { conversationId: null, history: [], lead: {}, isNew: true, flowStep: null }
   } catch (err) {
     console.error('MEMORY LOAD ERROR:', String(err))
-    memory = { conversationId: null, history: [], lead: {}, isNew: true }
+    memory = { conversationId: null, history: [], lead: {}, isNew: true, flowStep: null }
   }
 
   console.log('MEMORY LOADED', {
@@ -520,7 +651,26 @@ export async function POST(req: NextRequest) {
     historyCount: memory.history.length,
     leadStage:    memory.lead.estagio ?? 'none',
     leadNome:     memory.lead.nome ?? 'unknown',
+    flowStep:     memory.flowStep ?? 'none',
   })
+
+  // 5b. Structured questionnaire (TIM-style quick-reply buttons) — owns the
+  // turn for new contacts and mid-flow button taps; falls through to the
+  // free-form AI the moment someone types free text or finishes qualifying.
+  if (companyId) {
+    const flow = await runQuestionnaire({
+      phone, companyId, conversationId: memory.conversationId, senderName,
+      flowStep: memory.flowStep, buttonId, isNew: memory.isNew,
+    })
+    if (flow.handled) {
+      saveConversation({
+        phone, companyId, senderName, message,
+        reply: flow.outgoingText ?? '',
+        msgId,
+      }).catch(err => console.error('SAVE ERROR:', String(err)))
+      return NextResponse.json({ ok: true, flow: memory.flowStep ?? 'intent' })
+    }
+  }
 
   // 6. Build enriched system prompt
   const systemPrompt = buildSystemPrompt(memory.lead)
