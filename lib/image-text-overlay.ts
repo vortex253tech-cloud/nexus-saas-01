@@ -306,12 +306,14 @@ async function renderScreenshotLayout(
     cardHeight = maxCardHeight
     cardWidth  = cardHeight * srcAspect
   }
+  cardWidth  = Math.round(cardWidth)
+  cardHeight = Math.round(cardHeight)
 
-  const cardX   = marginX + (maxCardWidth - cardWidth) / 2
-  const cardTop = headerHeight + (maxCardHeight - cardHeight) / 2
+  const cardX   = Math.round(marginX + (maxCardWidth - cardWidth) / 2)
+  const cardTop = Math.round(headerHeight + (maxCardHeight - cardHeight) / 2)
 
   const framedScreenshot = await sharp(background)
-    .resize(Math.round(cardWidth), Math.round(cardHeight), { fit: 'contain', background: { r: 17, g: 22, b: 32, alpha: 1 } })
+    .resize(cardWidth, cardHeight, { fit: 'contain', background: { r: 17, g: 22, b: 32, alpha: 1 } })
     .toBuffer()
 
   // Base canvas: solid brand background the screenshot card sits on top of.
