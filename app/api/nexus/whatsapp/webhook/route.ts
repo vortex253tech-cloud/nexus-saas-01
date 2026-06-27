@@ -94,15 +94,26 @@ Regras obrigatórias:
 - Se o lead demonstrar intenção clara de comprar ou pedir para falar com um humano, diga que vai conectar com a equipe e pare de tentar vender por conta própria.
 `.trim()
 
-// ── Structured questionnaire (TIM/Vivo-style tap-to-answer buttons) ─
-// First impression is the highest-stakes message and the one place a
-// telco-style bot is most rigidly scripted — real WhatsApp quick-reply
-// buttons (not "reply with a number") for intent -> company size -> main
-// pain point, then a link-button CTA to the diagnostic page. Falls through
-// to the free-form OpenAI engine the moment someone types free text
-// instead of tapping, or once qualification is done (flow_step='ai_handoff').
+// ── Structured questionnaire (numbered text menu) ──────────────────
+// Tried real WhatsApp interactive buttons (send-button-list /
+// send-button-actions) first — Z-API accepted both calls and returned a
+// valid zaapId, but the messages never reached delivery (status stuck on
+// "sent", confirmed live twice). This account is a personal number paired
+// via QR, not an official verified WhatsApp Business Platform number —
+// rich interactive UI is gated to the latter. Plain numbered text via
+// send-text is what's actually proven to deliver on this connection, so
+// the flow asks the lead to reply with a digit instead of tapping.
+// Same shape either way: intent -> company size -> main pain point ->
+// link to the diagnostic page, falling through to the free-form OpenAI
+// engine on unrecognized text or once qualification is done
+// (flow_step='ai_handoff').
 
 const DIAGNOSTIC_URL = 'https://diagnostico.nexusaas.com.br/'
+
+function parseChoice(text: string): string | null {
+  const match = text.trim().match(/^([1-3])\b/)
+  return match ? match[1] : null
+}
 
 async function setFlowStep(supabase: ReturnType<typeof db>, convId: string, step: string) {
   await supabase.from('whatsapp_conversations').update({ metadata: { flow_step: step } }).eq('id', convId)
@@ -115,110 +126,50 @@ async function upsertLeadFields(supabase: ReturnType<typeof db>, convId: string,
   )
 }
 
-async function sendButtonListAndPersist(
-  supabase: ReturnType<typeof db>, convId: string, companyId: string, phone: string,
-  zapiConfig: NonNullable<ReturnType<typeof resolveZApiConfig>>, message: string, buttons: { id: string; label: string }[],
-) {
-  const { instanceId, token, clientToken } = zapiConfig
-  let zapiData: Record<string, unknown> = {}
-  try {
-    const res = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-button-list`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Client-Token': clientToken ?? '' },
-      body: JSON.stringify({ phone, message, buttonList: { buttons } }),
-      signal: AbortSignal.timeout(10000),
-    })
-    if (res.ok) zapiData = await res.json().catch(() => ({}))
-    else { console.error('[webhook/buttons] Z-API error:', res.status); return }
-  } catch (err) { console.error('[webhook/buttons] Z-API unreachable:', err); return }
-
-  const now = new Date().toISOString()
-  const logText = `${message}\n${buttons.map(b => `[${b.id}] ${b.label}`).join('\n')}`
-  await supabase.from('whatsapp_messages').insert({
-    conversation_id: convId, company_id: companyId, phone, direction: 'outgoing', content: logText,
-    from_me: true, ai_generated: true, status: 'sent',
-    raw_payload: { ...zapiData, type: 'button_list', auto_reply: true },
-    zapi_message_id: (zapiData.zaapId ?? zapiData.messageId ?? null) as string | null,
-  })
-  await supabase.from('whatsapp_conversations').update({ last_message_at: now, updated_at: now }).eq('id', convId)
-}
-
-async function sendButtonActionsAndPersist(
-  supabase: ReturnType<typeof db>, convId: string, companyId: string, phone: string,
-  zapiConfig: NonNullable<ReturnType<typeof resolveZApiConfig>>, message: string, ctaLabel: string, url: string,
-) {
-  const { instanceId, token, clientToken } = zapiConfig
-  let zapiData: Record<string, unknown> = {}
-  try {
-    const res = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-button-actions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Client-Token': clientToken ?? '' },
-      body: JSON.stringify({ phone, message, buttonActions: [{ id: '1', type: 'URL', url, label: ctaLabel }] }),
-      signal: AbortSignal.timeout(10000),
-    })
-    if (res.ok) zapiData = await res.json().catch(() => ({}))
-    else { console.error('[webhook/buttons] Z-API error:', res.status); return }
-  } catch (err) { console.error('[webhook/buttons] Z-API unreachable:', err); return }
-
-  const now = new Date().toISOString()
-  await supabase.from('whatsapp_messages').insert({
-    conversation_id: convId, company_id: companyId, phone, direction: 'outgoing',
-    content: `${message}\n[${ctaLabel}] ${url}`,
-    from_me: true, ai_generated: true, status: 'sent',
-    raw_payload: { ...zapiData, type: 'button_actions', auto_reply: true },
-    zapi_message_id: (zapiData.zaapId ?? zapiData.messageId ?? null) as string | null,
-  })
-  await supabase.from('whatsapp_conversations').update({ last_message_at: now, updated_at: now }).eq('id', convId)
-}
-
 // Returns true if the questionnaire owned this turn (already replied).
 async function runQuestionnaire(
   supabase: ReturnType<typeof db>, convId: string, companyId: string, phone: string,
   zapiConfig: NonNullable<ReturnType<typeof resolveZApiConfig>>,
-  contactName: string | null, isFirstMessage: boolean, flowStep: string | null, buttonId: string | undefined,
+  contactName: string | null, isFirstMessage: boolean, flowStep: string | null, messageText: string,
 ): Promise<boolean> {
   if (isFirstMessage) {
-    await sendButtonListAndPersist(
-      supabase, convId, companyId, phone, zapiConfig,
-      `Oi${contactName ? `, ${contactName.split(' ')[0]}` : ''}! 👋 Eu sou a IA do *NEXUS* — cuido de vendas, cobrança e atendimento da sua empresa 24h.\n\nPra te mostrar exatamente como funciona pro seu negócio, me diz:`,
-      [{ id: '1', label: 'Quero o diagnóstico grátis' }, { id: '2', label: 'Já sou cliente NEXUS' }],
-    )
+    const greeting =
+      `Oi${contactName ? `, ${contactName.split(' ')[0]}` : ''}! 👋 Eu sou a IA do *NEXUS* — cuido de vendas, cobrança e atendimento da sua empresa 24h.\n\n` +
+      `Pra te mostrar exatamente como funciona pro seu negócio, me diz:\n\n` +
+      `1️⃣ Quero o diagnóstico grátis\n2️⃣ Já sou cliente NEXUS\n\nResponda só com o número.`
+    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig, greeting)
     await setFlowStep(supabase, convId, 'intent')
     return true
   }
 
-  if (!buttonId) return false
+  const choice = parseChoice(messageText)
+  if (!choice) return false
 
   if (flowStep === 'intent') {
-    if (buttonId === '2') {
+    if (choice === '2') {
       await setFlowStep(supabase, convId, 'ai_handoff')
       return false // hand straight to the AI — existing customer asking for support
     }
-    await sendButtonListAndPersist(supabase, convId, companyId, phone, zapiConfig, 'Perfeito! Qual o tamanho da sua empresa hoje?', [
-      { id: '1', label: 'Só eu / autônomo' }, { id: '2', label: '2 a 5 funcionários' }, { id: '3', label: 'Mais de 5 funcionários' },
-    ])
+    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig,
+      'Perfeito! Qual o tamanho da sua empresa hoje?\n\n1️⃣ Só eu / autônomo\n2️⃣ 2 a 5 funcionários\n3️⃣ Mais de 5 funcionários\n\nResponda só com o número.')
     await setFlowStep(supabase, convId, 'size')
     return true
   }
 
   if (flowStep === 'size') {
-    const sizeLabel = { '1': 'Só eu / autônomo', '2': '2 a 5 funcionários', '3': 'Mais de 5 funcionários' }[buttonId] ?? ''
+    const sizeLabel = { '1': 'Só eu / autônomo', '2': '2 a 5 funcionários', '3': 'Mais de 5 funcionários' }[choice] ?? ''
     await upsertLeadFields(supabase, convId, companyId, phone, { funcionarios: sizeLabel })
-    await sendButtonListAndPersist(supabase, convId, companyId, phone, zapiConfig, 'Entendido. E hoje, qual desses problemas mais te incomoda?', [
-      { id: '1', label: 'Perco vendas no WhatsApp' }, { id: '2', label: 'Cobrança / inadimplência' }, { id: '3', label: 'Falta de automação' },
-    ])
+    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig,
+      'Entendido. E hoje, qual desses problemas mais te incomoda?\n\n1️⃣ Perco vendas no WhatsApp\n2️⃣ Cobrança / inadimplência\n3️⃣ Falta de automação\n\nResponda só com o número.')
     await setFlowStep(supabase, convId, 'pain')
     return true
   }
 
   if (flowStep === 'pain') {
-    const painLabel = { '1': 'Perde vendas no WhatsApp', '2': 'Cobrança / inadimplência', '3': 'Falta de automação' }[buttonId] ?? ''
+    const painLabel = { '1': 'Perde vendas no WhatsApp', '2': 'Cobrança / inadimplência', '3': 'Falta de automação' }[choice] ?? ''
     await upsertLeadFields(supabase, convId, companyId, phone, { dores: painLabel ? [painLabel] : [], estagio: 'qualificado' })
-    await sendButtonActionsAndPersist(
-      supabase, convId, companyId, phone, zapiConfig,
-      'Show! Com base nisso, já consigo te mostrar um diagnóstico real da sua empresa — gratuito, em 3 minutos. Ou me conta mais aqui mesmo que eu já te ajudo 🤖',
-      'Fazer diagnóstico gratuito', DIAGNOSTIC_URL,
-    )
+    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig,
+      `Show! Com base nisso, já consigo te mostrar um diagnóstico real da sua empresa — gratuito, em 3 minutos:\n${DIAGNOSTIC_URL}\n\nOu me conta mais aqui mesmo que eu já te ajudo 🤖`)
     await setFlowStep(supabase, convId, 'ai_handoff')
     return true
   }
@@ -236,7 +187,7 @@ async function autoReply(
   contactName: string | null,
   isFirstMessage: boolean,
   flowStep:    string | null,
-  buttonId:    string | undefined,
+  messageText: string,
 ) {
   const identity   = await getBusinessIdentity(companyId)
   const zapiConfig = resolveZApiConfig(
@@ -246,7 +197,7 @@ async function autoReply(
   )
   if (!zapiConfig) return
 
-  const handled = await runQuestionnaire(supabase, convId, companyId, phone, zapiConfig, contactName, isFirstMessage, flowStep, buttonId)
+  const handled = await runQuestionnaire(supabase, convId, companyId, phone, zapiConfig, contactName, isFirstMessage, flowStep, messageText)
   if (handled) return
 
   if (!process.env.OPENAI_API_KEY) return
@@ -464,7 +415,6 @@ export async function POST(req: NextRequest) {
 
   const content    = extractContent(payload)
   const mediaUrl   = extractMediaUrl(payload)
-  const buttonId   = payload.buttonsResponseMessage?.buttonId
   const zapiMsgId  = payload.messageId ?? payload.zaapId ?? null
   const senderName = payload.senderName ?? null
   const photoUrl   = payload.profilePictureUrl ?? null
@@ -577,7 +527,7 @@ export async function POST(req: NextRequest) {
   const flowStep  = (existingConv?.metadata as Record<string, unknown> | null)?.flow_step as string ?? null
 
   if (aiEnabled) {
-    await autoReply(supabase, convId, companyId, phone, senderName, !existingConv, flowStep, buttonId)
+    await autoReply(supabase, convId, companyId, phone, senderName, !existingConv, flowStep, content)
   }
 
   // ── Trigger lead analysis (non-blocking, best effort) ─────────────
