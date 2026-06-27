@@ -286,14 +286,32 @@ async function renderScreenshotLayout(
   const headerHeight = badge ? 340 : 280
   const footerHeight = ctaLabel ? 270 : 170
 
-  const cardX = marginX
-  const cardTop = headerHeight
-  const cardWidth = W - marginX * 2
-  const cardBottom = H - footerHeight
-  const cardHeight = cardBottom - cardTop
+  // Source screenshots are wide desktop dashboards (~1.6:1); story format is
+  // very tall (9:16). Sizing the card to the nominal header/footer-bounded
+  // box and letting 'contain' shrink the photo inside it left the card
+  // border at full height with the actual photo floating tiny in the
+  // middle — a wall of dead space. Instead, size the card itself to the
+  // screenshot's real aspect ratio (clamped to the available box) so the
+  // border hugs the actual content, with the leftover space distributed as
+  // even, intentional padding above/below instead of one big gap.
+  const meta = await sharp(background).metadata()
+  const srcAspect = (meta.width ?? 1) / (meta.height ?? 1)
+
+  const maxCardWidth  = W - marginX * 2
+  const maxCardHeight = (H - footerHeight) - headerHeight
+
+  let cardWidth  = maxCardWidth
+  let cardHeight = cardWidth / srcAspect
+  if (cardHeight > maxCardHeight) {
+    cardHeight = maxCardHeight
+    cardWidth  = cardHeight * srcAspect
+  }
+
+  const cardX   = marginX + (maxCardWidth - cardWidth) / 2
+  const cardTop = headerHeight + (maxCardHeight - cardHeight) / 2
 
   const framedScreenshot = await sharp(background)
-    .resize(cardWidth, cardHeight, { fit: 'contain', background: { r: 17, g: 22, b: 32, alpha: 1 } })
+    .resize(Math.round(cardWidth), Math.round(cardHeight), { fit: 'contain', background: { r: 17, g: 22, b: 32, alpha: 1 } })
     .toBuffer()
 
   // Base canvas: solid brand background the screenshot card sits on top of.
