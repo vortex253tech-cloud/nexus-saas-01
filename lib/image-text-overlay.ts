@@ -287,33 +287,21 @@ async function renderScreenshotLayout(
   const footerHeight = ctaLabel ? 270 : 170
 
   // Source screenshots are wide desktop dashboards (~1.6:1); story format is
-  // very tall (9:16). Sizing the card to the nominal header/footer-bounded
-  // box and letting 'contain' shrink the photo inside it left the card
-  // border at full height with the actual photo floating tiny in the
-  // middle — a wall of dead space. Instead, size the card itself to the
-  // screenshot's real aspect ratio (clamped to the available box) so the
-  // border hugs the actual content, with the leftover space distributed as
-  // even, intentional padding above/below instead of one big gap.
-  const meta = await sharp(background).metadata()
-  const srcAspect = (meta.width ?? 1) / (meta.height ?? 1)
-
-  const maxCardWidth  = W - marginX * 2
-  const maxCardHeight = (H - footerHeight) - headerHeight
-
-  let cardWidth  = maxCardWidth
-  let cardHeight = cardWidth / srcAspect
-  if (cardHeight > maxCardHeight) {
-    cardHeight = maxCardHeight
-    cardWidth  = cardHeight * srcAspect
-  }
-  cardWidth  = Math.round(cardWidth)
-  cardHeight = Math.round(cardHeight)
-
-  const cardX   = Math.round(marginX + (maxCardWidth - cardWidth) / 2)
-  const cardTop = Math.round(headerHeight + (maxCardHeight - cardHeight) / 2)
+  // very tall (9:16). Preserving the screenshot's full aspect ratio
+  // ('contain') made the card itself small relative to the available
+  // header/footer-bounded box, which just relocated the dead space from
+  // "inside the card" to "around the card" — still a near-empty story.
+  // Instead the card always fills the full available box and the
+  // screenshot is 'cover'-cropped into it (losing some left/right content
+  // on very tall formats) — a confidently full frame beats a small,
+  // perfectly-proportioned one floating in empty space.
+  const cardX      = marginX
+  const cardTop    = headerHeight
+  const cardWidth  = W - marginX * 2
+  const cardHeight = (H - footerHeight) - headerHeight
 
   const framedScreenshot = await sharp(background)
-    .resize(cardWidth, cardHeight, { fit: 'contain', background: { r: 17, g: 22, b: 32, alpha: 1 } })
+    .resize(cardWidth, cardHeight, { fit: 'cover', position: 'centre' })
     .toBuffer()
 
   // Base canvas: solid brand background the screenshot card sits on top of.
