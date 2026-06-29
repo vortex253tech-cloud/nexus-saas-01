@@ -226,6 +226,39 @@ export default function VoiceOrb() {
           </motion.p>
         </AnimatePresence>
       </div>
+
+      {/* Mobile-only mini player — the orb scrolls out of view fast on small
+          screens, leaving playback with no visible control or caption.
+          Pinned to the bottom while audio is playing so it stays reachable. */}
+      <AnimatePresence>
+        {playing && (
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ duration: 0.25 }}
+            className="lg:hidden fixed bottom-4 left-4 right-4 z-50 flex items-center gap-3 rounded-2xl border border-white/10 p-3 pr-4"
+            style={{ background: 'rgba(10,14,22,0.92)', backdropFilter: 'blur(20px)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
+          >
+            <button
+              onClick={handlePlay}
+              className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center border border-blue-400/30"
+              style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)' }}
+              aria-label="Pausar apresentação"
+            >
+              <Pause className="w-4 h-4 text-white" />
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] text-zinc-300 truncate">
+                {lineIdx >= 0 ? SCRIPT_LINES[lineIdx] : 'Apresentação do NEXUS'}
+              </p>
+              <div className="mt-1.5 h-0.5 w-full rounded-full bg-white/10 overflow-hidden">
+                <div className="h-full bg-blue-500" style={{ width: `${progress * 100}%` }} />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
