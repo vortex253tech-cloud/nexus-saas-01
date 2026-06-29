@@ -205,13 +205,13 @@ function BootStep({ onStart }: { onStart: () => void }) {
 function CompanyStep({
   data, onChange, onNext, onBack, saving,
 }: {
-  data: { name: string; segment: string; teamSize: string }
+  data: { name: string; segment: string; teamSize: string; phone: string }
   onChange: (k: string, v: string) => void
   onNext: () => void
   onBack: () => void
   saving: boolean
 }) {
-  const canContinue = data.name.trim() && data.segment && data.teamSize
+  const canContinue = data.name.trim() && data.segment && data.teamSize && data.phone.replace(/\D/g, '').length >= 10
 
   return (
     <div className="w-full max-w-xl mx-auto">
@@ -231,6 +231,19 @@ function CompanyStep({
           placeholder="Ex: Agência Vortex"
           className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-3 text-white placeholder-zinc-600 outline-none backdrop-blur-sm transition focus:border-violet-500 focus:ring-1 focus:ring-violet-500/40"
         />
+      </div>
+
+      {/* WhatsApp */}
+      <div className="mb-6">
+        <label className="mb-2 block text-sm font-medium text-zinc-300">Seu WhatsApp</label>
+        <input
+          type="tel"
+          value={data.phone}
+          onChange={(e) => onChange('phone', e.target.value)}
+          placeholder="Ex: (11) 98765-4321"
+          className="w-full rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-3 text-white placeholder-zinc-600 outline-none backdrop-blur-sm transition focus:border-violet-500 focus:ring-1 focus:ring-violet-500/40"
+        />
+        <p className="mt-2 text-xs text-zinc-500">Mandamos ali um guia rápido de como usar o NEXUS.</p>
       </div>
 
       {/* Segment */}
@@ -843,7 +856,7 @@ export default function SetupPage() {
   const [completing, setCompleting] = useState(false)
 
   // Form data
-  const [company, setCompany] = useState({ name: '', segment: '', teamSize: '' })
+  const [company, setCompany] = useState({ name: '', segment: '', teamSize: '', phone: '' })
   const [objectives, setObjectives] = useState<string[]>([])
   const [challenge, setChallenge] = useState('')
   const [personality, setPersonality] = useState('moderno')
@@ -876,6 +889,7 @@ export default function SetupPage() {
         companyName: company.name,
         segment: company.segment,
         teamSize: company.teamSize,
+        phone: company.phone,
       }),
     }).catch(() => {})
     setSaving(false)

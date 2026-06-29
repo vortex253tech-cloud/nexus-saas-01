@@ -11,6 +11,7 @@ export async function POST(req: Request) {
       companyName?: string
       segment?: string
       teamSize?: string
+      phone?: string
       objectives?: string[]
       mainChallenge?: string
       aiPersonality?: string
@@ -18,13 +19,14 @@ export async function POST(req: Request) {
 
     const db = getSupabaseServerClient()
 
-    // Update company name + sector if provided
-    if (body.companyName || body.segment) {
+    // Update company name + sector + phone if provided
+    if (body.companyName || body.segment || body.phone) {
       await db
         .from('companies')
         .update({
           ...(body.companyName && { name: body.companyName }),
           ...(body.segment && { sector: body.segment }),
+          ...(body.phone && { phone: body.phone.replace(/\D/g, '') }),
         })
         .eq('id', ctx.companyId)
     }
