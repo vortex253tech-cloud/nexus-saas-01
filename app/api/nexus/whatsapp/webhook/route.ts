@@ -95,87 +95,83 @@ Regras obrigatórias:
 - Leia o histórico da conversa antes de responder. Se o lead já respondeu algo (nome de plano, escolha, pergunta), responda diretamente a isso com a informação real (preço, detalhes) — NUNCA repita uma pergunta de múltipla escolha que ele já respondeu.
 `.trim()
 
-// ── Structured questionnaire (numbered text menu) ──────────────────
-// Tried real WhatsApp interactive buttons (send-button-list /
-// send-button-actions) first — Z-API accepted both calls and returned a
-// valid zaapId, but the messages never reached delivery (status stuck on
-// "sent", confirmed live twice). This account is a personal number paired
-// via QR, not an official verified WhatsApp Business Platform number —
-// rich interactive UI is gated to the latter. Plain numbered text via
-// send-text is what's actually proven to deliver on this connection, so
-// the flow asks the lead to reply with a digit instead of tapping.
-// Same shape either way: intent -> company size -> main pain point ->
-// link to the diagnostic page, falling through to the free-form OpenAI
-// engine on unrecognized text or once qualification is done
-// (flow_step='ai_handoff').
+// ── Onboarding sequence (fixed explanation, no multiple-choice menu) ──
+// Earlier version asked the lead to reply "1" or "2" to a menu — live
+// feedback was that this reads as a pointless gate ("pergunta atoa")
+// instead of substance. Replaced with a fixed sequence of explanatory
+// messages (mirrors the tone of messages sent manually 1:1 with real
+// leads, which is what actually converted): one open question, then
+// what NEXUS is, then the full capability list, then the trial link,
+// then a handoff to a human "specialist" — at which point ai_enabled is
+// turned off so the AI stops talking and whoever takes over doesn't get
+// stepped on. Advances one step per incoming message regardless of what
+// the lead actually said — this is a fixed script, not a parsed choice.
 
-const DIAGNOSTIC_URL = 'https://diagnostico.nexusaas.com.br/'
-
-function parseChoice(text: string): string | null {
-  const match = text.trim().match(/^([1-3])\b/)
-  return match ? match[1] : null
+const SEQUENCE_MESSAGES: Record<string, string> = {
+  greeting:
+    'Olá, tudo bem? Eu sou o responsável pelo NEXUS. Vi que você chegou pelo nosso anúncio e queria entender melhor seu negócio para te mostrar se realmente faz sentido usar a IA no seu dia a dia.\n\n' +
+    'Hoje você usa o WhatsApp como principal canal de atendimento?',
+  what_is:
+    'O NEXUS é uma ferramenta de inteligência artificial que ajuda empresas a cuidarem melhor dos clientes pelo WhatsApp.\n\n' +
+    'Na prática, ele funciona como um assistente trabalhando junto com você: responde clientes, ajuda a organizar os atendimentos, acompanha oportunidades e evita que você perca vendas por demora na resposta.\n\n' +
+    'A ideia é facilitar sua rotina e deixar seu atendimento mais profissional, mesmo quando você não consegue estar disponível o tempo todo.',
+  capabilities:
+    'Deixa eu te explicar melhor o que é o NEXUS, porque ele é bem mais do que só automação de WhatsApp.\n\n' +
+    'O NEXUS é um COO de IA — um "diretor de operações" virtual que roda sua empresa em várias frentes ao mesmo tempo:\n\n' +
+    'Atendimento no WhatsApp: a IA responde clientes 24 horas, qualifica leads e nunca deixa mensagem sem resposta.\n\n' +
+    'Cobrança automática: identifica quem está inadimplente e cobra sozinho, sem você precisar lembrar ou ligar.\n\n' +
+    'Diagnóstico financeiro: analisa os dados da sua empresa e mostra exatamente onde você está perdendo dinheiro, com previsão de fluxo de caixa e alertas de anomalias.\n\n' +
+    'Assistente de voz: você fala com a IA por voz, como um diretor de operações de verdade, e ela executa na hora — cria tarefas, agenda reuniões, gera propostas e consulta seu financeiro.',
+  tip_trial:
+    'Uma dica importante: o NEXUS foi criado para funcionar como um sistema operacional da sua empresa dentro do navegador.\n\n' +
+    'A melhor experiência é acessando pelo computador, porque você consegue visualizar melhor o painel, acompanhar conversas, organizar clientes e utilizar todos os recursos da plataforma com mais facilidade. Pelo celular também funciona, mas o potencial todo é melhor aproveitado no computador.\n\n' +
+    'Vou liberar pra você um acesso gratuito de 7 dias pra testar na prática:\nhttps://nexusaas.com.br/\n\n' +
+    'É só entrar no link, clicar em Login e criar sua conta.',
+  handoff:
+    'Vi sua conversa com o NEXUS e quero agradecer pelo interesse.\n\n' +
+    'Estou fazendo uma melhoria no atendimento e vou transferir você agora para um especialista do NEXUS, que vai conversar com você de forma mais personalizada e entender exatamente o que sua empresa precisa.\n\n' +
+    'Ele vai te explicar como o NEXUS pode ajudar no atendimento, vendas e organização dos clientes sem você precisar perder tempo respondendo tudo sozinho.\n\n' +
+    'Já vou assumir seu atendimento por aqui, pode ficar tranquilo(a).',
 }
+
+const SEQUENCE_ORDER = ['greeting', 'what_is', 'capabilities', 'tip_trial', 'handoff'] as const
 
 async function setFlowStep(supabase: ReturnType<typeof db>, convId: string, step: string) {
   await supabase.from('whatsapp_conversations').update({ metadata: { flow_step: step } }).eq('id', convId)
 }
 
-async function upsertLeadFields(supabase: ReturnType<typeof db>, convId: string, companyId: string, phone: string, fields: Record<string, unknown>) {
-  await supabase.from('lead_context').upsert(
-    { conversation_id: convId, company_id: companyId, phone, ...fields, updated_at: new Date().toISOString() },
-    { onConflict: 'conversation_id', ignoreDuplicates: false },
-  )
-}
-
-// Returns true if the questionnaire owned this turn (already replied).
-async function runQuestionnaire(
+// Returns true if the sequence owned this turn (already replied).
+async function runOnboardingSequence(
   supabase: ReturnType<typeof db>, convId: string, companyId: string, phone: string,
   zapiConfig: NonNullable<ReturnType<typeof resolveZApiConfig>>,
-  contactName: string | null, isFirstMessage: boolean, flowStep: string | null, messageText: string,
+  isFirstMessage: boolean, flowStep: string | null,
 ): Promise<boolean> {
   if (isFirstMessage) {
-    const greeting =
-      `Oi${contactName ? `, ${contactName.split(' ')[0]}` : ''}! 👋 Eu sou a IA do *NEXUS* — cuido de vendas, cobrança e atendimento da sua empresa 24h.\n\n` +
-      `Pra te mostrar exatamente como funciona pro seu negócio, me diz:\n\n` +
-      `1️⃣ Quero o diagnóstico grátis\n2️⃣ Já sou cliente NEXUS\n\nResponda só com o número.`
-    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig, greeting)
-    await setFlowStep(supabase, convId, 'intent')
+    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig, SEQUENCE_MESSAGES.greeting)
+    await setFlowStep(supabase, convId, 'greeting')
     return true
   }
 
-  const choice = parseChoice(messageText)
-  if (!choice) return false
-
-  if (flowStep === 'intent') {
-    if (choice === '2') {
-      await setFlowStep(supabase, convId, 'ai_handoff')
-      return false // hand straight to the AI — existing customer asking for support
-    }
-    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig,
-      'Perfeito! Qual o tamanho da sua empresa hoje?\n\n1️⃣ Só eu / autônomo\n2️⃣ 2 a 5 funcionários\n3️⃣ Mais de 5 funcionários\n\nResponda só com o número.')
-    await setFlowStep(supabase, convId, 'size')
-    return true
+  const currentIdx = flowStep ? SEQUENCE_ORDER.indexOf(flowStep as typeof SEQUENCE_ORDER[number]) : -1
+  if (currentIdx === -1 || currentIdx >= SEQUENCE_ORDER.length - 1) {
+    // Already past 'handoff', or flow_step belongs to some other state —
+    // don't keep talking, a human owns this conversation now.
+    return flowStep === 'handoff'
   }
 
-  if (flowStep === 'size') {
-    const sizeLabel = { '1': 'Só eu / autônomo', '2': '2 a 5 funcionários', '3': 'Mais de 5 funcionários' }[choice] ?? ''
-    await upsertLeadFields(supabase, convId, companyId, phone, { funcionarios: sizeLabel })
-    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig,
-      'Entendido. E hoje, qual desses problemas mais te incomoda?\n\n1️⃣ Perco vendas no WhatsApp\n2️⃣ Cobrança / inadimplência\n3️⃣ Falta de automação\n\nResponda só com o número.')
-    await setFlowStep(supabase, convId, 'pain')
-    return true
+  const nextStep = SEQUENCE_ORDER[currentIdx + 1]
+  await sendAndPersist(supabase, convId, companyId, phone, zapiConfig, SEQUENCE_MESSAGES[nextStep])
+  await setFlowStep(supabase, convId, nextStep)
+
+  if (nextStep === 'handoff') {
+    await supabase.from('lead_context').upsert(
+      { conversation_id: convId, company_id: companyId, phone, estagio: 'transferido_especialista', updated_at: new Date().toISOString() },
+      { onConflict: 'conversation_id', ignoreDuplicates: false },
+    )
+    await supabase.from('whatsapp_conversations').update({ ai_enabled: false }).eq('id', convId)
   }
 
-  if (flowStep === 'pain') {
-    const painLabel = { '1': 'Perde vendas no WhatsApp', '2': 'Cobrança / inadimplência', '3': 'Falta de automação' }[choice] ?? ''
-    await upsertLeadFields(supabase, convId, companyId, phone, { dores: painLabel ? [painLabel] : [], estagio: 'qualificado' })
-    await sendAndPersist(supabase, convId, companyId, phone, zapiConfig,
-      `Show! Com base nisso, já consigo te mostrar um diagnóstico real da sua empresa — gratuito, em 3 minutos:\n${DIAGNOSTIC_URL}\n\nOu me conta mais aqui mesmo que eu já te ajudo 🤖`)
-    await setFlowStep(supabase, convId, 'ai_handoff')
-    return true
-  }
-
-  return false
+  return true
 }
 
 // ── Auto-reply via OpenAI + Z-API ─────────────────────────────────
@@ -198,7 +194,7 @@ async function autoReply(
   )
   if (!zapiConfig) return
 
-  const handled = await runQuestionnaire(supabase, convId, companyId, phone, zapiConfig, contactName, isFirstMessage, flowStep, messageText)
+  const handled = await runOnboardingSequence(supabase, convId, companyId, phone, zapiConfig, isFirstMessage, flowStep)
   if (handled) return
 
   if (!process.env.OPENAI_API_KEY) return
