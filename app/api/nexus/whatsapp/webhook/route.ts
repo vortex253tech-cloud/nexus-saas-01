@@ -92,6 +92,7 @@ Regras obrigatórias:
 - Se o lead perguntar algo totalmente fora desse contexto (curiosidades, outros assuntos, perguntas pessoais sobre a IA, política, etc.), recuse educadamente em 1 frase e traga de volta para o NEXUS — nunca responda a pergunta fora de contexto, nem como piada.
 - Não use linguagem corporativa/robótica. Use no máximo 1 emoji por mensagem.
 - Se o lead demonstrar intenção clara de comprar ou pedir para falar com um humano, diga que vai conectar com a equipe e pare de tentar vender por conta própria.
+- Leia o histórico da conversa antes de responder. Se o lead já respondeu algo (nome de plano, escolha, pergunta), responda diretamente a isso com a informação real (preço, detalhes) — NUNCA repita uma pergunta de múltipla escolha que ele já respondeu.
 `.trim()
 
 // ── Structured questionnaire (numbered text menu) ──────────────────
@@ -495,7 +496,12 @@ export async function POST(req: NextRequest) {
   // ── Persist inbound message ───────────────────────────────────────
   const messageType = payload.image ? 'image' : payload.audio ? 'audio' : payload.video ? 'video' : payload.document ? 'document' : 'text'
 
-  await supabase.from('whatsapp_messages').insert({
+  // status must be one of the DB's allowed values ('pending','sent',
+  // 'delivered','read','failed' — see 20260515_whatsapp_ai.sql). 'received'
+  // isn't one of them, so this insert was silently failing the check
+  // constraint on every single incoming message — the AI's chat history
+  // never had the lead's actual replies, just its own past messages.
+  const { error: insertErr } = await supabase.from('whatsapp_messages').insert({
     conversation_id: convId,
     company_id:      companyId,
     phone,
@@ -503,7 +509,7 @@ export async function POST(req: NextRequest) {
     content:         content || '📎 Mídia',
     from_me:         false,
     ai_generated:    false,
-    status:          'received',
+    status:          'delivered',
     raw_payload:     {
       ...payload,
       media_url:    mediaUrl,
@@ -512,6 +518,7 @@ export async function POST(req: NextRequest) {
     zapi_message_id: zapiMsgId,
     created_at:      payload.timestamp ? new Date(payload.timestamp * 1000).toISOString() : now,
   })
+  if (insertErr) console.error('[webhook] Failed to persist incoming message:', insertErr)
 
   // Increment unread (try RPC, fall back to direct update)
   const { error: rpcErr } = await supabase.rpc('increment_unread', { conv_id: convId })
