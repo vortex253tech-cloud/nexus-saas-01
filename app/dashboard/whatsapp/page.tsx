@@ -499,7 +499,7 @@ function ConnectModal({ onClose, onConnected }: { onClose: () => void; onConnect
                         <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4">
                           <AlertTriangle className="w-8 h-8 text-amber-400" />
                           <p className="text-xs text-zinc-500 text-center">
-                            QR indisponível.<br />Verifique a configuração Z-API.
+                            Não foi possível gerar o QR Code agora.<br />Tente novamente em alguns segundos.
                           </p>
                           <button
                             onClick={loadQr}
@@ -742,20 +742,20 @@ function ConfigModal({
           </div>
         </div>
 
-        {/* Z-API info */}
+        {/* Connection info */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-4">
-          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-3">Z-API</p>
+          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-3">Conexão</p>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <p className="text-[11px] text-zinc-500">Instance</p>
+              <p className="text-[11px] text-zinc-500">Número</p>
               <p className="text-[11px] text-zinc-300 font-mono">
-                {process.env.NEXT_PUBLIC_ZAPI_INSTANCE_ID ? '●●●●●●●●' : 'Não configurado'}
+                {waStatus?.connected ? '●●●●●●●●' : 'Não conectado'}
               </p>
             </div>
             <div className="flex items-center justify-between">
               <p className="text-[11px] text-zinc-500">Status</p>
               <p className={cn('text-[11px] font-medium', waStatus?.connected ? 'text-emerald-400' : 'text-red-400')}>
-                {waStatus?.status ?? 'Unknown'}
+                {waStatus?.connected ? 'Conectado' : 'Desconectado'}
               </p>
             </div>
           </div>
