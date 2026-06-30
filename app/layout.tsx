@@ -16,6 +16,13 @@ export const metadata: Metadata = {
   alternates: {
     canonical: 'https://nexusaas.com.br',
   },
+  icons: {
+    icon: [
+      { url: '/icon.png', type: 'image/png' },
+    ],
+    apple: '/apple-icon.png',
+    shortcut: '/icon.png',
+  },
   openGraph: {
     title: 'NEXUS — Seu COO de IA',
     description: 'Inteligência financeira para empresas que querem crescer.',
