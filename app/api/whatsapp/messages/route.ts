@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext }          from '@/lib/auth'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { getMessages }             from '@/lib/whatsapp-engine'
+import { getBusinessIdentity }     from '@/lib/business-identity'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,7 +10,13 @@ export async function GET(req: NextRequest) {
   try {
     const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const companyId = ctx.companyId
+
+    // Same platform-fallback logic as /api/whatsapp/conversations
+    const identity = await getBusinessIdentity(ctx.companyId)
+    const hasOwnInstance = !!(identity?.zapiInstanceId && identity.zapiToken)
+    const companyId = (!hasOwnInstance && process.env.NEXUS_PLATFORM_COMPANY_ID)
+      ? process.env.NEXUS_PLATFORM_COMPANY_ID
+      : ctx.companyId
 
     const conversationId = req.nextUrl.searchParams.get('conversationId')
     if (!conversationId) {
@@ -18,7 +25,7 @@ export async function GET(req: NextRequest) {
 
     const db = getSupabaseServerClient()
 
-    // Verify the conversation belongs to this company
+    // Verify the conversation belongs to this company (or platform company)
     const { data: conversation } = await db
       .from('whatsapp_conversations')
       .select('id')
@@ -33,7 +40,6 @@ export async function GET(req: NextRequest) {
 
     const limit = parseInt(req.nextUrl.searchParams.get('limit') ?? '100', 10)
     const messages = await getMessages(conversationId, limit)
-    console.log('[WA messages] found:', messages.length, 'for conv:', conversationId)
     return NextResponse.json({ messages })
   } catch (err) {
     console.error('[WA messages] Error:', err)
