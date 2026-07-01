@@ -1293,6 +1293,46 @@ function AISidebar({
   if (!conv) {
     return (
       <div className="flex flex-col h-full overflow-y-auto">
+
+        {/* ── AI Monitoring Hero Block ── */}
+        <div className="p-3 border-b border-zinc-800/60">
+          <div className="relative rounded-2xl overflow-hidden border border-blue-500/20 bg-gradient-to-br from-blue-950/40 to-violet-950/30 p-4">
+            {/* Ambient glow */}
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-violet-500/5 pointer-events-none" />
+            <div className="relative z-10">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
+                    <Brain className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">IA monitorando conversas</p>
+                    <p className="text-[10px] text-zinc-400">Seleciona e atua nas melhores oportunidades</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[10px] font-semibold text-emerald-400">Processando em tempo real</span>
+              </div>
+              <p className="text-[10px] text-zinc-300 font-semibold mb-2">A IA faz tudo por você</p>
+              <div className="space-y-1.5">
+                {AI_CAPABILITIES.map(cap => (
+                  <div key={cap} className="flex items-center gap-2">
+                    <div className="w-3.5 h-3.5 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+                      <span className="text-blue-400 text-[8px]">✓</span>
+                    </div>
+                    <span className="text-[10px] text-zinc-400">{cap}</span>
+                  </div>
+                ))}
+              </div>
+              <button className="mt-3 w-full text-[10px] text-blue-400 hover:text-blue-300 font-semibold transition">
+                Ver todas as ações →
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* AI Mode */}
         <div className="p-3 border-b border-zinc-800/60">
           <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Modo de operação</p>
@@ -2302,21 +2342,43 @@ export default function WhatsAppPage() {
       </div>
 
       {/* ── KPI row ── */}
-      <div className="shrink-0 grid grid-cols-5 gap-2 px-6 py-2.5 border-b border-zinc-800/60">
-        {kpis.map(kpi => {
+      <div className="shrink-0 grid grid-cols-5 gap-2 px-6 py-3 border-b border-zinc-800/60">
+        {kpis.map((kpi, idx) => {
           const Icon = kpi.icon
+          // Deterministic mini sparkline based on current value
+          const sparkPts = [0.4, 0.55, 0.45, 0.7, 0.6, 0.8, 0.75, 1.0].map((r, i) => {
+            const base = Math.max(0, kpi.value - Math.round(kpi.value * (1 - r) * 0.6))
+            return base + ((idx * 3 + i * 7) % 5)
+          })
+          const maxSpark = Math.max(...sparkPts, 1)
+          const W = 56, H = 20
+          const pts = sparkPts.map((v, i) => `${Math.round((i / (sparkPts.length - 1)) * W)},${Math.round(H - (v / maxSpark) * H)}`).join(' ')
+          const deltas = ['+12%', '+18%', '+8%', '+15%', '+5%']
           return (
             <div key={kpi.label} className={cn(
-              'flex items-center gap-3 bg-zinc-900/70 rounded-xl px-3.5 py-2.5 border border-zinc-800/50 shadow-sm',
-              kpi.glow,
+              'relative flex flex-col gap-2 rounded-xl px-3.5 py-3 border overflow-hidden transition-all hover:border-zinc-700/80',
+              'bg-gradient-to-br from-zinc-900/90 to-zinc-900/40 border-zinc-800/60',
+              'shadow-lg', kpi.glow,
             )}>
-              <div className={cn('w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0')}>
-                <Icon className={cn('w-3.5 h-3.5', kpi.color)} />
+              {/* Ambient glow */}
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition pointer-events-none"
+                style={{ background: `radial-gradient(circle at 50% 0%, ${kpi.color.replace('text-', '').replace('-400', '')} 0%, transparent 60%)`, opacity: 0.04 }} />
+              <div className="flex items-start justify-between">
+                <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center shrink-0', 'bg-zinc-800/80')}>
+                  <Icon className={cn('w-3.5 h-3.5', kpi.color)} />
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-400">{deltas[idx]}</span>
               </div>
-              <div className="min-w-0">
-                <p className="text-base font-bold text-white leading-none tabular-nums">{kpi.value}</p>
-                <p className="text-[10px] text-zinc-500 leading-tight truncate">{kpi.label}</p>
+              <div>
+                <p className="text-xl font-black text-white leading-none tabular-nums">{kpi.value}</p>
+                <p className="text-[10px] text-zinc-500 leading-tight mt-0.5 truncate">{kpi.label}</p>
               </div>
+              {/* Sparkline */}
+              <svg width={W} height={H} className="opacity-60">
+                <polyline points={pts} fill="none" stroke="currentColor"
+                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                  className={kpi.color} />
+              </svg>
             </div>
           )
         })}

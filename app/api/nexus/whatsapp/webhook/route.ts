@@ -218,19 +218,70 @@ async function autoReply(
     .eq('conversation_id', convId)
     .maybeSingle()
 
-  // Build system prompt
-  let systemPrompt = SYSTEM_PROMPT_BASE
+  // Load the company's own profile to personalise the AI persona and tone.
+  // Each NEXUS customer may have configured a different business niche,
+  // AI name, style (professional/friendly/assertive) and communication
+  // objectives — the AI should represent THEIR brand, not a generic NEXUS bot.
+  const { data: companyRow } = await supabase
+    .from('companies')
+    .select('name, sector, niche, ai_name, ai_role, ai_style, communication_tone, description, slogan, whatsapp_commercial')
+    .eq('id', companyId)
+    .maybeSingle()
+
+  const { data: companyProfile } = await supabase
+    .from('company_profile')
+    .select('objectives, main_challenge, team_size, revenue_range, ai_personality')
+    .eq('company_id', companyId)
+    .maybeSingle()
+
+  // Build a personalised system prompt based on the company's configuration.
+  // Falls back to the generic NEXUS prompt when no profile data exists.
+  const aiName        = companyRow?.ai_name        ?? 'NEXUS'
+  const aiRole        = companyRow?.ai_role        ?? 'assistente de atendimento e vendas'
+  const aiStyle       = companyRow?.ai_style       ?? companyProfile?.ai_personality ?? 'profissional'
+  const companyName   = companyRow?.name           ?? 'a empresa'
+  const sector        = companyRow?.sector         ?? companyRow?.niche ?? null
+  const objectives    = companyProfile?.objectives as string[] | null
+  const tone          = companyRow?.communication_tone ?? null
+  const description   = companyRow?.description    ?? null
+
+  const hasCompanyConfig = !!(companyRow?.ai_name || companyRow?.sector || companyRow?.niche || companyProfile)
+
+  let systemPrompt: string
+
+  if (hasCompanyConfig) {
+    // Company has configured their own AI — use their brand and niche
+    const sectorLine = sector ? `\nSegmento da empresa: ${sector}.` : ''
+    const descLine   = description ? `\nSobre a empresa: ${description}` : ''
+    const objLine    = objectives?.length ? `\nObjetivos principais: ${objectives.join(', ')}.` : ''
+    const toneLine   = tone ? `\nTom de comunicação preferido: ${tone}.` : ''
+
+    systemPrompt = `Você é ${aiName}, ${aiRole} de ${companyName}, respondendo pelo WhatsApp oficial da empresa.
+Você representa ${companyName} de verdade — não é um assistente genérico.${sectorLine}${descLine}${objLine}
+
+Estilo: ${aiStyle}. Seja direto, humano e ${aiStyle}. No máximo 2-3 linhas por mensagem.${toneLine}
+
+Regras obrigatórias:
+- Responda SEMPRE em português brasileiro.
+- Nunca invente informações sobre produtos, preços ou serviços que você não tem certeza — diga que vai confirmar com a equipe.
+- Qualifique o interesse do cliente: entenda o que precisa, mostre como ${companyName} resolve, proponha próximo passo.
+- Se o cliente quiser falar com humano ou demonstrar intenção clara de compra, conecte-o com a equipe.
+- Leia o histórico antes de responder — nunca repita perguntas já respondidas.
+- Use no máximo 1 emoji por mensagem.`.trim()
+  } else {
+    systemPrompt = SYSTEM_PROMPT_BASE
+  }
 
   if (ctx) {
     const parts: string[] = []
     if (ctx.nome || contactName)       parts.push(`Lead: ${ctx.nome ?? contactName}`)
-    if (ctx.empresa)                   parts.push(`Empresa: ${ctx.empresa}`)
+    if (ctx.empresa)                   parts.push(`Empresa do lead: ${ctx.empresa}`)
     if (ctx.nicho)                     parts.push(`Nicho: ${ctx.nicho}`)
     if (ctx.faturamento)               parts.push(`Faturamento: ${ctx.faturamento}`)
     if (ctx.objetivo)                  parts.push(`Objetivo: ${ctx.objetivo}`)
     if (ctx.estagio)                   parts.push(`Estágio: ${ctx.estagio}`)
     if (ctx.dores?.length)             parts.push(`Dores: ${(ctx.dores as string[]).join(', ')}`)
-    if (parts.length)                  systemPrompt += '\n\nContexto do lead:\n' + parts.join('\n')
+    if (parts.length)                  systemPrompt += '\n\nContexto do lead atual:\n' + parts.join('\n')
   }
 
   const chatHistory = reversed.map(m => ({
