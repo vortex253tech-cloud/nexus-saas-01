@@ -2388,7 +2388,7 @@ export default function WhatsAppPage() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* ── Left: Smart Inbox ── */}
-        <div className="w-72 shrink-0 flex flex-col border-r border-zinc-800/60 bg-zinc-950">
+        <div className="w-72 shrink-0 flex flex-col border-r border-zinc-800/60 bg-zinc-950 overflow-hidden">
 
           {/* Connection badge */}
           <div className="p-4 border-b border-zinc-800/60">
@@ -2470,7 +2470,7 @@ export default function WhatsAppPage() {
           </div>
 
           {/* Conversation list — with V5 search overlay + pagination */}
-          <div className="flex-1 overflow-y-auto border-t border-zinc-800/40 relative">
+          <div className="flex-1 min-h-0 overflow-y-auto border-t border-zinc-800/40 relative">
 
             {/* V5: Global search overlay */}
             {searchMode && (
