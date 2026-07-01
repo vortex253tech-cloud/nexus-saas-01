@@ -2145,7 +2145,7 @@ export default function WhatsAppPage() {
     ]).finally(() => setLoading(false))
 
     // Refresh conversations more frequently so new ones appear quickly
-    const statusTimer   = setInterval(() => { fetchStatus(); fetchConversations() }, 10_000)
+    const statusTimer   = setInterval(() => { fetchStatus(); fetchConversations() }, 3_000)
     const activityTimer = setInterval(fetchActivity, 15_000)
 
     return () => { clearInterval(statusTimer); clearInterval(activityTimer) }
@@ -2390,23 +2390,19 @@ export default function WhatsAppPage() {
         {/* ── Left: Smart Inbox ── */}
         <div className="w-72 shrink-0 flex flex-col border-r border-zinc-800/60 bg-zinc-950 overflow-hidden">
 
-          {/* Connection badge */}
-          <div className="p-4 border-b border-zinc-800/60">
-            <div className="bg-zinc-900 border border-zinc-800/60 rounded-xl p-3 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                <Wifi className="w-4 h-4 text-emerald-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-white">WhatsApp Ativo</p>
-                <p className="text-[10px] text-zinc-500 truncate">NEXUS AI respondendo automaticamente</p>
-              </div>
-              <button
-                onClick={() => setShowConnect(true)}
-                className="shrink-0 text-[10px] text-violet-400 hover:text-violet-300 border border-violet-500/30 rounded-lg px-2 py-1 transition"
-              >
-                QR
-              </button>
+          {/* Connection badge — compact strip */}
+          <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-zinc-800/60">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-semibold text-emerald-400">WhatsApp Ativo</span>
+              {waStatus?.phone && <span className="text-[10px] text-zinc-600">+{waStatus.phone}</span>}
             </div>
+            <button
+              onClick={() => setShowConnect(true)}
+              className="text-[10px] text-violet-400 hover:text-violet-300 border border-violet-500/30 rounded-lg px-2 py-1 transition"
+            >
+              QR
+            </button>
           </div>
 
           {/* V5 Search — real-time server search */}
@@ -2433,40 +2429,30 @@ export default function WhatsAppPage() {
             </div>
           </div>
 
-          {/* Smart filters */}
-          <div className="px-3 pb-2">
-            <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2 px-1">Filtros inteligentes</p>
-            <div className="space-y-0.5">
-              {FILTERS.map(f => (
-                <button
-                  key={f.key}
-                  onClick={() => { setFilter(f.key); setSearch('') }}
-                  className={cn(
-                    'w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all',
-                    filter === f.key && !search
-                      ? 'bg-violet-600/15 text-violet-300'
-                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    {f.key === 'all'     && <MessageSquare className="w-3.5 h-3.5" />}
-                    {f.key === 'unread'  && <Circle className="w-3.5 h-3.5" />}
-                    {f.key === 'leads'   && <Flame className="w-3.5 h-3.5 text-orange-400" />}
-                    {f.key === 'clients' && <Users className="w-3.5 h-3.5" />}
-                    {f.key === 'ai'      && <Bot className="w-3.5 h-3.5 text-violet-400" />}
-                    {f.key === 'nego'    && <TrendingUp className="w-3.5 h-3.5" />}
-                    {f.key === 'closed'  && <Archive className="w-3.5 h-3.5" />}
-                    <span className="text-xs">{f.label}</span>
-                  </div>
+          {/* Compact horizontal filter tabs — like WhatsApp Web */}
+          <div className="shrink-0 flex gap-1 px-2 pb-2 overflow-x-auto scrollbar-none">
+            {FILTERS.map(f => (
+              <button
+                key={f.key}
+                onClick={() => { setFilter(f.key); setSearch('') }}
+                className={cn(
+                  'shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap',
+                  filter === f.key && !search
+                    ? 'bg-violet-600 text-white'
+                    : 'text-zinc-400 bg-zinc-800/60 hover:bg-zinc-700/60 hover:text-zinc-200',
+                )}
+              >
+                {f.label}
+                {f.count > 0 && (
                   <span className={cn(
-                    'text-xs tabular-nums',
-                    filter === f.key && !search ? 'text-violet-400' : 'text-zinc-600',
+                    'text-[10px] font-bold tabular-nums',
+                    filter === f.key && !search ? 'text-violet-200' : 'text-zinc-500',
                   )}>
                     {f.count}
                   </span>
-                </button>
-              ))}
-            </div>
+                )}
+              </button>
+            ))}
           </div>
 
           {/* Conversation list — with V5 search overlay + pagination */}
