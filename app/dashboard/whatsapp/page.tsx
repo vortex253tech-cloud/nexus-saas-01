@@ -11,13 +11,13 @@ import {
   Search, Star, MoreHorizontal, ChevronRight,
   CheckCircle2, Users, TrendingUp, Flame,
   Target, Bell, RefreshCw, Settings, Plus,
-  ArrowUpRight, Activity, Circle,
+  ArrowUpRight, Activity,
   MessageSquare, X, Loader2, Check, AlertTriangle,
-  Smile, Archive, Tag, Wifi,
-  Cpu, BarChart3, Brain, DollarSign, Clock,
-  Paperclip, Image, FileText, Mic, CalendarClock,
-  PhoneCall, UserCheck, Repeat2, ChevronDown,
-  ShieldCheck, Globe, Layers,
+  Tag,
+  Cpu, BarChart3, Brain,
+  Image, FileText, Mic,
+  PhoneCall, UserCheck, ChevronDown,
+  ShieldCheck, Globe,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -1164,7 +1164,6 @@ const AI_MODES: { key: AIMode; label: string; desc: string; color: string }[] = 
 ]
 
 function AIModeToggle({ mode, onChange }: { mode: AIMode; onChange: (m: AIMode) => void }) {
-  const current = AI_MODES.find(m => m.key === mode)!
   return (
     <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-xl p-1">
       {AI_MODES.map(m => (
@@ -1196,12 +1195,6 @@ const QUICK_REPLIES = [
   'Ótima pergunta! Nossos planos começam em R$297/mês com ROI médio de 3x em 90 dias.',
 ]
 
-const SUGGESTED_ACTIONS = [
-  { icon: '📋', label: 'Enviar proposta personalizada' },
-  { icon: '📅', label: 'Agendar follow-up' },
-  { icon: '🎯', label: 'Oferecer demonstração' },
-  { icon: '💼', label: 'Enviar case de sucesso' },
-]
 
 const TEMP_MAP: Record<string, { label: string; color: string; bg: string }> = {
   urgente: { label: 'Urgente 🔥🔥', color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/20'    },
@@ -2787,7 +2780,6 @@ export default function WhatsAppPage() {
                 {[
                   { icon: '🤖', label: 'Resposta inteligente', onClick: () => { setShowSuggestion(true); setSuggestionIdx(0); if (selected) fetchSuggestion(selected.id) } },
                   { icon: '📄', label: 'Enviar proposta',      onClick: handleSendProposal },
-                  { icon: '📷', label: 'Enviar imagem',        onClick: () => fileInputRef.current?.click() },
                   { icon: '🔄', label: 'Transferir',           onClick: handleTransfer },
                 ].map(chip => (
                   <button
@@ -2825,14 +2817,6 @@ export default function WhatsAppPage() {
                   </div>
                 )}
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={sendingMsg}
-                    className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-violet-400 transition shrink-0 disabled:opacity-40"
-                    title="Enviar imagem"
-                  >
-                    <Paperclip className="w-4 h-4" />
-                  </button>
                   <div className="flex-1 bg-zinc-900 border border-zinc-800/60 rounded-2xl px-4 py-2.5 flex items-center gap-2">
                     <input
                       ref={inputRef}
