@@ -2898,61 +2898,6 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      {/* ── LiveOperationalFeed ── */}
-      <div className="shrink-0 border-t border-zinc-800/60 bg-zinc-950/95">
-        {/* Status row */}
-        <div className="flex items-center justify-between px-6 py-1.5 border-b border-zinc-800/30">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-            <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Feed Operacional ao Vivo</span>
-          </div>
-          <div className="flex items-center gap-3">
-            {autoClose && (
-              <div className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/8 border border-emerald-500/20 rounded-full px-2 py-0.5">
-                <Zap className="w-2.5 h-2.5" /> AutoClose ativo
-              </div>
-            )}
-            <div className="flex items-center gap-1.5">
-              <Wifi className="w-3 h-3 text-emerald-400" />
-              <span className="text-[10px] text-emerald-400">Conectado</span>
-            </div>
-            <button
-              onClick={() => { fetchStatus(); fetchConversations(); fetchActivity() }}
-              className="text-zinc-700 hover:text-zinc-500 transition"
-            >
-              <RefreshCw className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-        {/* Horizontal events ticker */}
-        <div className="flex items-center overflow-x-auto scrollbar-none px-4 py-2 gap-0">
-          {activityEvents.length === 0 ? (
-            <>
-              {[
-                { icon: '🤖', label: `NEXUS AI monitorando ${conversations.length} conversa${conversations.length !== 1 ? 's' : ''}` },
-                { icon: '⚡', label: `${aiActiveConvs} conversa${aiActiveConvs !== 1 ? 's' : ''} com IA ativa` },
-                { icon: '🎯', label: aiMode === 'auto' ? 'Modo automático — respondendo sem intervenção' : aiMode === 'hybrid' ? 'Modo híbrido — IA sugere, você aprova' : 'Modo manual — controle total' },
-                { icon: '🔒', label: autoClose ? 'AutoClose ativo — fechando leads qualificados' : 'Pipeline sincronizado em tempo real' },
-                { icon: '📡', label: `${activeAgentsCount} agente${activeAgentsCount !== 1 ? 's' : ''} IA operacional` },
-              ].map((e, i, arr) => (
-                <div key={i} className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-xs">{e.icon}</span>
-                  <span className="text-[10px] text-zinc-500">{e.label}</span>
-                  {i < arr.length - 1 && <span className="text-zinc-800 mx-4">·</span>}
-                </div>
-              ))}
-            </>
-          ) : (
-            activityEvents.concat(activityEvents).map((e, i, arr) => (
-              <div key={i} className="flex items-center gap-1.5 shrink-0">
-                <span className="text-xs">{(e as ActivityEvent & { icon?: string }).icon ?? '⚡'}</span>
-                <span className="text-[10px] text-zinc-500">{e.label}</span>
-                {i < arr.length - 1 && <span className="text-zinc-800 mx-4">·</span>}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
 
       {showConnect && (
         <ConnectModal
