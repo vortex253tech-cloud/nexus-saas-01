@@ -1707,6 +1707,7 @@ export default function WhatsAppPage() {
     try { return JSON.parse(localStorage.getItem('wa-automations') ?? '{}') } catch { return {} }
   })
   const [autoClose, setAutoClose] = useState(false)
+  const [imgSendError, setImgSendError] = useState<string | null>(null)
 
   // V5: pagination + global search
   const [hasMore,        setHasMore]        = useState(false)
@@ -1949,13 +1950,20 @@ export default function WhatsAppPage() {
 
   const handleSendImage = useCallback(async (file: File) => {
     if (!selected) return
+    setImgSendError(null)
+
+    if (file.size > 5 * 1024 * 1024) {
+      setImgSendError('Imagem muito grande. Máximo 5MB.')
+      return
+    }
+
     const reader = new FileReader()
     reader.onload = async () => {
       const base64 = (reader.result as string)
       setSendingMsg(true)
-      const caption = ''
+      const optId = `opt-img-${Date.now()}`
       const optimisticMsg: Message = {
-        id:           `opt-img-${Date.now()}`,
+        id:           optId,
         direction:    'outgoing',
         content:      '📷 Imagem',
         from_me:      true,
@@ -1965,17 +1973,25 @@ export default function WhatsAppPage() {
       }
       setMessages(prev => [...prev, optimisticMsg])
       try {
-        await fetch('/api/nexus/whatsapp/send-image', {
+        const res = await fetch('/api/nexus/whatsapp/send-image', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
             phone:           selected.phone,
             image:           base64,
-            caption,
+            caption:         '',
             conversation_id: selected.id,
           }),
         })
-      } catch { /* ignore */ } finally {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({})) as { error?: string }
+          setMessages(prev => prev.filter(m => m.id !== optId))
+          setImgSendError(data.error ?? 'Erro ao enviar imagem. Tente novamente.')
+        }
+      } catch {
+        setMessages(prev => prev.filter(m => m.id !== optId))
+        setImgSendError('Erro de conexão ao enviar imagem.')
+      } finally {
         setSendingMsg(false)
       }
     }
@@ -2791,7 +2807,7 @@ export default function WhatsAppPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/*"
                   className="hidden"
                   onChange={e => {
                     const file = e.target.files?.[0]
@@ -2799,13 +2815,21 @@ export default function WhatsAppPage() {
                     e.target.value = ''
                   }}
                 />
+                {/* Image send error */}
+                {imgSendError && (
+                  <div className="flex items-center justify-between gap-2 mb-2 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400">
+                    <span>{imgSendError}</span>
+                    <button onClick={() => setImgSendError(null)} className="shrink-0 hover:text-red-300 transition">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center gap-3">
-                  <button className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition shrink-0">
-                    <Smile className="w-4 h-4" />
-                  </button>
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition shrink-0"
+                    disabled={sendingMsg}
+                    className="w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-violet-400 transition shrink-0 disabled:opacity-40"
+                    title="Enviar imagem"
                   >
                     <Paperclip className="w-4 h-4" />
                   </button>
